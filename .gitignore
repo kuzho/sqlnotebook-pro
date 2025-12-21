@@ -1,0 +1,12 @@
+node_modules/
+dist/
+out/
+*.vsix
+.vscode/
+.vscode-test/
+sqls_bin/
+sqls/
+.direnv
+.envrc
+.DS_Store
+Thumbs.db
