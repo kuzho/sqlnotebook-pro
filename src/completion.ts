@@ -23,7 +23,7 @@ export class SqlCompletionItemProvider implements vscode.CompletionItemProvider 
     let activeKernel = null;
     for(const k of this.kernelManager.controllers.values()) {
         activeKernel = k;
-        break; 
+        break;
     }
 
     const keywordItems = SQL_KEYWORDS.map(k => {
@@ -61,7 +61,7 @@ export class SqlCompletionItemProvider implements vscode.CompletionItemProvider 
     const tableItems = schema.map(t => {
         const item = new vscode.CompletionItem(t.table, vscode.CompletionItemKind.Class);
         item.detail = "Tabla";
-        item.sortText = `1_${t.table}`; 
+        item.sortText = `1_${t.table}`;
         return item;
     });
 

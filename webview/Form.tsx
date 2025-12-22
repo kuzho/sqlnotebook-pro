@@ -156,7 +156,7 @@ function useDropdownValue() {
     };
     current?.addEventListener('change', handleChange);
     return () => current?.removeEventListener('change', handleChange);
-  }, [ref.current]); 
+  }, [ref.current]);
   return { ref, value, setValue };
 }
 
