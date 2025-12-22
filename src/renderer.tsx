@@ -60,6 +60,17 @@ const styles = `
     flex-shrink: 0;
   }
 
+  .toolbar-time {
+    font-size: 11px;
+    color: #858585;
+    margin-left: 8px;
+    border-left: 1px solid #555;
+    padding-left: 8px;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+
   .btn-action {
     background: transparent;
     color: #cccccc;
@@ -374,6 +385,7 @@ const TableApp = ({ data }: { data: any[] }) => {
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
 
   const [activeMenuId, setActiveMenuId] = useState<string | null>(null);
+  const runTime = useMemo(() => new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }), []);
 
   const [selection, setSelection] = useState<{
     type: 'all' | 'row' | 'col' | 'range',
@@ -541,7 +553,10 @@ const handleCopy = useCallback(() => {
     >
       <style>{styles}</style>
       <div className="toolbar">
-        <span style={{fontSize:11, fontWeight:'bold'}}>{rows.length} filas</span>
+        <span style={{fontSize:11, fontWeight:'bold'}}>{rows.length} rows</span>
+        <span className="toolbar-time">
+           🕒 {runTime}
+        </span>
         <div style={{flex:1}}/>
         <button className="btn-action" onClick={exportExcel} title="Exportar Excel">
            📊 Excel

@@ -27,7 +27,7 @@ const Form: React.FC<{
       switch (data.type) {
         case 'clear_form':
           formRef.current?.reset();
-          setDriver('mysql');
+          setDriver('mssql');
           break;
 
         case 'edit_connection': {
@@ -86,9 +86,9 @@ const Form: React.FC<{
           Database Driver
         </label>
         <VSCodeDropdown name="driver" ref={dropdownRef}>
+          <VSCodeOption>mssql</VSCodeOption>
           <VSCodeOption>mysql</VSCodeOption>
           <VSCodeOption>postgres</VSCodeOption>
-          <VSCodeOption>mssql</VSCodeOption>
           <VSCodeOption>sqlite</VSCodeOption>
         </VSCodeDropdown>
       </div>
@@ -133,7 +133,7 @@ const Form: React.FC<{
             title="Clear Form"
             onClick={() => {
               formRef.current?.reset();
-              setDriver('mysql');
+              setDriver('mssql');
             }}
           >
             Clear Form
@@ -146,7 +146,7 @@ const Form: React.FC<{
 export default Form;
 
 function useDropdownValue() {
-  const [value, setValue] = React.useState<string>('mysql');
+  const [value, setValue] = React.useState<string>('mssql');
   const ref = React.useRef<HTMLInputElement>(null);
 
   React.useEffect(() => {
@@ -156,7 +156,7 @@ function useDropdownValue() {
     };
     current?.addEventListener('change', handleChange);
     return () => current?.removeEventListener('change', handleChange);
-  }, [ref.current]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [ref.current]); 
   return { ref, value, setValue };
 }
 

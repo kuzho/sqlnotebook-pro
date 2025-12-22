@@ -1,7 +1,6 @@
 import * as vscode from 'vscode';
 import { SQLNotebookConnections } from './connections';
-import { connectToDatabase, deleteConnectionConfiguration, editConnectionConfiguration } from './commands';
-import { Pool } from './driver';
+import { deleteConnectionConfiguration, editConnectionConfiguration } from './commands';
 import { activateFormProvider } from './form';
 import { SQLSerializer } from './serializer';
 import { KernelManager } from './controller';
@@ -9,10 +8,6 @@ import { SqlCompletionItemProvider } from './completion';
 
 export const notebookType = 'sql-notebook';
 export const storageKey = 'sqlnotebook-connections';
-
-export const globalConnPool: { pool: Pool | null } = {
-  pool: null,
-};
 
 export function activate(context: vscode.ExtensionContext) {
   context.subscriptions.push(
@@ -76,13 +71,6 @@ export function activate(context: vscode.ExtensionContext) {
     vscode.commands.registerCommand('sqlnotebook.refreshConnectionPanel', () => {
       connectionsSidepanel.refresh();
     })
-  );
-
-  context.subscriptions.push(
-    vscode.commands.registerCommand(
-      'sqlnotebook.connect',
-      connectToDatabase(context, connectionsSidepanel)
-    )
   );
 }
 
