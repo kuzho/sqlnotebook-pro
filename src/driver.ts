@@ -349,7 +349,7 @@ interface MSSQLConfig extends BaseConfig {
 }
 
 async function createMSSQLPool(config: MSSQLConfig): Promise<Pool> {
-  const conn = await mssql.connect({
+  const pool = new mssql.ConnectionPool({
     server: config.host,
     port: config.port,
     user: config.user,
@@ -361,13 +361,15 @@ async function createMSSQLPool(config: MSSQLConfig): Promise<Pool> {
       trustServerCertificate: config.trustServerCertificate,
     },
   });
-  return mssqlPool(conn);
+
+  await pool.connect();
+  return mssqlPool(pool);
 }
 
 function mssqlPool(pool: mssql.ConnectionPool): Pool {
   return {
     async getConnection(): Promise<Conn> {
-      const req = new mssql.Request();
+      const req = pool.request();
       return mssqlConn(req);
     },
     end() {
@@ -400,11 +402,31 @@ function mssqlConn(req: mssql.Request): Conn {
       req.cancel();
     },
     async query(q: string): Promise<ExecutionResult> {
-      const res = await req.query(q);
-      if (res.recordsets.length < 1) {
-        return [[{ rows_affected: `${res.rowsAffected}` }]];
+      const res: any = await req.query(q);
+
+      if (res.recordsets && res.recordsets.length > 0 && res.recordsets[0].length > 0) {
+          return [res.recordsets[0]];
       }
-      return [res.recordsets[0]];
+
+      if (res.rowsAffected) {
+          const val = Array.isArray(res.rowsAffected)
+            ? res.rowsAffected.join(',')
+            : String(res.rowsAffected);
+
+          return [[{
+            Status: 'Success',
+            rows_affected: val
+          }]];
+      }
+
+      if (res.recordsets && res.recordsets.length > 0) {
+          return [res.recordsets[0]];
+      }
+
+      return [[{
+        Status: 'Success',
+        Message: 'Command executed successfully.'
+      }]];
     },
     release() {
     },

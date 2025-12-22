@@ -1,5 +1,10 @@
 # Change Log
 
+## [1.0.2] - 2025-12-22
+- **⏱️ Execution Timestamp:** Added a clock to the results toolbar to show exactly when the query finished running.
+- **🐛 Bug Fix:** Fixed "Columns require an id" error in the interactive grid when using columns with special characters.
+- **🧹 UI Cleanup:** Removed the redundant "Connect" button from the sidebar (connections are now managed exclusively by the Notebook Kernel).
+
 ## v1.0.0 - 2025-12-20
 
 - Initial release of SQL Notebook Pro.

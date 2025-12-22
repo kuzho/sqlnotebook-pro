@@ -398,20 +398,31 @@ const TableApp = ({ data }: { data: any[] }) => {
 
   const columns = useMemo(() => {
     if (!data || data.length === 0) return [];
-    return Object.keys(data[0]).map(key => ({
-      header: key,
-      accessorKey: key,
-      enableColumnFilter: true,
-      filterFn: (row: any, id: string, filterValue: any[]) => {
-        return filterValue.includes(row.getValue(id));
-      },
-      cell: (info: any) => {
-        const val = info.getValue();
-        if (val === null) return <span style={{ opacity: 0.5, fontStyle: 'italic' }}>NULL</span>;
-        if (typeof val === 'object') return JSON.stringify(val);
-        return String(val);
-      }
-    }));
+
+    return Object.keys(data[0]).map((key, index) => {
+      const isUnnamed = !key || key.trim() === '';
+
+      const safeId = isUnnamed ? `col_unnamed_${index}` : key;
+
+      const safeHeader = isUnnamed ? '(No column name)' : key;
+
+      return {
+        id: safeId,
+        header: safeHeader,
+        accessorKey: key,
+        enableColumnFilter: true,
+        filterFn: (row: any, id: string, filterValue: any[]) => {
+          const val = row.original[key];
+          return filterValue.includes(val);
+        },
+        cell: (info: any) => {
+          const val = info.getValue();
+          if (val === null) return <span style={{ opacity: 0.5, fontStyle: 'italic' }}>NULL</span>;
+          if (typeof val === 'object') return JSON.stringify(val);
+          return String(val);
+        }
+      };
+    });
   }, [data]);
 
   const table = useReactTable({
