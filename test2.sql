@@ -1,1 +1,0 @@
-select * from test_users where test_users.id
