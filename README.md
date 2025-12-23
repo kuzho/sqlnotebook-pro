@@ -10,21 +10,25 @@
 
 ## ✨ Key Features
 
-### 1. 🧠 Intelligent Autocomplete (NEW)
-Write SQL faster with our new native Intellisense engine. The extension automatically reads your database schema to provide context-aware suggestions.
+### 1. 🧠 Smart Intellisense & Autocomplete
+Write SQL faster with our native Intellisense engine. The extension automatically reads your database schema to provide context-aware suggestions.
 
-* **Tables:** Get suggestions for your tables as you type.
+* **Global Search:** If a table isn't found in the current connection, the extension smartly scans all your active connections to find it.
+* **Case-Insensitive:** Type `test_users` or `TEST_USERS` — we find it either way.
 * **Columns:** Type a table name followed by a dot (e.g., `users.`) to instantly see that table's columns.
 * **Keywords:** Full support for standard SQL keywords (SELECT, WHERE, JOIN, etc.).
 
-### 2. Interactive Data Grid
-Filter, sort, and analyze your data without writing extra queries. The new grid uses the full width of your editor and supports Excel-style filtering.
+### 2. Interactive Data Grid (Excel-Style)
+Filter, sort, and analyze your data without writing extra queries.
+* **Elastic Layout:** The grid auto-expands horizontally to fit your data.
+* **Filtering:** Use the funnel icon to search, select, or exclude specific values.
+* **Export:** One-click export to **Excel (XLSX)** or **CSV**.
 <br>
-<img src="media/demo-grid..png" width="100%" alt="Interactive SQL Grid with Filters">
+<img src="media/demo-grid.png" width="100%" alt="Interactive SQL Grid with Filters">
 <br><br>
 
 ### 3. Connection Groups & Editing
-Organize your database chaos. Group connections by environment (Dev, Prod, Staging) or project. Right-click any connection to **Edit** details instantly.
+Organize your database chaos. Group connections by environment (Dev, Prod, Staging) or project. Right-click any connection to **Edit** details instantly without re-entering passwords.
 <br>
 <img src="media/demo-sidebar.png" width="100%" alt="Connection Grouping and Context Menu">
 <br><br>
@@ -35,13 +39,14 @@ Create connections safely. Includes a **Test Connection** button to verify crede
 
 ---
 
-## 🚀 All Features (v1.0.0)
+## 🚀 Feature Highlights (v1.0.3)
 
-- **⚡ Native Intellisense:** Auto-fetch schema for MySQL, Postgres, SQLite, and MSSQL.
+- **⚡ Multi-Kernel Architecture:** Switch connections instantly using the Notebook Toolbar (top-right), just like switching Python environments.
 - **📁 Connection Grouping:** Use the "Group" field to organize connections into folders.
 - **✏️ Edit Mode:** Right-click to edit Host, User, or Port without re-entering passwords.
-- **☁️ Portable Settings:** Connections are saved in `settings.json`, making it easy to sync between computers (passwords remain local & secure).
+- **☁️ Portable Settings:** Connections are saved in `settings.json`, making it easy to sync between computers (passwords remain local & secure in your OS Keychain).
 - **🔄 Hot Reload:** Edit a connection and run a query immediately—no restart required.
+- **⏱️ Execution Timer:** See exactly how long your query took to run in the results bar.
 - **📊 Export:** One-click export to **Excel** or **CSV**.
 
 ## Usage
@@ -60,7 +65,7 @@ Create connections safely. Includes a **Test Connection** button to verify crede
 
 You can customize the extension in VS Code Settings:
 
-* **SQL Notebook: Max Result Rows:** (Default: 50) Limits the initial rows rendered for performance.
+* **SQL Notebook: Max Result Rows:** (Default: 100) Limits the initial rows rendered for performance. You can increase this if you need more data at a glance.
 * **SQL Notebook: Query Timeout:** (Default: 30000ms) Cancels queries that take too long.
 
 ## FAQ

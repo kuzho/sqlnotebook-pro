@@ -100,16 +100,6 @@
           "description": "List of saved database connection configurations.",
           "scope": "window"
         },
-        "SQLNotebook.useLanguageServer": {
-          "type": "boolean",
-          "default": false,
-          "description": "(Unstable) Use embedded language server for intelligent completion and hover information."
-        },
-        "SQLNotebook.outputJSON": {
-          "type": "boolean",
-          "default": false,
-          "description": "Output JSON in addition to markdown. Other extensions may use this output type to render an interactive table."
-        },
         "SQLNotebook.queryTimeout": {
           "type": "number",
           "default": 30000,
@@ -117,7 +107,7 @@
         },
         "SQLNotebook.maxResultRows": {
           "type": "number",
-          "default": 25,
+          "default": 100,
           "description": "Maximum number of result rows to display before truncating result table."
         }
       }

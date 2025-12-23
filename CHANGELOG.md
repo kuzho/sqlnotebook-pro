@@ -1,6 +1,13 @@
 # Change Log
 
-## [1.0.2] - 2025-12-22
+## [1.0.3] - 2025-12-22
+- **🧠 Smarter Intellisense:** - Autocomplete now searches across **all active connections** if the table isn't found in the current context.
+    - Added **Case-Insensitivity**: `test_users.` now correctly finds `TEST_USERS`.
+- **↔️ Elastic Table Layout:** The data grid now supports **horizontal scrolling** properly. Columns auto-size to fit content, and the table expands beyond the viewport instead of shrinking.
+- **🛡️ Robust Rendering:** Added protections against "undefined" rows and handled unnamed columns (e.g., `getdate()`) gracefully by assigning them a generated ID (`No column name`).
+- **⚙️ Optimized Defaults:** Increased default `maxResultRows` to **100** (up from 25) and cleaned up unused settings.
+
+## [1.0.2] - 2025-12-21
 - **⏱️ Execution Timestamp:** Added a clock to the results toolbar to show exactly when the query finished running.
 - **🐛 Bug Fix:** Fixed "Columns require an id" error in the interactive grid when using columns with special characters.
 - **🧹 UI Cleanup:** Removed the redundant "Connect" button from the sidebar (connections are now managed exclusively by the Notebook Kernel).

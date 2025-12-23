@@ -65,7 +65,7 @@ class SQLConfigurationViewProvider implements vscode.WebviewViewProvider {
              vscode.window.setStatusBarMessage('$(sync~spin) Testing connection...', 2000);
              const pool = await getPool({
                ...tempConfig,
-               queryTimeout: 5000 
+               queryTimeout: 5000
              } as PoolConfig);
 
              const conn = await pool.getConnection();

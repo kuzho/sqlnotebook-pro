@@ -136,7 +136,7 @@ export class SQLNotebookKernel {
 
     const rawQuery = cell.document.getText();
     if (!rawQuery.trim()) {
-      execution.end(true, Date.now());
+      writeSuccess(execution, [[text('*(Empty cell - No query found)*', 'text/markdown')]]);
       return;
     }
 
@@ -152,7 +152,7 @@ export class SQLNotebookKernel {
     execution.token.onCancellationRequested(() => {
       conn.release();
       conn.destroy();
-      writeErr(execution, 'Query cancelled');
+      writeErr(execution, 'Query cancelled by user');
     });
 
     let result: ExecutionResult;
@@ -171,11 +171,13 @@ export class SQLNotebookKernel {
     }
 
     if (result.length === 0 || (result.length === 1 && result[0].length === 0)) {
-      writeSuccess(execution, [[text('Successfully executed query. No rows returned.')]]);
+      const emptyMsg = [{ Status: 'Success', Message: 'Query executed. No rows returned.' }];
+      const myMimeType = 'application/vnd.code-sql-notebook.table+json';
+      writeSuccess(execution, [[vscode.NotebookCellOutputItem.json(emptyMsg, myMimeType)]]);
       return;
     }
 
-    const maxRows = vscode.workspace.getConfiguration('SQLNotebook').get<number>('maxResultRows') || 50;
+    const maxRows = vscode.workspace.getConfiguration('SQLNotebook').get<number>('maxResultRows') || 100;
 
     writeSuccess(
       execution,
@@ -201,7 +203,19 @@ export class SQLNotebookKernel {
 }
 
 function writeErr(execution: vscode.NotebookCellExecution, err: string) {
-  execution.replaceOutput([new vscode.NotebookCellOutput([vscode.NotebookCellOutputItem.text(err)])]);
+const errorData = [{
+    Status: '❌ Error',
+    Message: err
+  }];
+
+  const myMimeType = 'application/vnd.code-sql-notebook.table+json';
+
+  execution.replaceOutput([
+    new vscode.NotebookCellOutput([
+      vscode.NotebookCellOutputItem.json(errorData, myMimeType),
+      vscode.NotebookCellOutputItem.text(err)
+    ])
+  ]);
   execution.end(false, Date.now());
 }
 

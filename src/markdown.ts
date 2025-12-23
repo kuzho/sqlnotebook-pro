@@ -28,7 +28,7 @@ export function resultToMarkdownTable(result: TabularResult): string {
 }
 
 function getMaxRows(): number {
-  const fallbackMaxRows = 25;
+  const fallbackMaxRows = 100;
   const maxRows: number | undefined = vscode.workspace
     .getConfiguration('SQLNotebook')
     .get('maxResultRows');

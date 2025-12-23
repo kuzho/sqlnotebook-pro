@@ -85,6 +85,7 @@ const styles = `
     gap: 4px;
   }
   .btn-action:hover { background: #454545; border-color: #555; }
+  .btn-action:focus { outline: none; }
 
   .table-wrapper {
     overflow: auto;
@@ -98,12 +99,11 @@ const styles = `
 
   table {
     border-collapse: separate;
-    width: 100%;
     min-width: 100%;
+    width: auto;
+    table-layout: auto;
     margin: 0;
     border-spacing: 0;
-    min-width: 100%;
-    width: max-content;
     border-style: hidden;
   }
 
@@ -123,7 +123,7 @@ const styles = `
     text-align: left;
     overflow: hidden;
     text-overflow: ellipsis;
-    max-width: 600px;
+    max-width: 500px;
   }
 
   thead {
@@ -140,6 +140,7 @@ const styles = `
     user-select: none;
     overflow: hidden;
     cursor: url('data:image/svg+xml;utf8,<svg width="16" height="16" viewBox="0 0 24 24" fill="white" xmlns="http://www.w3.org/2000/svg"><path d="M12 2L12 22M12 22L7 17M12 22L17 17" stroke="white" stroke-width="2"/></svg>') 8 8, pointer;
+    min-width: 80px;
   }
 
   .th-content {
@@ -198,14 +199,16 @@ const styles = `
     left: 0;
     background: var(--grid-header-bg);
     border-left: none;
-    text-align: right;
     color: #858585;
     border-right: 1px solid var(--grid-border);
     font-size: 11px;
-    width: 1%;
     white-space: nowrap;
-    padding: 0 8px !important;
     z-index: 10;
+    width: 1%;
+    min-width: 30px;
+    text-align: right;
+    padding-right: 4px;
+    padding-left: 4px;
   }
 
   th:last-child, td:last-child {
@@ -267,13 +270,18 @@ const FilterMenu = ({
   const [coords, setCoords] = useState({ x: 0, y: 0, alignTop: false });
 
   const uniqueValues = useMemo(() => {
-    const unique = column.getFacetedUniqueValues();
-    const values = Array.from(unique.keys()).map(val => {
-       const label = (val === null || val === undefined) ? '(Vacío)' : String(val);
-       return { raw: val, label };
-    });
-    return values.sort((a, b) => a.label.localeCompare(b.label));
-  }, [column]);
+  const unique = column.getFacetedUniqueValues?.();
+  if (!unique || typeof unique.keys !== 'function') return [];
+
+  return Array.from(unique.keys()).map(val => {
+    const label =
+      val === null || val === undefined
+        ? '(Vacío)'
+        : String(val);
+    return { raw: val, label };
+  }).sort((a, b) => a.label.localeCompare(b.label));
+}, [column]);
+
 
   const filteredList = uniqueValues.filter(v => v.label.toLowerCase().includes(search.toLowerCase()));
   const currentFilter = (column.getFilterValue() as any[]) || [];
@@ -286,7 +294,10 @@ const FilterMenu = ({
   };
 
   const selectAll = () => column.setFilterValue(filteredList.map(v => v.raw));
-  const clearFilter = () => column.setFilterValue(undefined);
+  const clearFilter = () => {
+    column.setFilterValue(undefined);
+    setSearch("");
+  };
 
   useEffect(() => {
     if (isOpen && triggerRef.current) {
@@ -347,9 +358,10 @@ const FilterMenu = ({
           >
             <div className="popup-search">
               <input
-                placeholder="Buscar valores..."
+                placeholder="Search.."
                 value={search}
                 onChange={e => setSearch(e.target.value)}
+                onKeyDown={e => e.stopPropagation()}
                 autoFocus
               />
             </div>
@@ -396,38 +408,72 @@ const TableApp = ({ data }: { data: any[] }) => {
   const [isDragging, setIsDragging] = useState(false);
   const [dragStart, setDragStart] = useState<{r: number, c: number} | null>(null);
 
+  const isSelectNoRows =
+  Array.isArray(data) &&
+  (
+    data.length === 0 ||
+    data.every(
+      row =>
+        !row ||
+        (typeof row === 'object' &&
+         Object.values(row).every(
+           v => v === null || v === undefined
+         ))
+    )
+  );
+
+  const statusData = isSelectNoRows
+  ? [{
+      rowsReturned: 0,
+      columnCount: 0,
+      message: 'No rows returned'
+    }]
+  : data;
+
   const columns = useMemo(() => {
-    if (!data || data.length === 0) return [];
+    try {
+      if (isSelectNoRows) {
+        return [
+          { header: 'rowsReturned', accessorKey: 'rowsReturned' },
+          { header: 'columnCount', accessorKey: 'columnCount' },
+          { header: 'message', accessorKey: 'message' }
+        ];
+      }
+      if (!data || !Array.isArray(data) || data.length === 0) return [];
 
-    return Object.keys(data[0]).map((key, index) => {
-      const isUnnamed = !key || key.trim() === '';
+      const firstRow = data.find(row => row && typeof row === 'object');
+      if (!firstRow) return [];
 
-      const safeId = isUnnamed ? `col_unnamed_${index}` : key;
+      return Object.keys(firstRow).map((key, index) => {
+        const isUnnamed = !key || key.trim() === '';
+        const safeId = isUnnamed ? `col_unnamed_${index}` : key;
+        const safeHeader = isUnnamed ? '(No column name)' : key;
 
-      const safeHeader = isUnnamed ? '(No column name)' : key;
-
-      return {
-        id: safeId,
-        header: safeHeader,
-        accessorKey: key,
-        enableColumnFilter: true,
-        filterFn: (row: any, id: string, filterValue: any[]) => {
-          const val = row.original[key];
-          return filterValue.includes(val);
-        },
-        cell: (info: any) => {
-          const val = info.getValue();
-          if (val === null) return <span style={{ opacity: 0.5, fontStyle: 'italic' }}>NULL</span>;
-          if (typeof val === 'object') return JSON.stringify(val);
-          return String(val);
-        }
-      };
-    });
-  }, [data]);
+        return {
+          id: safeId,
+          header: safeHeader,
+          accessorFn: (row: any) => row[key],
+          enableColumnFilter: true,
+          filterFn: (row: any, id: string, filterValue: any[]) => {
+            return filterValue.includes(row.original[key]);
+          },
+          cell: (info: any) => {
+            const val = info.getValue();
+            if (val === null) return <span style={{ opacity: 0.5, fontStyle: 'italic' }}>NULL</span>;
+            if (typeof val === 'object') return JSON.stringify(val);
+            return String(val);
+          }
+        };
+      });
+    } catch (error) {
+        console.error("Error generating columns:", error);
+        return []; 
+      }
+    }, [data, isSelectNoRows]);
 
   const table = useReactTable({
-    data,
-    columns,
+    data: statusData,
+    columns: columns,
     state: { sorting, columnFilters },
     onSortingChange: setSorting,
     onColumnFiltersChange: setColumnFilters,
@@ -551,8 +597,6 @@ const handleCopy = useCallback(() => {
     const ws=XLSX.utils.json_to_sheet(data); const wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb,ws,"Data");const date = getFileDate();XLSX.writeFile(wb, `Results_${date}.xlsx`);
   };
 
-  if (!data?.length) return <div style={{padding:20, color:'#ccc'}}>No Rows Returned</div>;
-
   const containerMinHeight = activeMenuId ? 360 : 'auto';
 
   return (
@@ -569,12 +613,12 @@ const handleCopy = useCallback(() => {
            🕒 {runTime}
         </span>
         <div style={{flex:1}}/>
-        <button className="btn-action" onClick={exportExcel} title="Exportar Excel">
-           📊 Excel
-        </button>
-        <button className="btn-action" onClick={exportCSV} title="Exportar CSV">
-           📄 CSV
-        </button>
+        {!isSelectNoRows && (
+          <>
+            <button className="btn-action" onClick={exportExcel}>📊 Excel</button>
+            <button className="btn-action" onClick={exportCSV}>📄 CSV</button>
+          </>
+        )}
       </div>
 
       <div className="table-wrapper">
