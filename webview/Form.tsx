@@ -7,6 +7,13 @@ import {
   VSCodeCheckbox,
 } from '@vscode/webview-ui-toolkit/react';
 
+const DEFAULT_PORTS: { [key: string]: string } = {
+  mysql: '3306',
+  postgres: '5432',
+  mssql: '1433',
+  sqlite: ''
+};
+
 const Form: React.FC<{
   handleSubmit: (form: HTMLFormElement) => void,
   handleTest: (form: HTMLFormElement) => void
@@ -14,12 +21,18 @@ const Form: React.FC<{
   handleSubmit,
   handleTest,
 }) => {
+  const formRef = React.useRef<HTMLFormElement>(null);
+
   const {
     ref: dropdownRef,
     value: driver,
     setValue: setDriver,
-  } = useDropdownValue();
-  const formRef = React.useRef<HTMLFormElement>(null);
+  } = useDropdownValue((newDriver) => {
+    const portField = formRef.current?.elements.namedItem('port') as HTMLInputElement;
+    if (portField && DEFAULT_PORTS[newDriver] !== undefined) {
+        portField.value = DEFAULT_PORTS[newDriver];
+    }
+  });
 
   React.useEffect(() => {
     const handleMessage = (event: MessageEvent) => {
@@ -28,6 +41,10 @@ const Form: React.FC<{
         case 'clear_form':
           formRef.current?.reset();
           setDriver('mssql');
+          setTimeout(() => {
+             const portField = formRef.current?.elements.namedItem('port') as HTMLInputElement;
+             if(portField) portField.value = DEFAULT_PORTS['mssql'];
+          }, 0);
           break;
 
         case 'edit_connection': {
@@ -96,7 +113,7 @@ const Form: React.FC<{
       {driver !== 'sqlite' && (
         <>
           <TextOption label="Database Host" objectKey="host" />
-          <TextOption label="Database Port" objectKey="port" />
+          <TextOption label="Database Port" objectKey="port" defaultValue={driver === 'mssql' ? '1433' : ''} />
           <TextOption label="Database User" objectKey="user" />
           <TextOption
             label="Database Password"
@@ -134,6 +151,10 @@ const Form: React.FC<{
             onClick={() => {
               formRef.current?.reset();
               setDriver('mssql');
+              setTimeout(() => {
+                 const portField = formRef.current?.elements.namedItem('port') as HTMLInputElement;
+                 if(portField) portField.value = DEFAULT_PORTS['mssql'];
+              }, 0);
             }}
           >
             Clear Form
@@ -145,18 +166,21 @@ const Form: React.FC<{
 
 export default Form;
 
-function useDropdownValue() {
+function useDropdownValue(onChange?: (newVal: string) => void) {
   const [value, setValue] = React.useState<string>('mssql');
   const ref = React.useRef<HTMLInputElement>(null);
 
   React.useEffect(() => {
     const { current } = ref;
     const handleChange = (e: Event) => {
-        setValue((e.target as HTMLInputElement)?.value);
+        const newVal = (e.target as HTMLInputElement)?.value;
+        setValue(newVal);
+        if (onChange) onChange(newVal);
     };
     current?.addEventListener('change', handleChange);
     return () => current?.removeEventListener('change', handleChange);
-  }, [ref.current]);
+  }, [ref.current, onChange]);
+
   return { ref, value, setValue };
 }
 
@@ -181,9 +205,9 @@ function showDriverConfig(driver: string) {
   return <></>;
 }
 
-const TextOption: React.FC<{ label: string; objectKey: string; type?: string; placeholder?: string; }> = ({ objectKey, label, type, placeholder }) => {
+const TextOption: React.FC<{ label: string; objectKey: string; type?: string; placeholder?: string; defaultValue?: string }> = ({ objectKey, label, type, placeholder, defaultValue }) => {
   return (
-    <VSCodeTextField name={objectKey} type={type} placeholder={placeholder}>
+    <VSCodeTextField name={objectKey} type={type} placeholder={placeholder} value={defaultValue}>
       <span style={{ color: 'var(--vscode-editor-foreground)' }}>{label}</span>
     </VSCodeTextField>
   );

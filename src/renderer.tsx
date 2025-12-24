@@ -1,6 +1,5 @@
 import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import ReactDOM from 'react-dom';
-import * as XLSX from 'xlsx';
 import type { ActivationFunction } from 'vscode-notebook-renderer';
 import {
   useReactTable,
@@ -30,7 +29,6 @@ const styles = `
     --font-size: 13px;
     --row-height: 26px;
   }
-
   .sql-grid-container {
     font-family: var(--font-family);
     font-size: var(--font-size);
@@ -271,17 +269,17 @@ const FilterMenu = ({
   const [coords, setCoords] = useState({ x: 0, y: 0, alignTop: false });
 
   const uniqueValues = useMemo(() => {
-  const unique = column.getFacetedUniqueValues?.();
-  if (!unique || typeof unique.keys !== 'function') return [];
+    const unique = column.getFacetedUniqueValues?.();
+    if (!unique || typeof unique.keys !== 'function') return [];
 
-  return Array.from(unique.keys()).map(val => {
-    const label =
-      val === null || val === undefined
-        ? 'Empty'
-        : String(val);
-    return { raw: val, label };
-  }).sort((a, b) => a.label.localeCompare(b.label));
-}, [column]);
+    return Array.from(unique.keys()).map(val => {
+      const label =
+        val === null || val === undefined
+          ? '(Empty)'
+          : String(val);
+      return { raw: val, label };
+    }).sort((a, b) => a.label.localeCompare(b.label));
+  }, [column]);
 
 
   const filteredList = uniqueValues.filter(v => v.label.toLowerCase().includes(search.toLowerCase()));
@@ -393,12 +391,14 @@ const FilterMenu = ({
   );
 };
 
-const TableApp = ({ data }: { data: any[] }) => {
+const TableApp = ({ data, postMessage }: { data: any, postMessage?: (msg: any) => void }) => {
+  const rows = Array.isArray(data) ? data : (data.rows || []);
+  const executionTimeFromBackend = !Array.isArray(data) && data.info?.executionTime;
+  const fallbackTime = useMemo(() => new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }), []);
+  const runTime = executionTimeFromBackend || fallbackTime;
   const [sorting, setSorting] = useState<SortingState>([]);
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
-
   const [activeMenuId, setActiveMenuId] = useState<string | null>(null);
-  const runTime = useMemo(() => new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }), []);
 
   const [selection, setSelection] = useState<{
     type: 'all' | 'row' | 'col' | 'range',
@@ -410,10 +410,10 @@ const TableApp = ({ data }: { data: any[] }) => {
   const [dragStart, setDragStart] = useState<{r: number, c: number} | null>(null);
 
   const isSelectNoRows =
-  Array.isArray(data) &&
+  Array.isArray(rows) &&
   (
-    data.length === 0 ||
-    data.every(
+    rows.length === 0 ||
+    rows.every(
       row =>
         !row ||
         (typeof row === 'object' &&
@@ -429,7 +429,7 @@ const TableApp = ({ data }: { data: any[] }) => {
       columnCount: 0,
       message: 'No rows returned'
     }]
-  : data;
+  : rows;
 
   const columns = useMemo(() => {
     try {
@@ -440,9 +440,9 @@ const TableApp = ({ data }: { data: any[] }) => {
           { header: 'message', accessorKey: 'message' }
         ];
       }
-      if (!data || !Array.isArray(data) || data.length === 0) return [];
+      if (!rows || !Array.isArray(rows) || rows.length === 0) return [];
 
-      const firstRow = data.find(row => row && typeof row === 'object');
+      const firstRow = rows.find(row => row && typeof row === 'object');
       if (!firstRow) return [];
 
       return Object.keys(firstRow).flatMap((key, index) => {
@@ -452,8 +452,7 @@ const TableApp = ({ data }: { data: any[] }) => {
         if (isUnnamed && Array.isArray(sampleValue)) {
             return sampleValue.map((_, subIndex) => ({
                 id: `col_unnamed_${index}_${subIndex}`,
-                header: 'No column name',
-
+                header: '(No column name)',
                 accessorFn: (row: any) => {
                     const val = row[key];
                     return Array.isArray(val) ? val[subIndex] : val;
@@ -474,7 +473,7 @@ const TableApp = ({ data }: { data: any[] }) => {
         }
 
         const safeId = isUnnamed ? `col_unnamed_${index}` : key;
-        const safeHeader = isUnnamed ? 'No column name' : key;
+        const safeHeader = isUnnamed ? '(No column name)' : key;
 
         return [{
           id: safeId,
@@ -496,7 +495,7 @@ const TableApp = ({ data }: { data: any[] }) => {
         console.error("Error generating columns:", error);
         return [];
       }
-    }, [data, isSelectNoRows]);
+  }, [rows, isSelectNoRows]);
 
   const table = useReactTable({
     data: statusData,
@@ -511,70 +510,71 @@ const TableApp = ({ data }: { data: any[] }) => {
     getFacetedUniqueValues: getFacetedUniqueValues(),
   });
 
-  const rows = table.getRowModel().rows;
+  const tableRows = table.getRowModel().rows;
   const visibleColumns = table.getVisibleFlatColumns();
 
   const handleSortClick = (column: any, e: React.MouseEvent) => {
     e.stopPropagation();
     const isSorted = column.getIsSorted();
+
     if (!isSorted) {
       column.toggleSorting(false);
     } else if (isSorted === 'asc') {
       column.toggleSorting(true);
     } else {
-      column.toggleSorting(false);
+      column.clearSorting();
     }
   };
 
-const handleCopy = useCallback(() => {
-  if (!selection) return;
+  const handleCopy = useCallback(() => {
+    if (!selection) return;
 
-  const getVal = (r: number, cId: string) => {
-    const cell = rows[r]?.getVisibleCells().find(c => c.column.id === cId);
-    let v = cell?.getValue();
-    return typeof v === 'object' ? JSON.stringify(v) : String(v ?? '');
-  };
+    const getVal = (r: number, cId: string) => {
+      const cell = tableRows[r]?.getVisibleCells().find(c => c.column.id === cId);
+      let v = cell?.getValue();
+      return typeof v === 'object' ? JSON.stringify(v) : String(v ?? '');
+    };
 
-  let rowsToText: string[] = [];
+    let rowsToText: string[] = [];
 
-  if (selection.type === 'range' && selection.range) {
-    const { r1, c1, r2, c2 } = selection.range;
-    const minR = Math.min(r1, r2), maxR = Math.max(r1, r2);
-    const minC = Math.min(c1, c2), maxC = Math.max(c1, c2);
+    if (selection.type === 'range' && selection.range) {
+      const { r1, c1, r2, c2 } = selection.range;
+      const minR = Math.min(r1, r2), maxR = Math.max(r1, r2);
+      const minC = Math.min(c1, c2), maxC = Math.max(c1, c2);
 
-    for (let r = minR; r <= maxR; r++) {
-      const line = [];
-      for (let c = minC; c <= maxC; c++) {
-        if (visibleColumns[c]) {
-          line.push(getVal(r, visibleColumns[c].id));
+      for (let r = minR; r <= maxR; r++) {
+        const line = [];
+        for (let c = minC; c <= maxC; c++) {
+          if (visibleColumns[c]) {
+            line.push(getVal(r, visibleColumns[c].id));
+          }
         }
+        rowsToText.push(line.join('\t'));
       }
-      rowsToText.push(line.join('\t'));
-    }
-  } else if (selection.type === 'all' || selection.type === 'row' || selection.type === 'col') {
-    let targetRows = rows;
-    let targetCols = visibleColumns;
+    } else if (selection.type === 'all' || selection.type === 'row' || selection.type === 'col') {
+      let targetRows = tableRows;
+      let targetCols = visibleColumns;
 
-    if (selection.type === 'row' && selection.ids) {
-      targetRows = rows.filter((_, i) => selection.ids!.has(i));
-    }
-    if (selection.type === 'col' && selection.ids) {
-      targetCols = visibleColumns.filter(c => selection.ids!.has(c.id));
-    }
+      if (selection.type === 'row' && selection.ids) {
+        targetRows = tableRows.filter((_, i) => selection.ids!.has(i));
+      }
+      if (selection.type === 'col' && selection.ids) {
+        targetCols = visibleColumns.filter(c => selection.ids!.has(c.id));
+      }
 
-    rowsToText.push(targetCols.map(c => c.columnDef.header).join('\t'));
+      rowsToText.push(targetCols.map(c => c.columnDef.header).join('\t'));
 
-    targetRows.forEach(r => {
-      const line = targetCols.map(c => {
-        let v = r.getVisibleCells().find(cell => cell.column.id === c.id)?.getValue();
-        return typeof v === 'object' ? JSON.stringify(v) : String(v ?? '');
+      targetRows.forEach(r => {
+        const line = targetCols.map(c => {
+          let v = r.getVisibleCells().find(cell => cell.column.id === c.id)?.getValue();
+          return typeof v === 'object' ? JSON.stringify(v) : String(v ?? '');
+        });
+        rowsToText.push(line.join('\t'));
       });
-      rowsToText.push(line.join('\t'));
-    });
-  }
+    }
 
-  navigator.clipboard.writeText(rowsToText.join('\n'));
-}, [selection, rows, visibleColumns]);
+    navigator.clipboard.writeText(rowsToText.join('\n'));
+  }, [selection, tableRows, visibleColumns]);
 
   useEffect(() => {
     const k = (e: KeyboardEvent) => { if((e.ctrlKey||e.metaKey)&&e.key==='c') { e.preventDefault(); handleCopy(); }};
@@ -606,22 +606,18 @@ const handleCopy = useCallback(() => {
     return isSel ? `selected-bg ${borders}` : '';
   };
 
-  const getFileDate = () => {
-    const d = new Date();
-    const pad = (n: number) => String(n).padStart(2, '0');
-    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}_${pad(d.getHours())}-${pad(d.getMinutes())}`;
-  };
-
   const exportCSV = () => {
-    const headers = columns.map(c => c.header).join(',');
-    const csv = rows.map(r => r.getVisibleCells().map(c => `"${String(c.getValue()??'').replace(/"/g,'""')}"`).join(',')).join('\n');
-    const date = getFileDate();
-    const b = new Blob([`${headers}\n${csv}`],{type:'text/csv'});
-    const l = document.createElement('a'); l.href = URL.createObjectURL(b); l.download = `Results_${date}.csv`; l.click();
+    if (postMessage) {
+      postMessage({ type: 'export_data', payload: { data: rows, format: 'csv' } });
+    }
   };
 
   const exportExcel = () => {
-    const ws=XLSX.utils.json_to_sheet(data); const wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb,ws,"Data");const date = getFileDate();XLSX.writeFile(wb, `Results_${date}.xlsx`);
+    if (postMessage) {
+      postMessage({ type: 'export_data', payload: { data: rows, format: 'xlsx' } });
+    } else {
+      console.error("Error: postMessage no está disponible");
+    }
   };
 
   const containerMinHeight = activeMenuId ? 360 : 'auto';
@@ -659,7 +655,23 @@ const handleCopy = useCallback(() => {
 
                     <div
                         className="th-content"
-                        onClick={() => setSelection({ type: 'col', ids: new Set([header.id]) })}
+                        onClick={(e) => {
+                           const isMulti = e.ctrlKey || e.metaKey;
+                           const colId = header.id;
+
+                           setSelection(prev => {
+                             if (!isMulti || !prev || prev.type !== 'col' || !prev.ids) {
+                               return { type: 'col', ids: new Set([colId]) };
+                             }
+                             const newIds = new Set(prev.ids);
+                             if (newIds.has(colId)) {
+                               newIds.delete(colId);
+                             } else {
+                               newIds.add(colId);
+                             }
+                             return newIds.size > 0 ? { type: 'col', ids: newIds } : null;
+                           });
+                        }}
                     >
                       <div
                         className="th-text-group"
@@ -690,7 +702,7 @@ const handleCopy = useCallback(() => {
             ))}
           </thead>
           <tbody>
-            {rows.map((row, rIndex) => (
+            {tableRows.map((row, rIndex) => (
               <tr key={row.id}>
                 <td className={`row-index ${selection?.type==='row' && selection.ids?.has(rIndex)?'selected-bg':''}`}
                     onClick={()=>handleRowHeaderClick(rIndex)}>{rIndex + 1}</td>
@@ -718,7 +730,19 @@ export const activate: ActivationFunction = (context) => {
       const json = data.json();
       try { ReactDOM.unmountComponentAtNode(element); } catch(e){}
       element.innerHTML = '';
-      ReactDOM.render(<TableApp data={json} />, element);
+
+      const safePostMessage = (msg: any) => {
+          if (context.postMessage) {
+              context.postMessage(msg);
+          } else {
+              console.error("CRITICAL ERROR: context.postMessage is not available.", context);
+          }
+      };
+
+      ReactDOM.render(
+          <TableApp data={json} postMessage={safePostMessage} />,
+          element
+      );
     }
   };
 };

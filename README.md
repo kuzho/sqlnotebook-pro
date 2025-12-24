@@ -22,19 +22,30 @@ Write SQL faster with our native Intellisense engine. The extension automaticall
 Filter, sort, and analyze your data without writing extra queries.
 * **Elastic Layout:** The grid auto-expands horizontally to fit your data.
 * **Filtering:** Use the funnel icon to search, select, or exclude specific values.
-* **Export:** One-click export to **Excel (XLSX)** or **CSV**.
+* **Multi-Select:** Hold **Ctrl/Cmd** to select multiple columns at once for easy copying.
+* **Smart Export:** Export to **Excel (XLSX)** or **CSV** using native save dialogs with auto-generated timestamps.
 <br>
-<img src="media/demo-grid.png" width="100%" alt="Interactive SQL Grid with Filters">
-<br><br>
+<div align="center">
+  <img src="media/demo-grid.gif" width="95%" alt="Demonstration of filtering, sorting and multi-selection in the grid">
+  <p><em>Filtering data and selecting multiple columns with Ctrl+Click</em></p>
+</div>
+<br>
 
 ### 3. Connection Groups & Editing
 Organize your database chaos. Group connections by environment (Dev, Prod, Staging) or project. Right-click any connection to **Edit** details instantly without re-entering passwords.
+### 3. Connection Groups & Editing
+Organize your database chaos. Group connections by environment or project. Right-click any connection to **Edit** details instantly (supports Hot Reload without restarting).
+
 <br>
-<img src="media/demo-sidebar.png" width="100%" alt="Connection Grouping and Context Menu">
-<br><br>
+<div align="center">
+  <img src="media/demo-edit.gif" width="80%" alt="GIF showing connection editing and hot reload">
+</div>
+<br>
 
 ### 4. Smart Connection Form
-Create connections safely. Includes a **Test Connection** button to verify credentials before saving. Passwords are stored securely in the system keychain, while settings are portable.
+Create connections safely. Includes a **Test Connection** button to verify credentials before saving.
+* **Auto-Ports:** Automatically sets the default port (e.g., 5432 for Postgres) when selecting a driver.
+* **Secure Storage:** Passwords are stored securely in the system keychain.
 <br>
 <br>
 
@@ -72,33 +83,37 @@ For the best visual experience (matching the look & feel of Azure Data Studio), 
 <br>
 ---
 
-## 🚀 Feature Highlights (v1.1.0)
+## 🚀 Feature Highlights (v2.0.0)
+- **📊 Native Export:** Save results as Excel/CSV using the system dialog. Auto-opens the file after saving.
+- **🛡️ Strict Mode:** Queries are now strictly separated by `-- %%` to prevent formatting errors in complex SQL blocks containing empty lines.
+- **👆 Multi-Select:** Select multiple columns in the grid (Ctrl+Click).
+- **🔌 Smart Ports:** Connection form auto-fills default ports (1433, 3306, 5432) based on the driver.
 - **✏️ Edit Mode:** Right-click to edit Host, User, or Port without re-entering passwords.
-- **☁️ Portable Settings:** Connections are saved in `settings.json`, making it easy to sync between computers (passwords remain local & secure in your OS Keychain).
+- **☁️ Portable Settings:** Connections are saved in `settings.json`, making it easy to sync between computers.
 - **🔄 Hot Reload:** Edit a connection and run a query immediately—no restart required.
-- **⏱️ Execution Timer:** See exactly how long your query took to run in the results bar.
-- **📊 Export:** One-click export to **Excel** or **CSV**.
-- **👁️ Code Visibility:** Focus on your data. Use the **Collapse/Expand** buttons to hide large SQL queries and view only the result grids.
-- **⚡ Multi-Kernel Architecture:** Switch connections instantly using the Notebook Toolbar.
-- **📁 Connection Grouping:** Organize connections into folders.
 
 ## Usage
 
 1.  **Open a SQL File:** Open any `.sql` file, click `Open With...` (or right-click the tab), and select **SQL Notebook**.
-2.  **Create Connection:** Use the "SQL Notebook" sidebar to add a connection.
+2.  **Separate Queries:** Use the standard separator `-- %%` to define independent executable cells.
+    ```sql
+    SELECT * FROM users
+
+    -- %%
+
+    SELECT * FROM orders
+    ```
+3.  **Create Connection:** Use the "SQL Notebook" sidebar to add a connection.
     - *Tip:* Enter a "Group Name" to create a folder automatically.
-3.  **Select Connection:** Click the **Select Kernel** button (top-right corner of the editor) or the current connection name to choose which database to use.
-4.  **Run Queries:** Click the **Play** button on each cell (blocks are separated by empty lines).
-5.  **Use Autocomplete:**
-    - Start typing a command (e.g., `SEL`) to see keywords.
-    - Type a table name (e.g., `users`) to see table suggestions.
-    - **Crucial:** Type a dot after a table name (e.g., `users.`) to trigger the **Column List**.
+4.  **Select Connection:** Click the **Select Kernel** button (top-right corner of the editor) or the current connection name to choose which database to use.
+5.  **Run Queries:** Click the **Play** button on each cell.
 
 ## Configuration
 
 You can customize the extension in VS Code Settings:
 
-* **SQL Notebook: Max Result Rows:** (Default: 100) Limits the initial rows rendered for performance. You can increase this if you need more data at a glance.
+* **SQL Notebook: Max Result Rows:** (Default: 100) Limits the initial rows rendered for performance.
+* **SQL Notebook: Open After Export:** (Default: true) Automatically opens the Excel/CSV file after exporting.
 * **SQL Notebook: Query Timeout:** (Default: 30000ms) Cancels queries that take too long.
 
 ## FAQ

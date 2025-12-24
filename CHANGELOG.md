@@ -1,5 +1,28 @@
 # Change Log
 
+## [2.0.0] - 2025-12-24
+
+> **⚠️ MAJOR UPDATE: BREAKING CHANGE**
+>
+> This version introduces a new, strict way of defining notebook cells to ensure stability with complex SQL queries. **Your existing notebooks will open as single blocks.** You must manually insert the separator `-- %%` between queries to split them back into cells.
+
+### 🛡️ The "Strict Mode" Architecture
+- **BREAKING: New Cell Separator:** Cells are no longer split by empty lines. You must now explicitly use the separator `-- %%` on a new line to define cell boundaries. This fixes crucial issues where long queries containing blank lines, comments, or complex procedures were incorrectly split.
+
+### 📊 Interactive Grid 2.0
+- **Multi-Column Selection:** Hold **Ctrl** (or Cmd) and click column headers to select multiple columns for bulk copying.
+- **Native & Smart Export:** Completely rewrote the export engine.
+    - Uses the OS native "Save As" dialog.
+    - Auto-generates filenames with timestamps to prevent accidental overwrites.
+    - Automatically opens the file after exporting (configurable).
+- **Natural Sorting:** Clicking a header now cycles through three states: Ascending 🔼 -> Descending 🔽 -> **Original Order** (None).
+
+### 🧠 UX & Stability
+- **Smart Connection Form:** Selecting a driver (Postgres, MySQL, MSSQL) now automatically fills in the standard default port.
+- **Communication Protocol:** Fixed critical issues with `postMessage` related to renderer IDs, ensuring reliable button actions (like Export) across all VS Code builds.
+
+---
+
 ## [1.1.0] - 2025-12-23
 
 ### 🛡️ Security & Performance (Major Overhaul)

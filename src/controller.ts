@@ -140,7 +140,12 @@ export class SQLNotebookKernel {
         Message: 'Empty cell - No query found'
       }];
       const myMimeType = 'application/vnd.code-sql-notebook.table+json';
-      writeSuccess(execution, [[vscode.NotebookCellOutputItem.json(emptyMsg, myMimeType)]]);
+      // Mantenemos compatibilidad enviando el objeto envuelto
+      const outputData = {
+          rows: emptyMsg,
+          info: { executionTime: new Date().toLocaleTimeString() }
+      };
+      writeSuccess(execution, [[vscode.NotebookCellOutputItem.json(outputData, myMimeType)]]);
       return;
     }
 
@@ -169,6 +174,8 @@ export class SQLNotebookKernel {
       return;
     }
 
+    const endTime = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+
     if (typeof result === 'string') {
       writeSuccess(execution, [[text(result)]]);
       return;
@@ -177,7 +184,13 @@ export class SQLNotebookKernel {
     if (result.length === 0 || (result.length === 1 && result[0].length === 0)) {
       const emptyMsg = [{ Status: 'Success', Message: 'Query executed. No rows returned.' }];
       const myMimeType = 'application/vnd.code-sql-notebook.table+json';
-      writeSuccess(execution, [[vscode.NotebookCellOutputItem.json(emptyMsg, myMimeType)]]);
+
+      const outputData = {
+        rows: emptyMsg,
+        info: { executionTime: endTime }
+      };
+
+      writeSuccess(execution, [[vscode.NotebookCellOutputItem.json(outputData, myMimeType)]]);
       return;
     }
 
@@ -188,9 +201,19 @@ export class SQLNotebookKernel {
       result.map((item) => {
         const isTruncated = item.length > maxRows;
         const displayData = isTruncated ? item.slice(0, maxRows) : item;
+
+        const outputData = {
+            rows: displayData,
+            info: {
+                executionTime: endTime,
+                truncated: isTruncated,
+                totalRows: item.length
+            }
+        };
+
         const outputs: vscode.NotebookCellOutputItem[] = [];
         const myMimeType = 'application/vnd.code-sql-notebook.table+json';
-        outputs.push(vscode.NotebookCellOutputItem.json(displayData, myMimeType));
+        outputs.push(vscode.NotebookCellOutputItem.json(outputData, myMimeType));
 
         return outputs;
       })
@@ -199,16 +222,21 @@ export class SQLNotebookKernel {
 }
 
 function writeErr(execution: vscode.NotebookCellExecution, err: string) {
-const errorData = [{
-    Status: '❌ Error',
-    Message: err
+  const errorData = [{
+      Status: '❌ Error',
+      Message: err
   }];
 
   const myMimeType = 'application/vnd.code-sql-notebook.table+json';
 
+  const outputData = {
+      rows: errorData,
+      info: { executionTime: new Date().toLocaleTimeString() }
+  };
+
   execution.replaceOutput([
     new vscode.NotebookCellOutput([
-      vscode.NotebookCellOutputItem.json(errorData, myMimeType),
+      vscode.NotebookCellOutputItem.json(outputData, myMimeType),
       vscode.NotebookCellOutputItem.text(err)
     ])
   ]);
