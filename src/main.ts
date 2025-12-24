@@ -11,18 +11,28 @@ export const storageKey = 'sqlnotebook-connections';
 
 export function activate(context: vscode.ExtensionContext) {
   context.subscriptions.push(
-    vscode.workspace.registerNotebookSerializer(
-      notebookType,
-      new SQLSerializer()
-    )
+    vscode.workspace.registerNotebookSerializer(notebookType, new SQLSerializer())
   );
 
   const connectionsSidepanel = new SQLNotebookConnections(context);
   context.subscriptions.push(
-    vscode.window.registerTreeDataProvider(
-      'sqlnotebook-connections',
-      connectionsSidepanel
-    )
+    vscode.window.registerTreeDataProvider('sqlnotebook-connections', connectionsSidepanel)
+  );
+
+  vscode.commands.executeCommand('setContext', 'sqlnotebook.allCollapsed', false);
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand('sqlnotebook.collapseAll', async () => {
+      await vscode.commands.executeCommand('notebook.cell.collapseAllCellInputs');
+      await vscode.commands.executeCommand('setContext', 'sqlnotebook.allCollapsed', true);
+    })
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand('sqlnotebook.expandAll', async () => {
+      await vscode.commands.executeCommand('notebook.cell.expandAllCellInputs');
+      await vscode.commands.executeCommand('setContext', 'sqlnotebook.allCollapsed', false);
+    })
   );
 
   activateFormProvider(context);
@@ -32,11 +42,7 @@ export function activate(context: vscode.ExtensionContext) {
 
   const completionProvider = new SqlCompletionItemProvider(kernelManager);
   context.subscriptions.push(
-    vscode.languages.registerCompletionItemProvider(
-      'sql',
-      completionProvider,
-      '.', ' '
-    )
+    vscode.languages.registerCompletionItemProvider('sql', completionProvider, '.', ' ')
   );
 
   context.subscriptions.push(
@@ -72,7 +78,77 @@ export function activate(context: vscode.ExtensionContext) {
       connectionsSidepanel.refresh();
     })
   );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand(
+      'sqlnotebook.expandCell',
+      async (cell: vscode.NotebookCell) => {
+        const editor = vscode.window.activeNotebookEditor;
+        if (!editor || !cell) return;
+
+        const range = new vscode.NotebookRange(cell.index, cell.index + 1);
+
+        editor.selection = range;
+        editor.revealRange(range);
+
+        await new Promise(r => setTimeout(r, 0));
+
+        await vscode.commands.executeCommand(
+          'notebook.cell.expandCellInput'
+        );
+      }
+    )
+  );
+
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand(
+      'sqlnotebook.collapseCell',
+      async (cell: vscode.NotebookCell) => {
+        const editor = vscode.window.activeNotebookEditor;
+        if (!editor || !cell) return;
+
+        const range = new vscode.NotebookRange(cell.index, cell.index + 1);
+
+        editor.selection = range;
+        editor.revealRange(range);
+
+        await new Promise(r => setTimeout(r, 0));
+
+        await vscode.commands.executeCommand(
+          'notebook.cell.collapseCellInput'
+        );
+      }
+    )
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand('sqlnotebook.moveCellUp', async (cell: vscode.NotebookCell) => {
+      if (cell) {
+        const editor = vscode.window.activeNotebookEditor;
+        if (editor) {
+            const range = new vscode.NotebookRange(cell.index, cell.index + 1);
+            editor.selection = range;
+            editor.revealRange(range);
+        }
+      }
+      await vscode.commands.executeCommand('notebook.cell.moveUp');
+    })
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand('sqlnotebook.moveCellDown', async (cell: vscode.NotebookCell) => {
+      if (cell) {
+        const editor = vscode.window.activeNotebookEditor;
+        if (editor) {
+            const range = new vscode.NotebookRange(cell.index, cell.index + 1);
+            editor.selection = range;
+            editor.revealRange(range);
+        }
+      }
+      await vscode.commands.executeCommand('notebook.cell.moveDown');
+    })
+  );
 }
 
-export function deactivate() {
-}
+export function deactivate() {}

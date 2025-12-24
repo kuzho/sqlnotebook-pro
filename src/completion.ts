@@ -10,6 +10,8 @@ const SQL_KEYWORDS = [
   'COUNT', 'SUM', 'AVG', 'MIN', 'MAX', 'CAST', 'CONVERT'
 ];
 
+const TABLE_CONTEXT_KEYWORDS = ['FROM', 'JOIN', 'UPDATE', 'INTO', 'TABLE'];
+
 export class SqlCompletionItemProvider implements vscode.CompletionItemProvider {
   constructor(private kernelManager: KernelManager) {}
 
@@ -20,52 +22,23 @@ export class SqlCompletionItemProvider implements vscode.CompletionItemProvider 
     context: vscode.CompletionContext
   ): Promise<vscode.CompletionItem[]> {
 
-    const keywordItems = SQL_KEYWORDS.map(k => {
-        const item = new vscode.CompletionItem(k, vscode.CompletionItemKind.Keyword);
-        item.detail = 'SQL Keyword';
-        return item;
-    });
-
-    const selectSnippet = new vscode.CompletionItem('SELECT * FROM', vscode.CompletionItemKind.Snippet);
-    selectSnippet.insertText = new vscode.SnippetString('SELECT * FROM ${1:table_name} LIMIT 10;');
-    selectSnippet.detail = "Snippet: Select All";
-
     const range = document.getWordRangeAtPosition(position);
-    const textBefore = document.getText(new vscode.Range(new vscode.Position(position.line, 0), position));
+    const textBefore = document.getText(new vscode.Range(new vscode.Position(0, 0), position));
+    const lineText = document.getText(new vscode.Range(new vscode.Position(position.line, 0), position));
 
-    const matchTable = textBefore.match(/(\w+)\.$/);
-
+    const matchTable = lineText.match(/(\w+)\.$/);
     if (matchTable) {
         const tableName = matchTable[1];
         let foundColumns: string[] | undefined;
         let sourceTable = tableName;
 
-        const notebook = vscode.workspace.notebookDocuments.find(nb =>
-            nb.getCells().some(cell => cell.document === document)
-        );
-        const preferredName = notebook?.metadata?.custom?.connection;
-
-        if (preferredName) {
-            const kernel = this.kernelManager.controllers.get(preferredName);
-            if (kernel) {
-                const schema = await kernel.getSchemaOrLoad();
-                const table = schema.find(t => t.table.toLowerCase() === tableName.toLowerCase());
-                if (table) {
-                    foundColumns = table.columns;
-                    sourceTable = table.table;
-                }
-            }
-        }
-
-        if (!foundColumns) {
-            for (const kernel of this.kernelManager.controllers.values()) {
-                const schema = await kernel.getSchemaOrLoad();
-                const table = schema.find(t => t.table.toLowerCase() === tableName.toLowerCase());
-                if (table) {
-                    foundColumns = table.columns;
-                    sourceTable = table.table;
-                    break;
-                }
+        for (const kernel of this.kernelManager.controllers.values()) {
+            const schema = await kernel.getSchemaOrLoad();
+            const table = schema.find(t => t.table.toLowerCase() === tableName.toLowerCase());
+            if (table) {
+                foundColumns = table.columns;
+                sourceTable = table.table;
+                break;
             }
         }
 
@@ -79,20 +52,59 @@ export class SqlCompletionItemProvider implements vscode.CompletionItemProvider 
         }
     }
 
-    const allTables = new Map<string, vscode.CompletionItem>();
+    const allKeywordsRegex = new RegExp(`\\b(${SQL_KEYWORDS.join('|').replace(/ /g, '\\s+')})\\b`, 'gi');
+    let lastKeyword = '';
+    let match;
+    while ((match = allKeywordsRegex.exec(textBefore)) !== null) {
+        lastKeyword = match[1].toUpperCase().replace(/\s+/g, ' ');
+    }
+
+    if (!lastKeyword) lastKeyword = 'SELECT';
+
+    const expectTable = TABLE_CONTEXT_KEYWORDS.some(k => lastKeyword.endsWith(k));
+    const allTables: vscode.CompletionItem[] = [];
+    const columnMap = new Map<string, Set<string>>();
 
     for (const kernel of this.kernelManager.controllers.values()) {
         const schema = await kernel.getSchemaOrLoad();
         schema.forEach(t => {
-            if (!allTables.has(t.table)) {
-                const item = new vscode.CompletionItem(t.table, vscode.CompletionItemKind.Class);
-                item.detail = `Table (${kernel.id.replace('sql-notebook-', '')})`;
-                item.sortText = `1_${t.table}`;
-                allTables.set(t.table, item);
-            }
+            const tableItem = new vscode.CompletionItem(t.table, vscode.CompletionItemKind.Class);
+            tableItem.detail = `Table (${kernel.id.replace('sql-notebook-', '')})`;
+            tableItem.sortText = expectTable ? `0_${t.table}` : `2_${t.table}`;
+            allTables.push(tableItem);
+
+            t.columns.forEach(col => {
+                if (!columnMap.has(col)) {
+                    columnMap.set(col, new Set());
+                }
+                columnMap.get(col)?.add(t.table);
+            });
         });
     }
 
-    return [...Array.from(allTables.values()), ...keywordItems, selectSnippet];
+    const allColumns: vscode.CompletionItem[] = [];
+    columnMap.forEach((tables, colName) => {
+        const item = new vscode.CompletionItem(colName, vscode.CompletionItemKind.Field);
+        const tableList = Array.from(tables).join(', ');
+
+        item.detail = `Column in: ${tableList}`;
+        item.sortText = expectTable ? `9_${colName}` : `0_${colName}`;
+        item.insertText = colName;
+
+        allColumns.push(item);
+    });
+
+    const keywordItems = SQL_KEYWORDS.map(k => {
+        const item = new vscode.CompletionItem(k, vscode.CompletionItemKind.Keyword);
+        item.detail = 'SQL Keyword';
+        item.sortText = `1_${k}`;
+        return item;
+    });
+
+    const selectSnippet = new vscode.CompletionItem('SELECT * FROM', vscode.CompletionItemKind.Snippet);
+    selectSnippet.insertText = new vscode.SnippetString('SELECT * FROM ${1:table_name} LIMIT 10;');
+    selectSnippet.sortText = '00_SNIPPET';
+
+    return [...allColumns, ...allTables, ...keywordItems, selectSnippet];
   }
 }

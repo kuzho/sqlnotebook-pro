@@ -2,7 +2,6 @@ import * as vscode from 'vscode';
 import { ConnData } from './connections';
 import { getPool, Pool, ExecutionResult, PoolConfig, TableSchema } from './driver';
 import { notebookType } from './main';
-import { resultToMarkdownTable } from './markdown';
 
 export class KernelManager {
   public controllers = new Map<string, SQLNotebookKernel>();
@@ -136,7 +135,12 @@ export class SQLNotebookKernel {
 
     const rawQuery = cell.document.getText();
     if (!rawQuery.trim()) {
-      writeSuccess(execution, [[text('*(Empty cell - No query found)*', 'text/markdown')]]);
+      const emptyMsg = [{
+        Status: '⚠️ Info',
+        Message: 'Empty cell - No query found'
+      }];
+      const myMimeType = 'application/vnd.code-sql-notebook.table+json';
+      writeSuccess(execution, [[vscode.NotebookCellOutputItem.json(emptyMsg, myMimeType)]]);
       return;
     }
 
@@ -184,15 +188,7 @@ export class SQLNotebookKernel {
       result.map((item) => {
         const isTruncated = item.length > maxRows;
         const displayData = isTruncated ? item.slice(0, maxRows) : item;
-
         const outputs: vscode.NotebookCellOutputItem[] = [];
-
-        let md = resultToMarkdownTable(displayData);
-        if (isTruncated) {
-             md += `\n\n*(Showing first ${maxRows} rows of ${item.length}. Change 'maxResultRows' in settings to see more)*`;
-        }
-        outputs.push(text(md, 'text/markdown'));
-
         const myMimeType = 'application/vnd.code-sql-notebook.table+json';
         outputs.push(vscode.NotebookCellOutputItem.json(displayData, myMimeType));
 

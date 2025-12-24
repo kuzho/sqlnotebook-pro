@@ -42,7 +42,7 @@ export class SQLNotebookConnections
     const connections = vscode.workspace.getConfiguration('sqlnotebook').get<ConnData[]>('connections') || [];
 
     if (element instanceof GroupItem) {
-      const children = connections.filter(c => (c.group || 'Sin Grupo') === element.label);
+      const children = connections.filter(c => (c.group || 'No Group') === element.label);
       return Promise.resolve(
         children.map(config => new ConnectionListItem(config, vscode.TreeItemCollapsibleState.Collapsed))
       );

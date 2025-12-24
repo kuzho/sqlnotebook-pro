@@ -50,13 +50,14 @@ const styles = `
   }
 
   .toolbar {
-    padding: 4px 8px;
+    height: var(--row-height);
+    padding: 0 8px;
+    box-sizing: border-box;
     background: #333333;
     border-bottom: 1px solid var(--grid-border);
     display: flex;
     gap: 8px;
     align-items: center;
-    height: 28px;
     flex-shrink: 0;
   }
 
@@ -276,7 +277,7 @@ const FilterMenu = ({
   return Array.from(unique.keys()).map(val => {
     const label =
       val === null || val === undefined
-        ? '(Vacío)'
+        ? 'Empty'
         : String(val);
     return { raw: val, label };
   }).sort((a, b) => a.label.localeCompare(b.label));
@@ -444,12 +445,38 @@ const TableApp = ({ data }: { data: any[] }) => {
       const firstRow = data.find(row => row && typeof row === 'object');
       if (!firstRow) return [];
 
-      return Object.keys(firstRow).map((key, index) => {
+      return Object.keys(firstRow).flatMap((key, index) => {
         const isUnnamed = !key || key.trim() === '';
-        const safeId = isUnnamed ? `col_unnamed_${index}` : key;
-        const safeHeader = isUnnamed ? '(No column name)' : key;
+        const sampleValue = firstRow[key];
 
-        return {
+        if (isUnnamed && Array.isArray(sampleValue)) {
+            return sampleValue.map((_, subIndex) => ({
+                id: `col_unnamed_${index}_${subIndex}`,
+                header: 'No column name',
+
+                accessorFn: (row: any) => {
+                    const val = row[key];
+                    return Array.isArray(val) ? val[subIndex] : val;
+                },
+                enableColumnFilter: true,
+                filterFn: (row: any, id: string, filterValue: any[]) => {
+                    const arr = row.original[key];
+                    const val = Array.isArray(arr) ? arr[subIndex] : arr;
+                    return filterValue.includes(val);
+                },
+                cell: (info: any) => {
+                    const val = info.getValue();
+                    if (val === null) return <span style={{ opacity: 0.5, fontStyle: 'italic' }}>NULL</span>;
+                    if (typeof val === 'object' && !Array.isArray(val)) return JSON.stringify(val);
+                    return String(val);
+                }
+            }));
+        }
+
+        const safeId = isUnnamed ? `col_unnamed_${index}` : key;
+        const safeHeader = isUnnamed ? 'No column name' : key;
+
+        return [{
           id: safeId,
           header: safeHeader,
           accessorFn: (row: any) => row[key],
@@ -463,11 +490,11 @@ const TableApp = ({ data }: { data: any[] }) => {
             if (typeof val === 'object') return JSON.stringify(val);
             return String(val);
           }
-        };
+        }];
       });
     } catch (error) {
         console.error("Error generating columns:", error);
-        return []; 
+        return [];
       }
     }, [data, isSelectNoRows]);
 

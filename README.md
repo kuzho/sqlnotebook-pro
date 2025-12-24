@@ -36,18 +36,51 @@ Organize your database chaos. Group connections by environment (Dev, Prod, Stagi
 ### 4. Smart Connection Form
 Create connections safely. Includes a **Test Connection** button to verify credentials before saving. Passwords are stored securely in the system keychain, while settings are portable.
 <br>
+<br>
 
+### 5. Recommended VS Code Settings
+For the best visual experience (matching the look & feel of Azure Data Studio), we recommend these settings:
+
+* **Show Line Numbers:** Essential for debugging large SQL queries.
+  * Go to **Settings** (`Ctrl+,`) -> Search for **"Notebook: Line Numbers"** -> Select **"on"**.
+  * *(Or add this to your JSON: `"notebook.lineNumbers": "on"`)*
+
+* **Move Toolbar to Left:** To have the cell actions (Run, Move, Collapse) on the left side:
+  * Go to **Settings** -> Search for **"Notebook: Cell Toolbar Location"** -> Select **"left"**.
+
+* **Clean Up the Toolbar:** To remove extra native buttons and keep only the essentials:
+  * Open any SQL file.
+  * **Right-click** on the cell toolbar.
+  * **Uncheck** options like *"Execute Above Cells"* to leave only your SQL Notebook Pro controls.
+
+* **Remove Vertical Gap:** To avoid unnecessary empty space below small result tables:
+  * Go to **Settings** -> Search for **"Scroll Beyond Last Line"** -> **Uncheck** it.
+
+* **(Optional) Hacker UI Colors:** To get the exact "Pro" look (Pink borders & Dark background), add this to your `settings.json`:
+
+```json
+"workbench.colorCustomizations": {
+    "notebook.cellEditorBackground": "#1e1f1c",
+    "notebook.editorBackground": "#1e1f1c",
+    "notebook.focusedCellBorder": "#F92672",
+    "notebook.cellBorderColor": "#F92672",
+    "focusBorder": "#F92672",
+    "notebook.cellToolbarSeparator": "#F92672",
+    "scrollbarSlider.activeBackground": "#F92672"
+}
+```
+<br>
 ---
 
-## 🚀 Feature Highlights (v1.0.3)
-
-- **⚡ Multi-Kernel Architecture:** Switch connections instantly using the Notebook Toolbar (top-right), just like switching Python environments.
-- **📁 Connection Grouping:** Use the "Group" field to organize connections into folders.
+## 🚀 Feature Highlights (v1.1.0)
 - **✏️ Edit Mode:** Right-click to edit Host, User, or Port without re-entering passwords.
 - **☁️ Portable Settings:** Connections are saved in `settings.json`, making it easy to sync between computers (passwords remain local & secure in your OS Keychain).
 - **🔄 Hot Reload:** Edit a connection and run a query immediately—no restart required.
 - **⏱️ Execution Timer:** See exactly how long your query took to run in the results bar.
 - **📊 Export:** One-click export to **Excel** or **CSV**.
+- **👁️ Code Visibility:** Focus on your data. Use the **Collapse/Expand** buttons to hide large SQL queries and view only the result grids.
+- **⚡ Multi-Kernel Architecture:** Switch connections instantly using the Notebook Toolbar.
+- **📁 Connection Grouping:** Organize connections into folders.
 
 ## Usage
 

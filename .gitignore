@@ -10,3 +10,4 @@ sqls/
 .envrc
 .DS_Store
 Thumbs.db
+*.sql

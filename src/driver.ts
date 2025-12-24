@@ -409,13 +409,23 @@ function mssqlConn(req: mssql.Request): Conn {
       }
 
       if (res.rowsAffected) {
+          if (Array.isArray(res.rowsAffected) && res.rowsAffected.length > 1) {
+              const details = res.rowsAffected.map((count: number, index: number) => ({
+                  Step: `Operation #${index + 1}`,
+                  RowsAffected: count,
+                  Type: 'Internal Operation / Trigger'
+              }));
+              return [details];
+          }
+
           const val = Array.isArray(res.rowsAffected)
-            ? res.rowsAffected.join(',')
-            : String(res.rowsAffected);
+            ? res.rowsAffected[0]
+            : res.rowsAffected;
 
           return [[{
             Status: 'Success',
-            rows_affected: val
+            RowsAffected: val,
+            Message: 'Query executed successfully.'
           }]];
       }
 

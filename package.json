@@ -7,10 +7,11 @@
   "repository": {
     "url": "https://github.com/kuzho/sqlnotebook-pro.git"
   },
-  "version": "1.0.3",
+  "version": "1.1.0",
   "preview": false,
   "engines": {
-    "vscode": "^1.75.0"
+    "vscode": "^1.75.0",
+    "node": ">=20.0.0"
   },
   "categories": [
     "Data Science",
@@ -52,6 +53,40 @@
       }
     ],
     "menus": {
+      "notebook/toolbar": [
+        {
+          "command": "sqlnotebook.collapseAll",
+          "group": "navigation",
+          "when": "notebookType == 'sql-notebook' && !sqlnotebook.allCollapsed"
+        },
+        {
+          "command": "sqlnotebook.expandAll",
+          "group": "navigation",
+          "when": "notebookType == 'sql-notebook' && sqlnotebook.allCollapsed"
+        }
+      ],
+     "notebook/cell/title": [
+        {
+          "command": "sqlnotebook.collapseCell",
+          "group": "inline@0",
+          "when": "notebookType == 'sql-notebook'"
+        },
+        {
+          "command": "sqlnotebook.expandCell",
+          "group": "inline@1",
+          "when": "notebookType == 'sql-notebook'"
+        },
+        {
+          "command": "sqlnotebook.moveCellUp",
+          "group": "inline@2",
+          "when": "notebookType == 'sql-notebook'"
+        },
+        {
+          "command": "sqlnotebook.moveCellDown",
+          "group": "inline@3",
+          "when": "notebookType == 'sql-notebook'"
+        }
+      ],
       "view/item/context": [
         {
           "command": "sqlnotebook.editConnection",
@@ -64,7 +99,13 @@
           "group": "1_modification"
         }
       ],
-      "view/title": []
+      "view/title": [
+        {
+          "command": "sqlnotebook.refreshConnectionPanel",
+          "when": "view == sqlnotebook-connections",
+          "group": "navigation"
+        }
+      ]
     },
     "commands": [
       {
@@ -79,7 +120,42 @@
       {
         "command": "sqlnotebook.refreshConnectionPanel",
         "title": "Refresh SQL Connection Panel",
+        "icon": "$(refresh)",
         "shortTitle": "Refresh"
+      },
+      {
+        "command": "sqlnotebook.collapseAll",
+        "title": "Collapse All Codes",
+        "icon": "$(collapse-all)"
+      },
+      {
+        "command": "sqlnotebook.expandAll",
+        "title": "Expand All Codes",
+        "icon": "$(expand-all)"
+      },
+      {
+        "command": "sqlnotebook.refreshKernels",
+        "title": "Refresh Kernels"
+      },
+      {
+        "command": "sqlnotebook.collapseCell",
+        "title": "Collapse Cell",
+        "icon": "$(chevron-up)"
+      },
+      {
+        "command": "sqlnotebook.expandCell",
+        "title": "Expand Cell",
+        "icon": "$(chevron-down)"
+      },
+      {
+        "command": "sqlnotebook.moveCellUp",
+        "title": "Move Cell Up",
+        "icon": "$(arrow-up)"
+      },
+      {
+        "command": "sqlnotebook.moveCellDown",
+        "title": "Move Cell Down",
+        "icon": "$(arrow-down)"
       }
     ],
     "viewsContainers": {
@@ -166,7 +242,7 @@
     "@typescript-eslint/eslint-plugin": "^5.30.7",
     "@typescript-eslint/parser": "^5.30.7",
     "@vscode/vsce": "^3.2.0",
-    "esbuild": "^0.17.19",
+    "esbuild": "^0.27.2",
     "eslint": "^8.20.0",
     "glob": "^7.1.7",
     "ovsx": "^0.8.0",
@@ -180,14 +256,14 @@
     "@tanstack/react-table": "^8.21.3",
     "@vscode/webview-ui-toolkit": "^0.9.3",
     "icons-react": "^3.7.1",
-    "mssql": "^7.2.1",
-    "mysql2": "^2.3.0",
+    "mssql": "^12.2.0",
+    "mysql2": "^3.16.0",
     "pg": "^8.7.1",
     "react": "^17.0.2",
     "react-dom": "^17.0.2",
     "sql.js": "^1.7.0",
     "vscode-languageclient": "^7.0.0",
-    "xlsx": "^0.18.5"
+    "xlsx": "https://cdn.sheetjs.com/xlsx-latest/xlsx-latest.tgz"
   },
   "prettier": {
     "semi": true,

@@ -1,5 +1,21 @@
 # Change Log
 
+## [1.1.0] - 2025-12-23
+
+### 🛡️ Security & Performance (Major Overhaul)
+- **Engine Upgrade:** Updated core runtime to **Node.js 20+**.
+- **Zero Vulnerabilities:** Patched all security dependencies. Replaced insecure `xlsx` library with the official SheetJS distribution.
+- **Driver Updates:** Upgraded `mssql` (v12) and `mysql2` (v3) drivers for better stability and performance.
+### 👁️ Visual Experience & UX
+- **Collapse/Expand Control:** Added dedicated controls to manage code visibility.
+    - **Global Toolbar:** Toggle all cells at once with the new "Collapse All" and "Expand All" buttons in the top notebook toolbar.
+    - **Cell Toolbar:** Added individual **Expand (v)** and **Collapse (^)** buttons to each cell for precise control.
+- **🎯 Focus Stability:** Implemented a "Focus Force" mechanism to ensure cell actions (like moving or collapsing) always target the correct cell, preventing execution errors.
+- **Navigation:** Refined the cell toolbar layout for better accessibility.
+
+### 🐛 Bug Fixes
+- Fixed an issue where toggle buttons wouldn't respond immediately when clicking from the toolbar menu.
+
 ## [1.0.3] - 2025-12-22
 - **🧠 Smarter Intellisense:** - Autocomplete now searches across **all active connections** if the table isn't found in the current context.
     - Added **Case-Insensitivity**: `test_users.` now correctly finds `TEST_USERS`.
