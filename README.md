@@ -23,11 +23,19 @@ Filter, sort, and analyze your data without writing extra queries.
 * **Elastic Layout:** The grid auto-expands horizontally to fit your data.
 * **Filtering:** Use the funnel icon to search, select, or exclude specific values.
 * **Multi-Select:** Hold **Ctrl/Cmd** to select multiple columns at once for easy copying.
-* **Smart Export:** Export to **Excel (XLSX)** or **CSV** using native save dialogs with auto-generated timestamps.
+
 <br>
 <div align="center">
   <img src="media/demo-grid.gif" width="95%" alt="Demonstration of filtering, sorting and multi-selection in the grid">
   <p><em>Filtering data and selecting multiple columns with Ctrl+Click</em></p>
+</div>
+<br>
+
+* **Smart Export:** Export to **Excel (XLSX)** or **CSV** using native save dialogs with auto-generated timestamps.
+
+<br>
+<div align="center">
+  <img src="media/demo-excel.gif" width="80%" alt="GIF showing excel export">
 </div>
 <br>
 
@@ -40,16 +48,11 @@ Organize your database chaos. Group connections by environment (Dev, Prod, Stagi
 </div>
 <br>
 
-<br>
-<div align="center">
-  <img src="media/demo-excel.gif" width="80%" alt="GIF showing excel export">
-</div>
-<br>
-
 ### 4. Smart Connection Form
 Create connections safely. Includes a **Test Connection** button to verify credentials before saving.
 * **Auto-Ports:** Automatically sets the default port (e.g., 5432 for Postgres) when selecting a driver.
 * **Secure Storage:** Passwords are stored securely in the system keychain.
+
 <br>
 <br>
 

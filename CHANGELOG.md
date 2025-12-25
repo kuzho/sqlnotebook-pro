@@ -1,6 +1,6 @@
 # Change Log
 
-## [2.0.1] - 2025-12-24
+## [2.0.2] - 2025-12-24
 
 ### 🐛 Bug Fixes & Polish
 - **Smart Form Reset:** The "Clear Form" button is now smarter. Instead of resetting everything to default, it clears text fields but **preserves your selected driver** and automatically applies the correct default port (e.g., keeps MySQL selected and resets port to 3306).
