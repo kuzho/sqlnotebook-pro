@@ -44,7 +44,7 @@ Organize your database chaos. Group connections by environment or project. Right
 
 <br>
 <div align="center">
-  <img src="media/demo-demo-excel.gif" width="80%" alt="GIF showing excel export">
+  <img src="media/demo-excel.gif" width="80%" alt="GIF showing excel export">
 </div>
 <br>
 
