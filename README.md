@@ -42,6 +42,12 @@ Organize your database chaos. Group connections by environment or project. Right
 </div>
 <br>
 
+<br>
+<div align="center">
+  <img src="media/demo-demo-excel.gif" width="80%" alt="GIF showing excel export">
+</div>
+<br>
+
 ### 4. Smart Connection Form
 Create connections safely. Includes a **Test Connection** button to verify credentials before saving.
 * **Auto-Ports:** Automatically sets the default port (e.g., 5432 for Postgres) when selecting a driver.

@@ -98,21 +98,14 @@ export function activate(context: vscode.ExtensionContext) {
       async (cell: vscode.NotebookCell) => {
         const editor = vscode.window.activeNotebookEditor;
         if (!editor || !cell) return;
-
         const range = new vscode.NotebookRange(cell.index, cell.index + 1);
-
         editor.selection = range;
         editor.revealRange(range);
-
         await new Promise(r => setTimeout(r, 0));
-
-        await vscode.commands.executeCommand(
-          'notebook.cell.expandCellInput'
-        );
+        await vscode.commands.executeCommand('notebook.cell.expandCellInput');
       }
     )
   );
-
 
   context.subscriptions.push(
     vscode.commands.registerCommand(
@@ -120,17 +113,11 @@ export function activate(context: vscode.ExtensionContext) {
       async (cell: vscode.NotebookCell) => {
         const editor = vscode.window.activeNotebookEditor;
         if (!editor || !cell) return;
-
         const range = new vscode.NotebookRange(cell.index, cell.index + 1);
-
         editor.selection = range;
         editor.revealRange(range);
-
         await new Promise(r => setTimeout(r, 0));
-
-        await vscode.commands.executeCommand(
-          'notebook.cell.collapseCellInput'
-        );
+        await vscode.commands.executeCommand('notebook.cell.collapseCellInput');
       }
     )
   );
@@ -194,7 +181,6 @@ async function handleExport({ data, format }: { data: any[], format: 'csv' | 'xl
 
   try {
     const filePath = uri.fsPath;
-
     const ws = XLSX.utils.json_to_sheet(data);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Data");

@@ -608,15 +608,15 @@ const TableApp = ({ data, postMessage }: { data: any, postMessage?: (msg: any) =
 
   const exportCSV = () => {
     if (postMessage) {
-      postMessage({ type: 'export_data', payload: { data: rows, format: 'csv' } });
+      const currentData = tableRows.map(r => r.original);
+      postMessage({ type: 'export_data', payload: { data: currentData, format: 'csv' } });
     }
   };
 
   const exportExcel = () => {
     if (postMessage) {
-      postMessage({ type: 'export_data', payload: { data: rows, format: 'xlsx' } });
-    } else {
-      console.error("Error: postMessage no está disponible");
+      const currentData = tableRows.map(r => r.original);
+      postMessage({ type: 'export_data', payload: { data: currentData, format: 'xlsx' } });
     }
   };
 
@@ -631,7 +631,7 @@ const TableApp = ({ data, postMessage }: { data: any, postMessage?: (msg: any) =
     >
       <style>{styles}</style>
       <div className="toolbar">
-        <span style={{fontSize:11, fontWeight:'bold'}}>{rows.length} rows</span>
+        <span style={{fontSize:11, fontWeight:'bold'}}>{tableRows.length} rows</span>
         <span className="toolbar-time">
            🕒 {runTime}
         </span>
@@ -730,19 +730,7 @@ export const activate: ActivationFunction = (context) => {
       const json = data.json();
       try { ReactDOM.unmountComponentAtNode(element); } catch(e){}
       element.innerHTML = '';
-
-      const safePostMessage = (msg: any) => {
-          if (context.postMessage) {
-              context.postMessage(msg);
-          } else {
-              console.error("CRITICAL ERROR: context.postMessage is not available.", context);
-          }
-      };
-
-      ReactDOM.render(
-          <TableApp data={json} postMessage={safePostMessage} />,
-          element
-      );
+      ReactDOM.render(<TableApp data={json} postMessage={context.postMessage} />, element);
     }
   };
 };

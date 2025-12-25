@@ -34,22 +34,33 @@ const Form: React.FC<{
     }
   });
 
+  const handleSmartReset = () => {
+    const currentDriver = driver;
+    formRef.current?.reset();
+
+    if (dropdownRef.current) {
+        dropdownRef.current.value = currentDriver;
+    }
+    setDriver(currentDriver);
+
+    setTimeout(() => {
+       const portField = formRef.current?.elements.namedItem('port') as HTMLInputElement;
+       if(portField && DEFAULT_PORTS[currentDriver] !== undefined) {
+           portField.value = DEFAULT_PORTS[currentDriver];
+       }
+    }, 0);
+  };
+
   React.useEffect(() => {
     const handleMessage = (event: MessageEvent) => {
       const { data } = event;
       switch (data.type) {
         case 'clear_form':
-          formRef.current?.reset();
-          setDriver('mssql');
-          setTimeout(() => {
-             const portField = formRef.current?.elements.namedItem('port') as HTMLInputElement;
-             if(portField) portField.value = DEFAULT_PORTS['mssql'];
-          }, 0);
+          handleSmartReset();
           break;
 
         case 'edit_connection': {
           const config = data.data;
-
           setDriver(config.driver);
 
           setTimeout(() => {
@@ -89,9 +100,8 @@ const Form: React.FC<{
     };
 
     window.addEventListener('message', handleMessage);
-
     return () => window.removeEventListener('message', handleMessage);
-  }, [setDriver]);
+  }, [driver, setDriver]);
 
   return (
     <form ref={formRef} style={{ display: 'grid', gridRowGap: '15px' }}>
@@ -113,7 +123,12 @@ const Form: React.FC<{
       {driver !== 'sqlite' && (
         <>
           <TextOption label="Database Host" objectKey="host" />
-          <TextOption label="Database Port" objectKey="port" defaultValue={driver === 'mssql' ? '1433' : ''} />
+          {/* <TextOption label="Database Port" objectKey="port" defaultValue={driver === 'mssql' ? '1433' : ''} /> */}
+          <TextOption
+            label="Database Port"
+            objectKey="port"
+            defaultValue={DEFAULT_PORTS[driver] || ''}
+          />
           <TextOption label="Database User" objectKey="user" />
           <TextOption
             label="Database Password"
@@ -148,14 +163,7 @@ const Form: React.FC<{
         <VSCodeButton
             appearance="icon"
             title="Clear Form"
-            onClick={() => {
-              formRef.current?.reset();
-              setDriver('mssql');
-              setTimeout(() => {
-                 const portField = formRef.current?.elements.namedItem('port') as HTMLInputElement;
-                 if(portField) portField.value = DEFAULT_PORTS['mssql'];
-              }, 0);
-            }}
+            onClick={handleSmartReset}
           >
             Clear Form
         </VSCodeButton>
@@ -175,7 +183,7 @@ function useDropdownValue(onChange?: (newVal: string) => void) {
     const handleChange = (e: Event) => {
         const newVal = (e.target as HTMLInputElement)?.value;
         setValue(newVal);
-        if (onChange) onChange(newVal);
+        if(onChange) onChange(newVal);
     };
     current?.addEventListener('change', handleChange);
     return () => current?.removeEventListener('change', handleChange);
@@ -207,7 +215,7 @@ function showDriverConfig(driver: string) {
 
 const TextOption: React.FC<{ label: string; objectKey: string; type?: string; placeholder?: string; defaultValue?: string }> = ({ objectKey, label, type, placeholder, defaultValue }) => {
   return (
-    <VSCodeTextField name={objectKey} type={type} placeholder={placeholder} value={defaultValue}>
+    <VSCodeTextField name={objectKey} type={type} placeholder={placeholder || ""} value={defaultValue|| ""}>
       <span style={{ color: 'var(--vscode-editor-foreground)' }}>{label}</span>
     </VSCodeTextField>
   );

@@ -1,5 +1,14 @@
 # Change Log
 
+## [2.0.1] - 2025-12-24
+
+### 🐛 Bug Fixes & Polish
+- **Smart Form Reset:** The "Clear Form" button is now smarter. Instead of resetting everything to default, it clears text fields but **preserves your selected driver** and automatically applies the correct default port (e.g., keeps MySQL selected and resets port to 3306).
+- **UI Cleanup:** Fixed a visual glitch where empty form fields would display the text "undefined" in gray placeholder text.
+- **Export Improvements:** Restored the automatic date-timestamp naming (e.g., `Results_2025-12-24...`) when exporting to Excel/CSV.
+
+---
+
 ## [2.0.0] - 2025-12-24
 
 > **⚠️ MAJOR UPDATE: BREAKING CHANGE**
