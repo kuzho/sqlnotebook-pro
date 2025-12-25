@@ -33,8 +33,6 @@ Filter, sort, and analyze your data without writing extra queries.
 
 ### 3. Connection Groups & Editing
 Organize your database chaos. Group connections by environment (Dev, Prod, Staging) or project. Right-click any connection to **Edit** details instantly without re-entering passwords.
-### 3. Connection Groups & Editing
-Organize your database chaos. Group connections by environment or project. Right-click any connection to **Edit** details instantly (supports Hot Reload without restarting).
 
 <br>
 <div align="center">
