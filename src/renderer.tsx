@@ -401,9 +401,10 @@ const TableApp = ({ data, postMessage }: { data: any, postMessage?: (msg: any) =
   const [activeMenuId, setActiveMenuId] = useState<string | null>(null);
 
   const [selection, setSelection] = useState<{
-    type: 'all' | 'row' | 'col' | 'range',
+    type: 'all' | 'row' | 'col' | 'range' | 'multi',
     ids?: Set<any>,
-    range?: { r1: number, c1: number, r2: number, c2: number }
+    range?: { r1: number, c1: number, r2: number, c2: number },
+    ranges?: Array<{ r1: number, c1: number, r2: number, c2: number }>
   } | null>(null);
 
   const [isDragging, setIsDragging] = useState(false);
@@ -537,7 +538,27 @@ const TableApp = ({ data, postMessage }: { data: any, postMessage?: (msg: any) =
 
     let rowsToText: string[] = [];
 
-    if (selection.type === 'range' && selection.range) {
+    if (selection.type === 'multi' && selection.ranges) {
+      selection.ranges.forEach((range, idx) => {
+        const { r1, c1, r2, c2 } = range;
+        const minR = Math.min(r1, r2), maxR = Math.max(r1, r2);
+        const minC = Math.min(c1, c2), maxC = Math.max(c1, c2);
+
+        for (let r = minR; r <= maxR; r++) {
+          const line = [];
+          for (let c = minC; c <= maxC; c++) {
+            if (visibleColumns[c]) {
+              line.push(getVal(r, visibleColumns[c].id));
+            }
+          }
+          rowsToText.push(line.join('\t'));
+        }
+
+        if (idx < selection.ranges.length - 1) {
+          rowsToText.push('');
+        }
+      });
+    } else if (selection.type === 'range' && selection.range) {
       const { r1, c1, r2, c2 } = selection.range;
       const minR = Math.min(r1, r2), maxR = Math.max(r1, r2);
       const minC = Math.min(c1, c2), maxC = Math.max(c1, c2);
@@ -581,25 +602,92 @@ const TableApp = ({ data, postMessage }: { data: any, postMessage?: (msg: any) =
     window.addEventListener('keydown', k); return ()=>window.removeEventListener('keydown', k);
   }, [handleCopy]);
 
-  const onMouseDown = (r:number, c:number) => { setIsDragging(true); setDragStart({r,c}); setSelection({type:'range', range:{r1:r,c1:c,r2:r,c2:c}}); };
-  const onMouseEnter = (r:number, c:number) => { if(isDragging && dragStart) setSelection({type:'range', range:{r1:dragStart.r,c1:dragStart.c,r2:r,c2:c}}); };
+  const onMouseDown = (r:number, c:number, isCtrl: boolean) => { 
+    if (isCtrl && selection?.type === 'range' && selection.range) {
+      setSelection(prev => ({
+        type: 'multi',
+        ranges: prev ? [prev.range!, { r1: r, c1: c, r2: r, c2: c }] : [{ r1: r, c1: c, r2: r, c2: c }]
+      }));
+      setIsDragging(true);
+      setDragStart({r, c});
+    } else if (isCtrl && selection?.type === 'multi' && selection.ranges) {
+      setSelection(prev => ({
+        type: 'multi',
+        ranges: [...prev!.ranges!, { r1: r, c1: c, r2: r, c2: c }]
+      }));
+      setIsDragging(true);
+      setDragStart({r, c});
+    } else {
+      setIsDragging(true);
+      setDragStart({r,c});
+      setSelection({type:'range', range:{r1:r,c1:c,r2:r,c2:c}});
+    }
+  };
+
+  const onMouseEnter = (r:number, c:number) => {
+    if(isDragging && dragStart) {
+      if (selection?.type === 'multi' && selection.ranges) {
+        const updatedRanges = [...selection.ranges];
+        updatedRanges[updatedRanges.length - 1] = {
+          r1: dragStart.r,
+          c1: dragStart.c,
+          r2: r,
+          c2: c
+        };
+        setSelection({type:'multi', ranges: updatedRanges});
+      } else {
+        setSelection({type:'range', range:{r1:dragStart.r,c1:dragStart.c,r2:r,c2:c}});
+      }
+    }
+  };
+
   const onMouseUp = () => setIsDragging(false);
   const handleCornerClick = () => setSelection({type:'all'});
-  const handleRowHeaderClick = (idx: number) => setSelection({type:'row', ids: new Set([idx])});
+
+  const handleRowHeaderClick = (idx: number, isCtrl: boolean) => {
+    if (isCtrl && selection?.type === 'row' && selection.ids) {
+      const newIds = new Set(selection.ids);
+      if (newIds.has(idx)) {
+        newIds.delete(idx);
+      } else {
+        newIds.add(idx);
+      }
+      setSelection(newIds.size > 0 ? {type:'row', ids: newIds} : null);
+    } else {
+      setSelection({type:'row', ids: new Set([idx])});
+    }
+  };
 
   const getCellClass = (r:number, c:number, colId: string) => {
     if (!selection) return '';
     let isSel = false;
+    let rangeForBorders = null;
+
     if (selection.type==='all') isSel=true;
     if (selection.type==='row' && selection.ids?.has(r)) isSel=true;
     if (selection.type==='col' && selection.ids?.has(colId)) isSel=true;
+
     if (selection.type==='range' && selection.range) {
       const {r1,c1,r2,c2}=selection.range;
-      if (r>=Math.min(r1,r2) && r<=Math.max(r1,r2) && c>=Math.min(c1,c2) && c<=Math.max(c1,c2)) isSel=true;
+      if (r>=Math.min(r1,r2) && r<=Math.max(r1,r2) && c>=Math.min(c1,c2) && c<=Math.max(c1,c2)) {
+        isSel=true;
+        rangeForBorders = selection.range;
+      }
     }
+
+    if (selection.type==='multi' && selection.ranges) {
+      for (const range of selection.ranges) {
+        const {r1,c1,r2,c2}=range;
+        if (r>=Math.min(r1,r2) && r<=Math.max(r1,r2) && c>=Math.min(c1,c2) && c<=Math.max(c1,c2)) {
+          isSel=true;
+          rangeForBorders = range;
+        }
+      }
+    }
+
     let borders = '';
-    if(isSel && selection.type==='range' && selection.range) {
-       const {r1,c1,r2,c2}=selection.range;
+    if(isSel && rangeForBorders) {
+       const {r1,c1,r2,c2}=rangeForBorders;
        const minR=Math.min(r1,r2), maxR=Math.max(r1,r2), minC=Math.min(c1,c2), maxC=Math.max(c1,c2);
        if(r===minR) borders+='bt '; if(r===maxR) borders+='bb '; if(c===minC) borders+='bl '; if(c===maxC) borders+='br ';
     }
@@ -705,11 +793,11 @@ const TableApp = ({ data, postMessage }: { data: any, postMessage?: (msg: any) =
             {tableRows.map((row, rIndex) => (
               <tr key={row.id}>
                 <td className={`row-index ${selection?.type==='row' && selection.ids?.has(rIndex)?'selected-bg':''}`}
-                    onClick={()=>handleRowHeaderClick(rIndex)}>{rIndex + 1}</td>
+                    onClick={(e)=>handleRowHeaderClick(rIndex, e.ctrlKey || e.metaKey)}>{rIndex + 1}</td>
                 {row.getVisibleCells().map((cell, cIndex) => (
                   <td key={cell.id}
                       className={getCellClass(rIndex, cIndex, cell.column.id)}
-                      onMouseDown={()=>onMouseDown(rIndex, cIndex)}
+                      onMouseDown={(e)=>onMouseDown(rIndex, cIndex, e.ctrlKey || e.metaKey)}
                       onMouseEnter={()=>onMouseEnter(rIndex, cIndex)}
                   >
                     {flexRender(cell.column.columnDef.cell, cell.getContext())}

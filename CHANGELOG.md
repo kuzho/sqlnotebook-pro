@@ -1,5 +1,14 @@
 # Change Log
 
+## [2.0.3] - 2026-01-08
+
+### ✨ New Features
+- **Multi-Range Selection:** Hold **Ctrl** (or Cmd on Mac) and drag to select multiple non-contiguous cell ranges in the data grid.
+- **Multi-Row Selection:** Hold **Ctrl** and click row numbers to select multiple individual rows.
+- **Enhanced Copy:** Copy multiple selections at once with Ctrl+C - all ranges are copied separated by empty lines.
+
+---
+
 ## [2.0.2] - 2025-12-24
 
 ### 🐛 Bug Fixes & Polish

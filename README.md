@@ -22,7 +22,10 @@ Write SQL faster with our native Intellisense engine. The extension automaticall
 Filter, sort, and analyze your data without writing extra queries.
 * **Elastic Layout:** The grid auto-expands horizontally to fit your data.
 * **Filtering:** Use the funnel icon to search, select, or exclude specific values.
-* **Multi-Select:** Hold **Ctrl/Cmd** to select multiple columns at once for easy copying.
+* **Multi-Select:** Hold **Ctrl/Cmd** to select multiple columns, rows, or cell ranges at once.
+  * Select multiple columns by Ctrl+clicking headers
+  * Select multiple rows by Ctrl+clicking row numbers
+  * Select multiple cell ranges by Ctrl+dragging in different areas
 
 <br>
 <div align="center">
@@ -88,7 +91,6 @@ For the best visual experience (matching the look & feel of Azure Data Studio), 
 }
 ```
 <br>
----
 
 ## 🚀 Feature Highlights (v2.0.0)
 - **📊 Native Export:** Save results as Excel/CSV using the system dialog. Auto-opens the file after saving.
