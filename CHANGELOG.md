@@ -1,15 +1,29 @@
 # Change Log
 
-## [2.0.3] - 2026-01-08
+## [2.1.0] - 2025-02-19
+
+### ⚡ Changed
+- **SQL Parameters Persistence:** Parameters now use a block format at the top of the SQL file: `/*<SQL_PARAMS>...*/`.
+  - Clean, readable in plain text (Git/Notepad).
+  - Hidden in the VS Code notebook view.
+- **Local vs Global Parameters:**
+  - **Save for active file** stores parameters in the notebook metadata (per file).
+  - **Global parameters** are stored in workspace state.
+- **Manual Save Behavior:** When **Save for active file** is enabled, parameters are written only when the user saves the file.
+- **IN() List Smarts:** Comma-separated values now respect quotes. Examples that work:
+  - `"hoola","mundo"`
+  - `'hola','mundo'`
+  - `hola,mundo` (auto-quoted)
+- **Run Selection:** If you highlight part of a query, only the selected SQL is executed.
+
+---
+
+## [2.0.2] - 2025-12-24
 
 ### ✨ New Features
 - **Multi-Range Selection:** Hold **Ctrl** (or Cmd on Mac) and drag to select multiple non-contiguous cell ranges in the data grid.
 - **Multi-Row Selection:** Hold **Ctrl** and click row numbers to select multiple individual rows.
 - **Enhanced Copy:** Copy multiple selections at once with Ctrl+C - all ranges are copied separated by empty lines.
-
----
-
-## [2.0.2] - 2025-12-24
 
 ### 🐛 Bug Fixes & Polish
 - **Smart Form Reset:** The "Clear Form" button is now smarter. Instead of resetting everything to default, it clears text fields but **preserves your selected driver** and automatically applies the correct default port (e.g., keeps MySQL selected and resets port to 3306).

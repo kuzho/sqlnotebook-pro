@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import { SQLNotebookConnections } from './connections';
 import { deleteConnectionConfiguration, editConnectionConfiguration } from './commands';
+import { ParameterProvider } from './ParameterProvider'; // Asegura que busca en src
 import { activateFormProvider } from './form';
 import { SQLSerializer } from './serializer';
 import { KernelManager } from './controller';
@@ -48,9 +49,20 @@ export function activate(context: vscode.ExtensionContext) {
     })
   );
 
+  const parameterProvider = new ParameterProvider(context.extensionUri, context);
+  context.subscriptions.push(
+    vscode.window.registerWebviewViewProvider(ParameterProvider.viewType, parameterProvider)
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand('sqlnotebook.openParameters', () => {
+      vscode.commands.executeCommand('sqlnotebook.parameters.focus');
+    })
+  );
+
   activateFormProvider(context);
 
-  const kernelManager = new KernelManager(context);
+  const kernelManager = new KernelManager(context, parameterProvider);
   context.subscriptions.push({ dispose: () => kernelManager.dispose() });
 
   const completionProvider = new SqlCompletionItemProvider(kernelManager);

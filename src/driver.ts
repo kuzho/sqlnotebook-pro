@@ -408,12 +408,13 @@ function mssqlConn(req: mssql.Request): Conn {
           return [res.recordsets[0]];
       }
 
-      if (res.rowsAffected) {
+        if (res.rowsAffected) {
+          const statementInfos = getStatementInfos(q);
           if (Array.isArray(res.rowsAffected) && res.rowsAffected.length > 1) {
               const details = res.rowsAffected.map((count: number, index: number) => ({
-                  Step: `Operation #${index + 1}`,
+              Step: statementInfos[index]?.label || `Operation #${index + 1}`,
                   RowsAffected: count,
-                  Type: 'Internal Operation / Trigger'
+              Type: statementInfos[index]?.type || 'Statement'
               }));
               return [details];
           }
@@ -425,6 +426,8 @@ function mssqlConn(req: mssql.Request): Conn {
           return [[{
             Status: 'Success',
             RowsAffected: val,
+            Type: statementInfos[0]?.type || 'Statement',
+            Target: statementInfos[0]?.label || 'Operation',
             Message: 'Query executed successfully.'
           }]];
       }
@@ -441,4 +444,134 @@ function mssqlConn(req: mssql.Request): Conn {
     release() {
     },
   };
+}
+
+function getStatementInfos(sql: string): Array<{ type: string; label: string }> {
+  const statements = splitSqlStatements(sql);
+  return statements.map(s => getStatementInfo(s));
+}
+
+function splitSqlStatements(sql: string): string[] {
+  const statements: string[] = [];
+  let current = '';
+  let inSingle = false;
+  let inDouble = false;
+  let inLineComment = false;
+  let inBlockComment = false;
+
+  for (let i = 0; i < sql.length; i++) {
+    const ch = sql[i];
+    const next = sql[i + 1];
+
+    if (inLineComment) {
+      if (ch === '\n') {
+        inLineComment = false;
+        current += ch;
+      }
+      continue;
+    }
+
+    if (inBlockComment) {
+      if (ch === '*' && next === '/') {
+        inBlockComment = false;
+        i++;
+      }
+      continue;
+    }
+
+    if (!inSingle && !inDouble) {
+      if (ch === '-' && next === '-') {
+        inLineComment = true;
+        i++;
+        continue;
+      }
+      if (ch === '/' && next === '*') {
+        inBlockComment = true;
+        i++;
+        continue;
+      }
+    }
+
+    if (!inDouble && ch === "'") {
+      if (inSingle && next === "'") {
+        current += "''";
+        i++;
+        continue;
+      }
+      inSingle = !inSingle;
+      current += ch;
+      continue;
+    }
+
+    if (!inSingle && ch === '"') {
+      inDouble = !inDouble;
+      current += ch;
+      continue;
+    }
+
+    if (ch === ';' && !inSingle && !inDouble) {
+      const trimmed = current.trim();
+      if (trimmed.length > 0) statements.push(trimmed);
+      current = '';
+      continue;
+    }
+
+    current += ch;
+  }
+
+  const finalTrimmed = current.trim();
+  if (finalTrimmed.length > 0) statements.push(finalTrimmed);
+  return statements;
+}
+
+function getStatementInfo(statement: string): { type: string; label: string } {
+  const cleaned = statement.trim();
+  if (!cleaned) return { type: 'Statement', label: 'Operation' };
+
+  const tableNamePattern = /([#\w.\[\]]+)/;
+
+  const ddlMatch = cleaned.match(/\b(CREATE|ALTER|DROP|TRUNCATE)\s+TABLE\s+([#\w.\[\]]+)/i);
+  if (ddlMatch) {
+    const type = `${ddlMatch[1].toUpperCase()} TABLE`;
+    const target = ddlMatch[2];
+    return { type, label: `${type} ${target}` };
+  }
+
+  const insertMatch = cleaned.match(/\bINSERT\s+INTO\s+([#\w.\[\]]+)/i);
+  if (insertMatch) {
+    return { type: 'INSERT', label: `INSERT ${insertMatch[1]}` };
+  }
+
+  const updateMatch = cleaned.match(/\bUPDATE\s+([#\w.\[\]]+)/i);
+  if (updateMatch) {
+    return { type: 'UPDATE', label: `UPDATE ${updateMatch[1]}` };
+  }
+
+  const deleteMatch = cleaned.match(/\bDELETE\s+FROM\s+([#\w.\[\]]+)/i);
+  if (deleteMatch) {
+    return { type: 'DELETE', label: `DELETE ${deleteMatch[1]}` };
+  }
+
+  const mergeMatch = cleaned.match(/\bMERGE\s+INTO\s+([#\w.\[\]]+)/i);
+  if (mergeMatch) {
+    return { type: 'MERGE', label: `MERGE ${mergeMatch[1]}` };
+  }
+
+  const execMatch = cleaned.match(/\bEXEC(?:UTE)?\s+([#\w.\[\]]+)/i);
+  if (execMatch) {
+    return { type: 'EXEC', label: `EXEC ${execMatch[1]}` };
+  }
+
+  const selectMatch = cleaned.match(/\bSELECT\b/i);
+  if (selectMatch) {
+    return { type: 'SELECT', label: 'SELECT' };
+  }
+
+  const keywordMatch = cleaned.match(/\b(INSERT|UPDATE|DELETE|MERGE|CREATE|ALTER|DROP|TRUNCATE|EXEC|EXECUTE|SELECT)\b/i);
+  if (keywordMatch) {
+    const keyword = keywordMatch[1].toUpperCase();
+    return { type: keyword, label: keyword };
+  }
+
+  return { type: 'Statement', label: 'Operation' };
 }

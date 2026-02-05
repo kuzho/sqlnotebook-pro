@@ -18,7 +18,17 @@ Write SQL faster with our native Intellisense engine. The extension automaticall
 * **Columns:** Type a table name followed by a dot (e.g., `users.`) to instantly see that table's columns.
 * **Keywords:** Full support for standard SQL keywords (SELECT, WHERE, JOIN, etc.).
 
-### 2. Interactive Data Grid (Excel-Style)
+### 2. ⚙️ SQL Parameters Panel
+Define reusable variables and run parameterized queries with a dedicated side panel. Save per-file when needed, or keep them temporary for quick testing.
+
+<br>
+<div align="center">
+  <img src="media/demo-parameters.gif" width="85%" alt="GIF showing SQL Parameters panel usage">
+  <p><em>Set parameters once and reuse them across queries</em></p>
+</div>
+<br>
+
+### 3. Interactive Data Grid (Excel-Style)
 Filter, sort, and analyze your data without writing extra queries.
 * **Elastic Layout:** The grid auto-expands horizontally to fit your data.
 * **Filtering:** Use the funnel icon to search, select, or exclude specific values.
@@ -42,7 +52,7 @@ Filter, sort, and analyze your data without writing extra queries.
 </div>
 <br>
 
-### 3. Connection Groups & Editing
+### 4. Connection Groups & Editing
 Organize your database chaos. Group connections by environment (Dev, Prod, Staging) or project. Right-click any connection to **Edit** details instantly without re-entering passwords.
 
 <br>
@@ -51,7 +61,7 @@ Organize your database chaos. Group connections by environment (Dev, Prod, Stagi
 </div>
 <br>
 
-### 4. Smart Connection Form
+### 5. Smart Connection Form
 Create connections safely. Includes a **Test Connection** button to verify credentials before saving.
 * **Auto-Ports:** Automatically sets the default port (e.g., 5432 for Postgres) when selecting a driver.
 * **Secure Storage:** Passwords are stored securely in the system keychain.
@@ -59,7 +69,7 @@ Create connections safely. Includes a **Test Connection** button to verify crede
 <br>
 <br>
 
-### 5. Recommended VS Code Settings
+### 6. Recommended VS Code Settings
 For the best visual experience (matching the look & feel of Azure Data Studio), we recommend these settings:
 
 * **Show Line Numbers:** Essential for debugging large SQL queries.

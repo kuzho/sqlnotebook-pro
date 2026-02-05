@@ -5,7 +5,11 @@ const CELL_SEPARATOR = '\n\n-- %%\n\n';
 
 const OUTPUT_START = '/*<SQL_OUTPUT>';
 const OUTPUT_END = '</SQL_OUTPUT>*/';
-const OUTPUT_REGEX = /\/\*<SQL_OUTPUT>([\s\S]*?)<\/SQL_OUTPUT>\*\//;
+const OUTPUT_REGEX = /\/\*<SQL_OUTPUT>([\s\S]*?)<\/SQL_OUTPUT>\*\//g;
+
+const PARAMS_START = '/*<SQL_PARAMS>';
+const PARAMS_END = '</SQL_PARAMS>*/';
+const PARAMS_REGEX = /\/\*\s*<SQL_PARAMS>\s*([\s\S]*?)\s*<\/SQL_PARAMS>\s*\*\//;
 
 export class SQLSerializer implements vscode.NotebookSerializer {
 
@@ -13,7 +17,33 @@ export class SQLSerializer implements vscode.NotebookSerializer {
     content: Uint8Array,
     _token: vscode.CancellationToken
   ): Promise<vscode.NotebookData> {
-    const contents = new TextDecoder().decode(content);
+    let contents = new TextDecoder().decode(content);
+    if (contents.charCodeAt(0) === 0xFEFF) {
+      contents = contents.slice(1);
+    }
+
+    let params = {};
+
+    const blockMatch = contents.match(PARAMS_REGEX);
+
+    if (blockMatch) {
+      try {
+        params = JSON.parse(blockMatch[1].trim());
+        contents = contents.replace(PARAMS_REGEX, '');
+      } catch (e) {
+        console.error('Failed to parse params block', e);
+      }
+    } else {
+      const lineMatch = contents.match(/^\s*--\s*@PARAMS:\s*(\{.*\})\s*(\r?\n)?/);
+      if (lineMatch) {
+        try {
+          params = JSON.parse(lineMatch[1].trim());
+          contents = contents.substring(lineMatch[0].length);
+        } catch (e) {}
+      }
+    }
+
+    contents = contents.trim();
 
     const rawCells = contents.split(/(?:\r?\n|^)\s*--\s*%%.*/);
 
@@ -22,8 +52,9 @@ export class SQLSerializer implements vscode.NotebookSerializer {
       let outputs: vscode.NotebookCellOutput[] = [];
       let savedSummary: vscode.NotebookCellExecutionSummary | undefined;
 
-      const match = cleanText.match(OUTPUT_REGEX);
-      if (match) {
+      const matches = [...cleanText.matchAll(OUTPUT_REGEX)];
+      if (matches.length > 0) {
+        const match = matches[0];
         try {
           const jsonStr = match[1].trim();
           const fullData = JSON.parse(jsonStr);
@@ -37,16 +68,15 @@ export class SQLSerializer implements vscode.NotebookSerializer {
           }
 
           const item = vscode.NotebookCellOutputItem.json(
-            fullData, 
+            fullData,
             'application/vnd.code-sql-notebook.table+json'
           );
           outputs = [new vscode.NotebookCellOutput([item])];
-
-          cleanText = cleanText.replace(match[0], '');
         } catch (e) {
           console.error("Error recuperando output:", e);
         }
       }
+      cleanText = cleanText.replace(OUTPUT_REGEX, '');
 
       cleanText = cleanText.trim();
 
@@ -84,7 +114,10 @@ export class SQLSerializer implements vscode.NotebookSerializer {
       cells.push(new vscode.NotebookCellData(vscode.NotebookCellKind.Code, '', 'sql'));
     }
 
-    return new vscode.NotebookData(cells);
+    const data = new vscode.NotebookData(cells);
+
+    data.metadata = { custom: { parameters: params } };
+    return data;
   }
 
   async serializeNotebook(
@@ -126,6 +159,13 @@ export class SQLSerializer implements vscode.NotebookSerializer {
       .filter(text => text.length > 0)
       .join(CELL_SEPARATOR);
 
-    return new TextEncoder().encode(contents);
+    let finalOutput = contents;
+    const params = data.metadata?.custom?.parameters;
+    if (params && Object.keys(params).length > 0) {
+        const json = JSON.stringify(params, null, 2);
+        finalOutput = `${PARAMS_START}\n${json}\n${PARAMS_END}\n\n` + finalOutput;
+    }
+
+    return new TextEncoder().encode(finalOutput);
   }
 }

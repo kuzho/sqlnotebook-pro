@@ -1,12 +1,16 @@
 import * as vscode from 'vscode';
 import { ConnData } from './connections';
 import { getPool, Pool, ExecutionResult, PoolConfig, TableSchema } from './driver';
+import { ParameterProvider } from './ParameterProvider';
 import { notebookType } from './main';
 
 export class KernelManager {
   public controllers = new Map<string, SQLNotebookKernel>();
 
-  constructor(private readonly context: vscode.ExtensionContext) {
+  constructor(
+    private readonly context: vscode.ExtensionContext,
+    private readonly parameterProvider: ParameterProvider
+  ) {
     this.refresh();
   }
 
@@ -25,7 +29,7 @@ export class KernelManager {
       if (this.controllers.has(conn.name)) {
         this.controllers.get(conn.name)!.updateConfiguration(conn);
       } else {
-        const kernel = new SQLNotebookKernel(conn, this.context);
+        const kernel = new SQLNotebookKernel(conn, this.context, this.parameterProvider);
         this.controllers.set(conn.name, kernel);
       }
     }
@@ -47,7 +51,11 @@ export class SQLNotebookKernel {
   private config: ConnData;
   private schemaCache: TableSchema[] | null = null;
 
-  constructor(initialConfig: ConnData, private readonly context: vscode.ExtensionContext) {
+  constructor(
+    initialConfig: ConnData,
+    private readonly context: vscode.ExtensionContext,
+    private readonly parameterProvider: ParameterProvider
+  ) {
     this.config = initialConfig;
     this.id = `sql-notebook-${this.config.name}`;
     this._controller = vscode.notebooks.createNotebookController(this.id, notebookType, this.config.name);
@@ -133,14 +141,71 @@ export class SQLNotebookKernel {
     execution.executionOrder = ++this._executionOrder;
     execution.start(Date.now());
 
-    const rawQuery = cell.document.getText();
+    let rawQuery = cell.document.getText();
+
+    const editor = vscode.window.activeTextEditor;
+    if (editor && editor.document.uri.toString() === cell.document.uri.toString()) {
+      const selection = editor.selection;
+      if (!selection.isEmpty) {
+        const selectedText = editor.document.getText(selection);
+        if (selectedText.trim().length > 0) {
+          rawQuery = selectedText;
+        }
+      }
+    }
+
+    try {
+      const params = this.parameterProvider.getParameters(cell.notebook.uri.toString());
+      Object.keys(params).forEach(key => {
+        const value = params[key];
+        const variableRegex = new RegExp(key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g');
+
+        let finalValue = value;
+
+        const isNumeric = (v: string) => !isNaN(parseFloat(v)) && isFinite(Number(v));
+        const isSingleQuoted = (v: string) => v.startsWith("'") && v.endsWith("'");
+        const isDoubleQuoted = (v: string) => v.startsWith('"') && v.endsWith('"');
+
+        if (value.includes(',')) {
+          const items = value.split(',').map(item => item.trim()).filter(item => item.length > 0);
+          const allQuotedOrNumeric = items.every(item => isSingleQuoted(item) || isDoubleQuoted(item) || isNumeric(item));
+
+          if (!allQuotedOrNumeric) {
+            finalValue = items
+              .map(item => {
+                if (isNumeric(item)) return item;
+                if (isSingleQuoted(item)) return item;
+                if (isDoubleQuoted(item)) {
+                  const inner = item.slice(1, -1).replace(/'/g, "''");
+                  return `'${inner}'`;
+                }
+                return `'${item.replace(/'/g, "''")}'`;
+              })
+              .join(',');
+          }
+        } else {
+          const trimmed = value.trim();
+          if (trimmed.length > 0 && !isNumeric(trimmed) && !isSingleQuoted(trimmed)) {
+            if (isDoubleQuoted(trimmed)) {
+              const inner = trimmed.slice(1, -1).replace(/'/g, "''");
+              finalValue = `'${inner}'`;
+            } else {
+              finalValue = `'${trimmed.replace(/'/g, "''")}'`;
+            }
+          }
+        }
+        rawQuery = rawQuery.replace(variableRegex, finalValue);
+      });
+    } catch (e) {
+      console.error('Failed to replace parameters', e);
+    }
+
     if (!rawQuery.trim()) {
       const emptyMsg = [{
         Status: '⚠️ Info',
         Message: 'Empty cell - No query found'
       }];
       const myMimeType = 'application/vnd.code-sql-notebook.table+json';
-      // Mantenemos compatibilidad enviando el objeto envuelto
       const outputData = {
           rows: emptyMsg,
           info: { executionTime: new Date().toLocaleTimeString() }

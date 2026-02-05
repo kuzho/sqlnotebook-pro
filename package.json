@@ -7,7 +7,7 @@
   "repository": {
     "url": "https://github.com/kuzho/sqlnotebook-pro.git"
   },
-  "version": "2.0.3",
+  "version": "2.1.0",
   "preview": false,
   "engines": {
     "vscode": "^1.75.0",
@@ -64,6 +64,11 @@
           "command": "sqlnotebook.expandAll",
           "group": "navigation",
           "when": "notebookType == 'sql-notebook' && sqlnotebook.allCollapsed"
+        },
+        {
+          "command": "sqlnotebook.openParameters",
+          "group": "navigation",
+          "when": "notebookType == 'sql-notebook'"
         }
       ],
      "notebook/cell/title": [
@@ -133,6 +138,11 @@
         "command": "sqlnotebook.expandAll",
         "title": "Expand All Codes",
         "icon": "$(expand-all)"
+      },
+      {
+        "command": "sqlnotebook.openParameters",
+        "title": "SQL Parameters",
+        "icon": "$(symbol-variable)"
       },
       {
         "command": "sqlnotebook.refreshKernels",
@@ -211,6 +221,12 @@
           "visibility": "visible"
         },
         {
+          "type": "webview",
+          "id": "sqlnotebook.parameters",
+          "name": "Parameters",
+          "visibility": "visible"
+        },
+        {
           "id": "sqlnotebook-helpfeedback",
           "name": "Help and Feedback",
           "visibility": "collapsed",
@@ -223,13 +239,14 @@
   "scripts": {
     "build": "npm run compile && npx @vscode/vsce package",
     "vscode:prepublish": "npm run compile",
-    "compile": "npm run build:server && npm run build:webview && npm run build:renderer && shx mkdir -p dist/node_modules && shx cp -r node_modules/sql.js dist/node_modules",
+    "compile": "npm run build:server && npm run build:webview && npm run build:parameters && npm run build:renderer && shx mkdir -p dist/node_modules && shx cp -r node_modules/sql.js dist/node_modules",
     "build:server": "esbuild ./src/main.ts --sourcemap --minify --bundle --platform=node --external:vscode --external:pg-native --outfile=./dist/index.js",
     "build:webview": "esbuild ./webview/main.tsx --sourcemap --minify --bundle --outfile=./dist/webview/main-bundle.js",
+    "build:parameters": "esbuild ./webview/parameters-main.tsx --sourcemap --minify --bundle --outfile=./dist/webview/parameters-bundle.js",
     "build:renderer": "esbuild ./src/renderer.tsx --bundle --outfile=./dist/renderer.js --format=esm --platform=browser",
     "clean": "rm -rf ./dist",
     "lint": "eslint src --ext ts",
-    "watch": "npm run build:server -- --watch & npm run build:webview -- --watch & npm run build:renderer -- --watch",
+    "watch": "npm run build:server -- --watch & npm run build:webview -- --watch & npm run build:parameters -- --watch & npm run build:renderer -- --watch",
     "fmt": "prettier --write --ignore-path .gitignore ."
   },
   "devDependencies": {
@@ -245,6 +262,7 @@
     "@types/vscode": "^1.75.0",
     "@types/vscode-notebook-renderer": "^1.57.8",
     "@types/vscode-webview": "^1.57.0",
+    "@vscode/codicons": "^0.0.35",
     "@typescript-eslint/eslint-plugin": "^5.30.7",
     "@typescript-eslint/parser": "^5.30.7",
     "@vscode/vsce": "^3.2.0",

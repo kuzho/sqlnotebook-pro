@@ -25,7 +25,7 @@ const styles = `
     --selection-bg: #0078d4;
     --selection-bg-dim: #0078d440;
     --selection-border: #0078d4;
-    --font-family: 'Segoe UI', 'SF Mono', Consolas, 'Courier New', monospace;
+    --font-family: 'Segoe UI', 'Segoe UI Emoji', 'Apple Color Emoji', 'SF Mono', Consolas, 'Courier New', monospace;
     --font-size: 13px;
     --row-height: 26px;
   }
@@ -391,6 +391,56 @@ const FilterMenu = ({
   );
 };
 
+const SmartCell = ({ value }: { value: any }) => {
+  if (value === null || value === undefined) {
+    return <span style={{ opacity: 0.5, fontStyle: 'italic' }}>NULL</span>;
+  }
+
+  if (typeof value === 'object') {
+    return <span style={{ fontFamily: 'monospace', fontSize: '0.9em' }}>{JSON.stringify(value)}</span>;
+  }
+
+  const str = String(value);
+
+  // 1. URL Detection
+  if (str.startsWith('http://') || str.startsWith('https://')) {
+    return (
+      <a
+        href={str}
+        target="_blank"
+        rel="noopener noreferrer"
+        style={{ color: '#3794ff', textDecoration: 'none' }}
+        onClick={(e) => e.stopPropagation()}
+        onMouseEnter={(e) => e.currentTarget.style.textDecoration = 'underline'}
+        onMouseLeave={(e) => e.currentTarget.style.textDecoration = 'none'}
+      >
+        {str}
+      </a>
+    );
+  }
+
+  const lower = str.toLowerCase();
+  let style: React.CSSProperties | null = null;
+
+  if (str.includes('🔴') || lower.includes('atrasada') || lower.includes('failed') || lower.includes('error') || lower.includes('critical')) {
+    style = { backgroundColor: '#4a1818', color: '#ff9999', border: '1px solid #752525' };
+  } else if (str.includes('🟡') || lower.includes('urgente') || lower.includes('warning') || lower.includes('pending')) {
+    style = { backgroundColor: '#4d4100', color: '#ffeb80', border: '1px solid #6e5d00' };
+  } else if (str.includes('🟢') || lower.includes('a tiempo') || lower.includes('success') || lower.includes('ready') || lower.includes('ok') || lower.includes('completed')) {
+    style = { backgroundColor: '#103d10', color: '#99ff99', border: '1px solid #1a5e1a' };
+  } else if (str.includes('⚪') || lower.includes('sin fecha') || lower.includes('inactive') || lower.includes('null') || lower.includes('none')) {
+    style = { backgroundColor: '#2d2d2d', color: '#cccccc', border: '1px solid #454545' };
+  } else if (str.includes('🔵') || lower.includes('processing') || lower.includes('running')) {
+    style = { backgroundColor: '#003366', color: '#99ccff', border: '1px solid #004488' };
+  }
+
+  if (style) {
+    return <span style={{ ...style, padding: '1px 8px', borderRadius: '10px', fontSize: '11px', display: 'inline-block', lineHeight: '1.4', fontWeight: 500 }}>{str}</span>;
+  }
+
+  return <span>{str}</span>;
+};
+
 const TableApp = ({ data, postMessage }: { data: any, postMessage?: (msg: any) => void }) => {
   const rows = Array.isArray(data) ? data : (data.rows || []);
   const executionTimeFromBackend = !Array.isArray(data) && data.info?.executionTime;
@@ -464,12 +514,7 @@ const TableApp = ({ data, postMessage }: { data: any, postMessage?: (msg: any) =
                     const val = Array.isArray(arr) ? arr[subIndex] : arr;
                     return filterValue.includes(val);
                 },
-                cell: (info: any) => {
-                    const val = info.getValue();
-                    if (val === null) return <span style={{ opacity: 0.5, fontStyle: 'italic' }}>NULL</span>;
-                    if (typeof val === 'object' && !Array.isArray(val)) return JSON.stringify(val);
-                    return String(val);
-                }
+                cell: (info: any) => <SmartCell value={info.getValue()} />
             }));
         }
 
@@ -484,12 +529,7 @@ const TableApp = ({ data, postMessage }: { data: any, postMessage?: (msg: any) =
           filterFn: (row: any, id: string, filterValue: any[]) => {
             return filterValue.includes(row.original[key]);
           },
-          cell: (info: any) => {
-            const val = info.getValue();
-            if (val === null) return <span style={{ opacity: 0.5, fontStyle: 'italic' }}>NULL</span>;
-            if (typeof val === 'object') return JSON.stringify(val);
-            return String(val);
-          }
+          cell: (info: any) => <SmartCell value={info.getValue()} />
         }];
       });
     } catch (error) {
@@ -726,8 +766,12 @@ const TableApp = ({ data, postMessage }: { data: any, postMessage?: (msg: any) =
         <div style={{flex:1}}/>
         {!isSelectNoRows && (
           <>
-            <button className="btn-action" onClick={exportExcel}>📊 Excel</button>
-            <button className="btn-action" onClick={exportCSV}>📄 CSV</button>
+            <button className="btn-action" onClick={exportExcel}>
+              📊 Excel
+            </button>
+            <button className="btn-action" onClick={exportCSV}>
+              📄 CSV
+            </button>
           </>
         )}
       </div>
@@ -739,7 +783,9 @@ const TableApp = ({ data, postMessage }: { data: any, postMessage?: (msg: any) =
               <tr key={hg.id}>
                 <th className="corner-header" onClick={handleCornerClick}>◢</th>
                 {hg.headers.map(header => (
-                  <th key={header.id} className={selection?.type==='col' && selection.ids?.has(header.id) ? 'selected-bg' : ''}>
+                  <th key={header.id}
+                      className={selection?.type==='col' && selection.ids?.has(header.id) ? 'selected-bg' : ''}
+                  >
 
                     <div
                         className="th-content"
