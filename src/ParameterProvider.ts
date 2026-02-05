@@ -3,17 +3,17 @@ import * as vscode from 'vscode';
 export class ParameterProvider implements vscode.WebviewViewProvider {
   public static readonly viewType = 'sqlnotebook.parameters';
   private _view?: vscode.WebviewView;
-  private _globalParameters: Record<string, string> = {};
+  private _globalParameters: Record<string, StoredParameter> = {};
   private _activeUri: string | null = null;
-  private _pendingLocalParamsByUri = new Map<string, Record<string, string>>();
+  private _pendingLocalParamsByUri = new Map<string, Record<string, StoredParameter>>();
   private _useLocalByUri = new Map<string, boolean>();
-  private _runtimeParamsByUri = new Map<string, Record<string, string>>();
+  private _runtimeParamsByUri = new Map<string, Record<string, StoredParameter>>();
 
   constructor(
     private readonly _extensionUri: vscode.Uri,
     private readonly _context: vscode.ExtensionContext
   ) {
-    this._globalParameters = this._context.workspaceState.get<Record<string, string>>('sqlnotebook.globalParams') || {};
+    this._globalParameters = this._context.workspaceState.get<Record<string, StoredParameter>>('sqlnotebook.globalParams') || {};
   }
 
   public resolveWebviewView(
@@ -99,7 +99,7 @@ export class ParameterProvider implements vscode.WebviewViewProvider {
               if (pending) {
                 const currentMetadata = notebook.metadata || {};
                 const custom = currentMetadata.custom || {};
-                const currentParams = (custom.parameters || {}) as Record<string, string>;
+                const currentParams = (custom.parameters || {}) as Record<string, StoredParameter>;
 
                 if (!areParamsEqual(currentParams, pending)) {
                   const edit = new vscode.WorkspaceEdit();
@@ -136,7 +136,7 @@ export class ParameterProvider implements vscode.WebviewViewProvider {
 
         const currentMetadata = notebook.metadata || {};
         const custom = currentMetadata.custom || {};
-        const currentParams = (custom.parameters || {}) as Record<string, string>;
+        const currentParams = (custom.parameters || {}) as Record<string, StoredParameter>;
 
         if (areParamsEqual(currentParams, pending)) return;
 
@@ -201,7 +201,7 @@ export class ParameterProvider implements vscode.WebviewViewProvider {
     }
   }
 
-  public getParameters(uri?: string): Record<string, string> {
+  public getParameters(uri?: string): Record<string, StoredParameter> {
     if (uri) {
       const notebook = vscode.workspace.notebookDocuments.find(nb => nb.uri.toString() === uri);
       const runtime = this._runtimeParamsByUri.get(uri);
@@ -235,14 +235,29 @@ export class ParameterProvider implements vscode.WebviewViewProvider {
   }
 }
 
-function areParamsEqual(a: Record<string, string>, b: Record<string, string>): boolean {
+function areParamsEqual(a: Record<string, StoredParameter>, b: Record<string, StoredParameter>): boolean {
   const aKeys = Object.keys(a).sort();
   const bKeys = Object.keys(b).sort();
   if (aKeys.length !== bKeys.length) return false;
   for (let i = 0; i < aKeys.length; i++) {
     const key = aKeys[i];
     if (key !== bKeys[i]) return false;
-    if (String(a[key]) !== String(b[key])) return false;
+    const aNorm = normalizeParam(a[key] as StoredParameter);
+    const bNorm = normalizeParam(b[key] as StoredParameter);
+    if (aNorm.value !== bNorm.value) return false;
+    if (aNorm.raw !== bNorm.raw) return false;
   }
   return true;
+}
+
+type StoredParameter = string | { value: string; raw?: boolean };
+
+function normalizeParam(param: StoredParameter): { value: string; raw: boolean } {
+  if (typeof param === 'string') {
+    return { value: param, raw: false };
+  }
+  if (param && typeof param === 'object') {
+    return { value: String(param.value ?? ''), raw: !!param.raw };
+  }
+  return { value: '', raw: false };
 }

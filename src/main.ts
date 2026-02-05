@@ -10,9 +10,17 @@ import * as XLSX from 'xlsx';
 import * as path from 'path';
 import * as fs from 'fs';
 import * as os from 'os';
+import { format as formatSql } from 'sql-formatter';
 
 export const notebookType = 'sql-notebook';
 export const storageKey = 'sqlnotebook-connections';
+
+const formatterLanguageByDriver: Record<string, string> = {
+  mssql: 'tsql',
+  mysql: 'mysql',
+  postgres: 'postgresql',
+  sqlite: 'sqlite'
+};
 
 export function activate(context: vscode.ExtensionContext) {
   context.subscriptions.push(
@@ -159,6 +167,34 @@ export function activate(context: vscode.ExtensionContext) {
         }
       }
       await vscode.commands.executeCommand('notebook.cell.moveDown');
+    })
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand('sqlnotebook.formatCell', async (cell: vscode.NotebookCell) => {
+      if (!cell || cell.kind !== vscode.NotebookCellKind.Code) return;
+      const doc = cell.document;
+      const source = doc.getText();
+      if (!source.trim()) return;
+
+      const activeNotebook = vscode.window.activeNotebookEditor?.notebook;
+      const driver = kernelManager.getDriverForNotebook(activeNotebook);
+      const language = driver ? formatterLanguageByDriver[driver] : 'tsql';
+
+      let formatted = source;
+      try {
+        formatted = formatSql(source, { language });
+      } catch (e: any) {
+        vscode.window.showErrorMessage(`SQL format failed: ${e?.message || e}`);
+        return;
+      }
+
+      const lastLine = doc.lineCount > 0 ? doc.lineCount - 1 : 0;
+      const lastChar = doc.lineCount > 0 ? doc.lineAt(lastLine).text.length : 0;
+      const fullRange = new vscode.Range(0, 0, lastLine, lastChar);
+      const edit = new vscode.WorkspaceEdit();
+      edit.replace(doc.uri, fullRange, formatted);
+      await vscode.workspace.applyEdit(edit);
     })
   );
 }

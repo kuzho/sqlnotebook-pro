@@ -1,5 +1,11 @@
 # Change Log
 
+## [2.1.1]
+
+### ⚡ Changed
+- **SQL Parameters:** Values are now always sent as text (single-quoted) when replacing variables.
+- **SQL Formatting:** Added a per-cell formatter button with automatic dialect detection based on the active connection.
+
 ## [2.1.0] - 2025-02-19
 
 ### ⚡ Changed

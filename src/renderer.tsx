@@ -500,22 +500,23 @@ const TableApp = ({ data, postMessage }: { data: any, postMessage?: (msg: any) =
         const isUnnamed = !key || key.trim() === '';
         const sampleValue = firstRow[key];
 
-        if (isUnnamed && Array.isArray(sampleValue)) {
-            return sampleValue.map((_, subIndex) => ({
-                id: `col_unnamed_${index}_${subIndex}`,
-                header: '(No column name)',
-                accessorFn: (row: any) => {
-                    const val = row[key];
-                    return Array.isArray(val) ? val[subIndex] : val;
-                },
-                enableColumnFilter: true,
-                filterFn: (row: any, id: string, filterValue: any[]) => {
-                    const arr = row.original[key];
-                    const val = Array.isArray(arr) ? arr[subIndex] : arr;
-                    return filterValue.includes(val);
-                },
-                cell: (info: any) => <SmartCell value={info.getValue()} />
-            }));
+        if (Array.isArray(sampleValue)) {
+          const headerLabel = isUnnamed ? '(No column name)' : key;
+          return sampleValue.map((_, subIndex) => ({
+            id: isUnnamed ? `col_unnamed_${index}_${subIndex}` : `${key}__dup_${subIndex}`,
+            header: headerLabel,
+            accessorFn: (row: any) => {
+              const val = row[key];
+              return Array.isArray(val) ? val[subIndex] : val;
+            },
+            enableColumnFilter: true,
+            filterFn: (row: any, id: string, filterValue: any[]) => {
+              const arr = row.original[key];
+              const val = Array.isArray(arr) ? arr[subIndex] : arr;
+              return filterValue.includes(val);
+            },
+            cell: (info: any) => <SmartCell value={info.getValue()} />
+          }));
         }
 
         const safeId = isUnnamed ? `col_unnamed_${index}` : key;

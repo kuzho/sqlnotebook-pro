@@ -38,7 +38,7 @@ const Parameters: React.FC = () => {
         }));
 
         if (newParamsArray.length === 0) {
-           newParamsArray.push({ id: Date.now(), name: '', value: '' });
+              newParamsArray.push({ id: Date.now(), name: '', value: '' });
         }
 
         setParameters(newParamsArray);
@@ -83,6 +83,7 @@ const Parameters: React.FC = () => {
   const handleParameterChange = (id: number, field: 'name' | 'value', newValue: string) => {
     setParameters(parameters.map(p => (p.id === id ? { ...p, [field]: newValue } : p)));
   };
+
 
   return (
     <div style={{ padding: '10px', display: 'flex', flexDirection: 'column', gap: '10px' }}>

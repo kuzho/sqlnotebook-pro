@@ -7,7 +7,7 @@
   "repository": {
     "url": "https://github.com/kuzho/sqlnotebook-pro.git"
   },
-  "version": "2.1.0",
+  "version": "2.1.1",
   "preview": false,
   "engines": {
     "vscode": "^1.75.0",
@@ -91,6 +91,11 @@
           "command": "sqlnotebook.moveCellDown",
           "group": "inline@3",
           "when": "notebookType == 'sql-notebook'"
+        },
+        {
+          "command": "sqlnotebook.formatCell",
+          "group": "inline@4",
+          "when": "notebookType == 'sql-notebook'"
         }
       ],
       "view/item/context": [
@@ -167,6 +172,11 @@
         "command": "sqlnotebook.moveCellDown",
         "title": "Move Cell Down",
         "icon": "$(arrow-down)"
+      },
+      {
+        "command": "sqlnotebook.formatCell",
+        "title": "Format SQL",
+        "icon": "$(symbol-string)"
       }
     ],
     "viewsContainers": {
@@ -285,6 +295,7 @@
     "pg": "^8.7.1",
     "react": "^17.0.2",
     "react-dom": "^17.0.2",
+    "sql-formatter": "^15.4.0",
     "sql.js": "^1.7.0",
     "vscode-languageclient": "^7.0.0",
     "xlsx": "https://cdn.sheetjs.com/xlsx-latest/xlsx-latest.tgz"

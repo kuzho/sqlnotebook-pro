@@ -6,6 +6,8 @@ import { notebookType } from './main';
 
 export class KernelManager {
   public controllers = new Map<string, SQLNotebookKernel>();
+  private selectedKernelByNotebook = new Map<string, SQLNotebookKernel>();
+  private selectionDisposablesByKernel = new Map<string, vscode.Disposable>();
 
   constructor(
     private readonly context: vscode.ExtensionContext,
@@ -20,6 +22,16 @@ export class KernelManager {
 
     for (const [name, kernel] of this.controllers) {
       if (!currentNames.has(name)) {
+        const selectionDisposable = this.selectionDisposablesByKernel.get(name);
+        if (selectionDisposable) {
+          selectionDisposable.dispose();
+          this.selectionDisposablesByKernel.delete(name);
+        }
+        for (const [uri, mappedKernel] of this.selectedKernelByNotebook.entries()) {
+          if (mappedKernel === kernel) {
+            this.selectedKernelByNotebook.delete(uri);
+          }
+        }
         kernel.dispose();
         this.controllers.delete(name);
       }
@@ -31,6 +43,15 @@ export class KernelManager {
       } else {
         const kernel = new SQLNotebookKernel(conn, this.context, this.parameterProvider);
         this.controllers.set(conn.name, kernel);
+        const selectionDisposable = kernel.onDidChangeSelectedNotebooks(({ notebook, selected }) => {
+          const uri = notebook.uri.toString();
+          if (selected) {
+            this.selectedKernelByNotebook.set(uri, kernel);
+          } else if (this.selectedKernelByNotebook.get(uri) === kernel) {
+            this.selectedKernelByNotebook.delete(uri);
+          }
+        });
+        this.selectionDisposablesByKernel.set(conn.name, selectionDisposable);
       }
     }
   }
@@ -40,6 +61,22 @@ export class KernelManager {
       kernel.dispose();
     }
     this.controllers.clear();
+    for (const disposable of this.selectionDisposablesByKernel.values()) {
+      disposable.dispose();
+    }
+    this.selectionDisposablesByKernel.clear();
+    this.selectedKernelByNotebook.clear();
+  }
+
+  public getDriverForNotebook(notebook: vscode.NotebookDocument | undefined): ConnData['driver'] | undefined {
+    if (!notebook) return undefined;
+    const uri = notebook.uri.toString();
+    const kernel = this.selectedKernelByNotebook.get(uri);
+    if (kernel) return kernel.getDriver();
+    if (this.controllers.size === 1) {
+      return [...this.controllers.values()][0].getDriver();
+    }
+    return undefined;
   }
 }
 
@@ -107,6 +144,16 @@ export class SQLNotebookKernel {
     }
   }
 
+  public getDriver(): ConnData['driver'] {
+    return this.config.driver;
+  }
+
+  public onDidChangeSelectedNotebooks(
+    listener: (e: { notebook: vscode.NotebookDocument; selected: boolean }) => any
+  ): vscode.Disposable {
+    return this._controller.onDidChangeSelectedNotebooks(listener);
+  }
+
   private async _execute(cells: vscode.NotebookCell[], _notebook: vscode.NotebookDocument, _controller: vscode.NotebookController): Promise<void> {
     for (let cell of cells) {
       await this.doExecution(cell);
@@ -157,35 +204,30 @@ export class SQLNotebookKernel {
     try {
       const params = this.parameterProvider.getParameters(cell.notebook.uri.toString());
       Object.keys(params).forEach(key => {
-        const value = params[key];
+        const param = params[key];
+        const value = typeof param === 'string' ? param : String(param?.value ?? '');
         const variableRegex = new RegExp(key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g');
 
         let finalValue = value;
 
-        const isNumeric = (v: string) => !isNaN(parseFloat(v)) && isFinite(Number(v));
         const isSingleQuoted = (v: string) => v.startsWith("'") && v.endsWith("'");
         const isDoubleQuoted = (v: string) => v.startsWith('"') && v.endsWith('"');
 
         if (value.includes(',')) {
           const items = value.split(',').map(item => item.trim()).filter(item => item.length > 0);
-          const allQuotedOrNumeric = items.every(item => isSingleQuoted(item) || isDoubleQuoted(item) || isNumeric(item));
-
-          if (!allQuotedOrNumeric) {
-            finalValue = items
-              .map(item => {
-                if (isNumeric(item)) return item;
-                if (isSingleQuoted(item)) return item;
-                if (isDoubleQuoted(item)) {
-                  const inner = item.slice(1, -1).replace(/'/g, "''");
-                  return `'${inner}'`;
-                }
-                return `'${item.replace(/'/g, "''")}'`;
-              })
-              .join(',');
-          }
+          finalValue = items
+            .map(item => {
+              if (isSingleQuoted(item)) return item;
+              if (isDoubleQuoted(item)) {
+                const inner = item.slice(1, -1).replace(/'/g, "''");
+                return `'${inner}'`;
+              }
+              return `'${item.replace(/'/g, "''")}'`;
+            })
+            .join(',');
         } else {
           const trimmed = value.trim();
-          if (trimmed.length > 0 && !isNumeric(trimmed) && !isSingleQuoted(trimmed)) {
+          if (trimmed.length > 0 && !isSingleQuoted(trimmed)) {
             if (isDoubleQuoted(trimmed)) {
               const inner = trimmed.slice(1, -1).replace(/'/g, "''");
               finalValue = `'${inner}'`;
