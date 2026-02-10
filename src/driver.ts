@@ -14,6 +14,17 @@ export type DriverKey = typeof supportedDrivers[number];
 export type TableSchema = {
   table: string;
   columns: string[];
+  schema?: string;
+  foreignKeys?: ForeignKey[];
+};
+
+export type ForeignKey = {
+  table: string;
+  column: string;
+  referencedTable: string;
+  referencedColumn: string;
+  schema?: string;
+  referencedSchema?: string;
 };
 
 export interface Pool {
@@ -194,18 +205,45 @@ function mysqlPool(pool: mysql.Pool, queryTimeout: number): Pool {
     async getSchema(): Promise<TableSchema[]> {
       try {
         const [rows] = await pool.query(`
-          SELECT TABLE_NAME, COLUMN_NAME
+          SELECT TABLE_NAME, COLUMN_NAME, TABLE_SCHEMA
           FROM INFORMATION_SCHEMA.COLUMNS
           WHERE TABLE_SCHEMA = DATABASE()
         `) as any;
 
+        const [fkRows] = await pool.query(`
+          SELECT TABLE_NAME, COLUMN_NAME, REFERENCED_TABLE_NAME, REFERENCED_COLUMN_NAME, TABLE_SCHEMA, REFERENCED_TABLE_SCHEMA
+          FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE
+          WHERE TABLE_SCHEMA = DATABASE() AND REFERENCED_TABLE_NAME IS NOT NULL
+        `) as any;
+
         const map = new Map<string, string[]>();
+        const schemaMap = new Map<string, string>();
+        const fkMap = new Map<string, ForeignKey[]>();
         rows.forEach((r: any) => {
           if (!map.has(r.TABLE_NAME)) map.set(r.TABLE_NAME, []);
           map.get(r.TABLE_NAME)?.push(r.COLUMN_NAME);
+          if (!schemaMap.has(r.TABLE_NAME)) schemaMap.set(r.TABLE_NAME, r.TABLE_SCHEMA);
         });
 
-        return Array.from(map.entries()).map(([table, columns]) => ({ table, columns }));
+        fkRows.forEach((r: any) => {
+          const entry: ForeignKey = {
+            table: r.TABLE_NAME,
+            column: r.COLUMN_NAME,
+            referencedTable: r.REFERENCED_TABLE_NAME,
+            referencedColumn: r.REFERENCED_COLUMN_NAME,
+            schema: r.TABLE_SCHEMA,
+            referencedSchema: r.REFERENCED_TABLE_SCHEMA
+          };
+          if (!fkMap.has(r.TABLE_NAME)) fkMap.set(r.TABLE_NAME, []);
+          fkMap.get(r.TABLE_NAME)?.push(entry);
+        });
+
+        return Array.from(map.entries()).map(([table, columns]) => ({
+          table,
+          columns,
+          schema: schemaMap.get(table),
+          foreignKeys: fkMap.get(table) || []
+        }));
       } catch (e) {
         console.error('Error fetching mysql schema', e);
         return [];
@@ -378,16 +416,55 @@ function mssqlPool(pool: mssql.ConnectionPool): Pool {
     async getSchema(): Promise<TableSchema[]> {
       try {
         const res = await pool.query(`
-          SELECT TABLE_NAME, COLUMN_NAME
+          SELECT TABLE_NAME, COLUMN_NAME, TABLE_SCHEMA
           FROM INFORMATION_SCHEMA.COLUMNS
         `);
 
+        const fkRes = await pool.query(`
+          SELECT
+            sch.name AS table_schema,
+            t.name AS table_name,
+            c.name AS column_name,
+            ref_sch.name AS referenced_table_schema,
+            rt.name AS referenced_table_name,
+            rc.name AS referenced_column_name
+          FROM sys.foreign_key_columns fkc
+          JOIN sys.tables t ON fkc.parent_object_id = t.object_id
+          JOIN sys.schemas sch ON t.schema_id = sch.schema_id
+          JOIN sys.columns c ON fkc.parent_object_id = c.object_id AND fkc.parent_column_id = c.column_id
+          JOIN sys.tables rt ON fkc.referenced_object_id = rt.object_id
+          JOIN sys.schemas ref_sch ON rt.schema_id = ref_sch.schema_id
+          JOIN sys.columns rc ON fkc.referenced_object_id = rc.object_id AND fkc.referenced_column_id = rc.column_id
+        `);
+
         const map = new Map<string, string[]>();
-        res.recordset.forEach(r => {
+        const schemaMap = new Map<string, string>();
+        const fkMap = new Map<string, ForeignKey[]>();
+        res.recordset.forEach((r: any) => {
           if (!map.has(r.TABLE_NAME)) map.set(r.TABLE_NAME, []);
           map.get(r.TABLE_NAME)?.push(r.COLUMN_NAME);
+          if (!schemaMap.has(r.TABLE_NAME)) schemaMap.set(r.TABLE_NAME, r.TABLE_SCHEMA);
         });
-        return Array.from(map.entries()).map(([table, columns]) => ({ table, columns }));
+
+        fkRes.recordset.forEach((r: any) => {
+          const entry: ForeignKey = {
+            table: r.table_name,
+            column: r.column_name,
+            referencedTable: r.referenced_table_name,
+            referencedColumn: r.referenced_column_name,
+            schema: r.table_schema,
+            referencedSchema: r.referenced_table_schema
+          };
+          if (!fkMap.has(r.table_name)) fkMap.set(r.table_name, []);
+          fkMap.get(r.table_name)?.push(entry);
+        });
+
+        return Array.from(map.entries()).map(([table, columns]) => ({
+          table,
+          columns,
+          schema: schemaMap.get(table),
+          foreignKeys: fkMap.get(table) || []
+        }));
       } catch(e) {
         console.error('Error fetching mssql schema', e);
         return [];

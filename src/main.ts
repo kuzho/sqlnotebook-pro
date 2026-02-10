@@ -73,7 +73,7 @@ export function activate(context: vscode.ExtensionContext) {
   const kernelManager = new KernelManager(context, parameterProvider);
   context.subscriptions.push({ dispose: () => kernelManager.dispose() });
 
-  const completionProvider = new SqlCompletionItemProvider(kernelManager);
+  const completionProvider = new SqlCompletionItemProvider(kernelManager, parameterProvider);
   context.subscriptions.push(
     vscode.languages.registerCompletionItemProvider('sql', completionProvider, '.', ' ')
   );

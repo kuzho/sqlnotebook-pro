@@ -1,10 +1,20 @@
 # Change Log
 
-## [2.1.1]
+## [2.1.2] - 2026-02-09
+
+### ⚡ Changed
+- **IntelliSense:** Added `@` parameter suggestions from the Parameters panel.
+- **IntelliSense:** Added alias-aware column suggestions (`t.` / `alias.`).
+- **IntelliSense:** Added schema-qualified table suggestions (`schema.table`).
+- **IntelliSense:** Added JOIN/ON suggestions based on foreign keys when available.
+- **IntelliSense:** Added driver-specific keywords and functions.
+
+## [2.1.1] - 2026-02-05
 
 ### ⚡ Changed
 - **SQL Parameters:** Values are now always sent as text (single-quoted) when replacing variables.
 - **SQL Formatting:** Added a per-cell formatter button with automatic dialect detection based on the active connection.
+- **Results Grid:** Duplicate columns now render as separate columns while keeping the same header label.
 
 ## [2.1.0] - 2025-02-19
 
