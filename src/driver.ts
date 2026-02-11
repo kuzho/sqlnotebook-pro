@@ -35,7 +35,12 @@ export interface Pool {
 
 export type ExecutionResult = TabularResult[];
 
-export type TabularResult = Row[];
+export type TableData = {
+  rows: Row[] | any[][];
+  columns?: string[];
+};
+
+export type TabularResult = Row[] | TableData;
 
 export type Row = { [key: string]: any };
 
@@ -139,10 +144,13 @@ function sqliteConn(conn: SqliteDatabase, dbFile?: string): Conn {
   return {
     async query(q: string): Promise<ExecutionResult> {
       const stm = conn.prepare(q);
-      const result = [stm.getAsObject()];
+      const columns = stm.getColumnNames();
+      const result: any[][] = [];
+
       while (stm.step()) {
-        result.push(stm.getAsObject());
+        result.push(stm.get());
       }
+
       stm.free();
       if (dbFile) {
         const data = conn.export();
@@ -150,7 +158,7 @@ function sqliteConn(conn: SqliteDatabase, dbFile?: string): Conn {
         await fs.writeFile(dbFile, buffer);
       }
 
-      return [result];
+      return [{ rows: result, columns }];
     },
     destroy: () => {},
     release: () => {},
@@ -261,21 +269,36 @@ function mysqlConn(conn: mysql.PoolConnection, queryTimeout: number): Conn {
       const [result, ok] = (await conn.query({
         sql: q,
         timeout: queryTimeout,
+        rowsAsArray: true,
       })) as any;
       console.debug('mysql query result', { result, ok });
 
-      if (!result.length) {
+      const normalizeRows = (rows: any, fields: any) => {
+        if (!Array.isArray(rows)) return rows;
+        const columns = Array.isArray(fields)
+          ? fields.map((f: any) => f?.name ?? '')
+          : undefined;
+        return { rows, columns } as TableData;
+      };
+
+      if (!Array.isArray(result)) {
         return [[result]];
       }
 
-      const hasMultipleResults =
-        ok.length > 1 && ok.some((a: any) => a?.length);
-      if (hasMultipleResults) {
-        return result.map((res: any) =>
-          res.length !== undefined ? res : [res]
-        );
+      if (!result.length) {
+        return [normalizeRows(result, ok)];
       }
-      return [result];
+
+      const hasMultipleResults =
+        Array.isArray(ok) && ok.length > 1 && ok.some((a: any) => a?.length);
+      if (hasMultipleResults) {
+        return result.map((res: any, idx: number) => {
+          const fields = Array.isArray(ok) ? ok[idx] : ok;
+          return res.length !== undefined ? normalizeRows(res, fields) : [res];
+        });
+      }
+
+      return [normalizeRows(result, ok)];
     },
     release() {
       conn.release();
@@ -357,18 +380,22 @@ function postgresPool(pool: pg.Pool): Pool {
 function postgresConn(conn: pg.PoolClient): Conn {
   return {
     async query(q: string): Promise<ExecutionResult> {
-      const response = (await conn.query(q)) as any as pg.QueryResult<any>[];
+      const response = (await conn.query({ text: q, rowMode: 'array' })) as any as pg.QueryResult<any>[];
       console.debug('pg query response', { response });
 
       const maybeResponses = !!response.length
         ? response
         : ([response] as any as pg.QueryResult<any>[]);
 
-      return maybeResponses.map(({ rows, rowCount }) => {
+      return maybeResponses.map(({ rows, rowCount, fields }) => {
         if (!rows.length) {
           return rowCount !== null ? [{ rowCount: rowCount }] : [];
         }
-        return rows;
+
+        const columns = Array.isArray(fields)
+          ? fields.map(f => f?.name ?? '')
+          : undefined;
+        return { rows, columns } as TableData;
       });
     },
     destroy() {
@@ -479,11 +506,48 @@ function mssqlConn(req: mssql.Request): Conn {
       req.cancel();
     },
     async query(q: string): Promise<ExecutionResult> {
+      const getColumnsFromResult = (result: any, recordset: any): string[] | undefined => {
+        const sources = [
+          recordset?.columns,
+          recordset?.columnMetadata,
+          recordset?.meta,
+          result?.columns,
+          result?.columnMetadata,
+          result?.meta
+        ];
+
+        for (const meta of sources) {
+          if (!meta) continue;
+          if (Array.isArray(meta)) {
+            return meta.map(col => {
+              if (typeof col === 'string') return col;
+              return col?.name ?? col?.colName ?? col?.columnName ?? col?.label ?? '';
+            });
+          }
+          if (typeof meta === 'object') {
+            const list = Object.values(meta) as any[];
+            if (list.length > 0) {
+              return list
+                .sort((a, b) => {
+                  const aOrder = a?.index ?? a?.ordinal ?? a?.colnum ?? a?.colNum ?? a?.columnId ?? a?.id ?? a?.order ?? 0;
+                  const bOrder = b?.index ?? b?.ordinal ?? b?.colnum ?? b?.colNum ?? b?.columnId ?? b?.id ?? b?.order ?? 0;
+                  return aOrder - bOrder;
+                })
+                .map(col => col?.name ?? col?.colName ?? col?.columnName ?? col?.label ?? '');
+            }
+          }
+        }
+        return undefined;
+      };
+
+      req.arrayRowMode = true;
       const res: any = await req.query(q);
 
-      if (res.recordsets && res.recordsets.length > 0 && res.recordsets[0].length > 0) {
-          return [res.recordsets[0]];
-      }
+        if (res.recordsets && res.recordsets.length > 0) {
+          const recordset = res.recordsets[0];
+          const columns = getColumnsFromResult(res, recordset);
+          return [{ rows: recordset, columns }];
+        }
 
         if (res.rowsAffected) {
           const statementInfos = getStatementInfos(q);

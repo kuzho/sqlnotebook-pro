@@ -199,8 +199,9 @@ export function activate(context: vscode.ExtensionContext) {
   );
 }
 
-async function handleExport({ data, format }: { data: any[], format: 'csv' | 'xlsx' }) {
-  if (!data || data.length === 0) {
+async function handleExport({ data, columns, rows, format }: { data?: any[], columns?: any[], rows?: any[][], format: 'csv' | 'xlsx' }) {
+  const hasMatrix = Array.isArray(columns) && Array.isArray(rows);
+  if ((!data || data.length === 0) && (!hasMatrix || rows!.length === 0)) {
     vscode.window.showWarningMessage('No data to export.');
     return;
   }
@@ -229,7 +230,12 @@ async function handleExport({ data, format }: { data: any[], format: 'csv' | 'xl
 
   try {
     const filePath = uri.fsPath;
-    const ws = XLSX.utils.json_to_sheet(data);
+    const ws = hasMatrix
+      ? XLSX.utils.aoa_to_sheet([
+          columns!.map(col => String(col ?? '')),
+          ...rows!
+        ])
+      : XLSX.utils.json_to_sheet(data);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Data");
 

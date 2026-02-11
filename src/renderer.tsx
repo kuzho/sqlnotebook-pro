@@ -441,8 +441,33 @@ const SmartCell = ({ value }: { value: any }) => {
   return <span>{str}</span>;
 };
 
+const normalizeRows = (rows: any[], columnOrder: string[] | null) => {
+  if (!columnOrder || !Array.isArray(rows)) return rows;
+  return rows.map(row => {
+    if (Array.isArray(row)) {
+      const obj: Record<string, any> = {};
+      columnOrder.forEach((_, idx) => {
+        obj[`col_${idx}`] = row[idx];
+      });
+      return obj;
+    }
+
+    if (row && typeof row === 'object') {
+      const obj: Record<string, any> = {};
+      columnOrder.forEach((col, idx) => {
+        obj[`col_${idx}`] = (row as any)[col];
+      });
+      return obj;
+    }
+
+    return row;
+  });
+};
+
 const TableApp = ({ data, postMessage }: { data: any, postMessage?: (msg: any) => void }) => {
-  const rows = Array.isArray(data) ? data : (data.rows || []);
+  const rawRows = Array.isArray(data) ? data : (data.rows || []);
+  const columnOrder = !Array.isArray(data) && Array.isArray(data.columns) ? data.columns : null;
+  const rows = useMemo(() => normalizeRows(rawRows, columnOrder), [rawRows, columnOrder]);
   const executionTimeFromBackend = !Array.isArray(data) && data.info?.executionTime;
   const fallbackTime = useMemo(() => new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }), []);
   const runTime = executionTimeFromBackend || fallbackTime;
@@ -496,6 +521,23 @@ const TableApp = ({ data, postMessage }: { data: any, postMessage?: (msg: any) =
       const firstRow = rows.find(row => row && typeof row === 'object');
       if (!firstRow) return [];
 
+      if (columnOrder && Array.isArray(columnOrder)) {
+        return columnOrder.map((header, index) => {
+          const safeHeader = header && String(header).trim().length > 0 ? String(header) : '(No column name)';
+          const colId = `col_${index}`;
+          return {
+            id: colId,
+            header: safeHeader,
+            accessorFn: (row: any) => row[colId],
+            enableColumnFilter: true,
+            filterFn: (row: any, id: string, filterValue: any[]) => {
+              return filterValue.includes(row.original[colId]);
+            },
+            cell: (info: any) => <SmartCell value={info.getValue()} />
+          };
+        });
+      }
+
       return Object.keys(firstRow).flatMap((key, index) => {
         const isUnnamed = !key || key.trim() === '';
         const sampleValue = firstRow[key];
@@ -537,7 +579,7 @@ const TableApp = ({ data, postMessage }: { data: any, postMessage?: (msg: any) =
         console.error("Error generating columns:", error);
         return [];
       }
-  }, [rows, isSelectNoRows]);
+  }, [rows, isSelectNoRows, columnOrder]);
 
   const table = useReactTable({
     data: statusData,
@@ -737,15 +779,29 @@ const TableApp = ({ data, postMessage }: { data: any, postMessage?: (msg: any) =
 
   const exportCSV = () => {
     if (postMessage) {
+      const exportColumns = visibleColumns.map(c => String(c.columnDef.header ?? c.id));
+      const exportRows = tableRows.map(r =>
+        visibleColumns.map(c => {
+          const value = r.getVisibleCells().find(cell => cell.column.id === c.id)?.getValue();
+          return typeof value === 'object' ? JSON.stringify(value) : value;
+        })
+      );
       const currentData = tableRows.map(r => r.original);
-      postMessage({ type: 'export_data', payload: { data: currentData, format: 'csv' } });
+      postMessage({ type: 'export_data', payload: { data: currentData, columns: exportColumns, rows: exportRows, format: 'csv' } });
     }
   };
 
   const exportExcel = () => {
     if (postMessage) {
+      const exportColumns = visibleColumns.map(c => String(c.columnDef.header ?? c.id));
+      const exportRows = tableRows.map(r =>
+        visibleColumns.map(c => {
+          const value = r.getVisibleCells().find(cell => cell.column.id === c.id)?.getValue();
+          return typeof value === 'object' ? JSON.stringify(value) : value;
+        })
+      );
       const currentData = tableRows.map(r => r.original);
-      postMessage({ type: 'export_data', payload: { data: currentData, format: 'xlsx' } });
+      postMessage({ type: 'export_data', payload: { data: currentData, columns: exportColumns, rows: exportRows, format: 'xlsx' } });
     }
   };
 

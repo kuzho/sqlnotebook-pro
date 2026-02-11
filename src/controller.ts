@@ -303,18 +303,30 @@ export class SQLNotebookKernel {
 
     const maxRows = vscode.workspace.getConfiguration('SQLNotebook').get<number>('maxResultRows') || 100;
 
+    const normalizeResult = (item: any) => {
+      if (item && typeof item === 'object' && 'rows' in item) {
+        const rows = Array.isArray(item.rows) ? item.rows : [];
+        const columns = Array.isArray(item.columns) ? item.columns : undefined;
+        return { rows, columns };
+      }
+      const rows = Array.isArray(item) ? item : [];
+      return { rows, columns: undefined };
+    };
+
     writeSuccess(
       execution,
       result.map((item) => {
-        const isTruncated = item.length > maxRows;
-        const displayData = isTruncated ? item.slice(0, maxRows) : item;
+        const normalized = normalizeResult(item);
+        const isTruncated = normalized.rows.length > maxRows;
+        const displayData = isTruncated ? normalized.rows.slice(0, maxRows) : normalized.rows;
 
         const outputData = {
             rows: displayData,
+            columns: normalized.columns,
             info: {
                 executionTime: endTime,
                 truncated: isTruncated,
-                totalRows: item.length
+                totalRows: normalized.rows.length
             }
         };
 

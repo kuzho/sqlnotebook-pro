@@ -2,14 +2,15 @@ import * as vscode from 'vscode';
 import { Row, TabularResult } from './driver';
 
 export function resultToMarkdownTable(result: TabularResult): string {
-  if (result.length < 1) {
+  const normalized = normalizeTabularResult(result);
+  if (normalized.rows.length < 1) {
     return '*Empty Results Table*';
   }
 
-  const columns = Object.keys(result[0]);
+  const columns = normalized.columns ?? Object.keys(normalized.rows[0]);
   const maxRows = getMaxRows();
 
-  let displayResult = [...result];
+  let displayResult = [...normalized.rows];
 
   if (displayResult.length > maxRows) {
     displayResult = displayResult.slice(0, maxRows);
@@ -25,6 +26,29 @@ export function resultToMarkdownTable(result: TabularResult): string {
   const rows = displayResult.map(row => markdownRow(row, columns)).join('\n');
 
   return `${header}\n${rows}`;
+}
+
+function normalizeTabularResult(result: TabularResult): { rows: Row[]; columns?: string[] } {
+  if (result && typeof result === 'object' && 'rows' in result) {
+    const rows = Array.isArray(result.rows) ? result.rows : [];
+    const columns = Array.isArray(result.columns) ? result.columns : undefined;
+    if (columns) {
+      const mapped = rows.map(row => {
+        if (Array.isArray(row)) {
+          const obj: Row = {};
+          columns.forEach((col, idx) => {
+            obj[col] = row[idx];
+          });
+          return obj;
+        }
+        return row as Row;
+      });
+      return { rows: mapped, columns };
+    }
+    return { rows: rows as Row[], columns };
+  }
+
+  return { rows: result as Row[] };
 }
 
 function getMaxRows(): number {

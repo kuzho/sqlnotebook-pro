@@ -1,5 +1,11 @@
 # Change Log
 
+## [2.1.3] - 2026-02-10
+
+### 🐛 Bug Fixes & Polish
+- **Results Grid:** Preserved exact column order from queries with duplicate column names (e.g., `SELECT col, *`) in MSSQL.
+- **Export:** CSV/XLSX exports now keep the visible column order even when duplicate headers exist.
+
 ## [2.1.2] - 2026-02-09
 
 ### ⚡ Changed
