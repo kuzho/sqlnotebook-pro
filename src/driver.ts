@@ -6,8 +6,9 @@ import * as fs from 'fs/promises';
 import type { Database as SqliteDatabase } from 'sql.js';
 import * as path from 'path';
 import * as vscode from 'vscode';
+import { Trino } from 'trino-client';
 
-const supportedDrivers = ['mysql', 'postgres', 'mssql', 'sqlite'] as const;
+const supportedDrivers = ['mysql', 'postgres', 'mssql', 'sqlite', 'trino'] as const;
 
 export type DriverKey = typeof supportedDrivers[number];
 
@@ -54,7 +55,8 @@ export type PoolConfig =
   | SqliteConfig
   | MySQLConfig
   | MSSQLConfig
-  | PostgresConfig;
+  | PostgresConfig
+  | TrinoConfig;
 
 export async function getPool(c: PoolConfig): Promise<Pool> {
   switch (c.driver) {
@@ -66,6 +68,8 @@ export async function getPool(c: PoolConfig): Promise<Pool> {
       return createPostgresPool(c);
     case 'sqlite':
       return createSqLitePool(c);
+    case 'trino':
+      return createTrinoPool(c);
     default:
       throw Error('invalid driver key');
   }
@@ -228,9 +232,13 @@ function mysqlPool(pool: mysql.Pool, queryTimeout: number): Pool {
         const schemaMap = new Map<string, string>();
         const fkMap = new Map<string, ForeignKey[]>();
         rows.forEach((r: any) => {
-          if (!map.has(r.TABLE_NAME)) map.set(r.TABLE_NAME, []);
+          if (!map.has(r.TABLE_NAME)) {
+            map.set(r.TABLE_NAME, []);
+          }
           map.get(r.TABLE_NAME)?.push(r.COLUMN_NAME);
-          if (!schemaMap.has(r.TABLE_NAME)) schemaMap.set(r.TABLE_NAME, r.TABLE_SCHEMA);
+          if (!schemaMap.has(r.TABLE_NAME)) {
+            schemaMap.set(r.TABLE_NAME, r.TABLE_SCHEMA);
+          }
         });
 
         fkRows.forEach((r: any) => {
@@ -242,7 +250,9 @@ function mysqlPool(pool: mysql.Pool, queryTimeout: number): Pool {
             schema: r.TABLE_SCHEMA,
             referencedSchema: r.REFERENCED_TABLE_SCHEMA
           };
-          if (!fkMap.has(r.TABLE_NAME)) fkMap.set(r.TABLE_NAME, []);
+          if (!fkMap.has(r.TABLE_NAME)) {
+            fkMap.set(r.TABLE_NAME, []);
+          }
           fkMap.get(r.TABLE_NAME)?.push(entry);
         });
 
@@ -274,7 +284,9 @@ function mysqlConn(conn: mysql.PoolConnection, queryTimeout: number): Conn {
       console.debug('mysql query result', { result, ok });
 
       const normalizeRows = (rows: any, fields: any) => {
-        if (!Array.isArray(rows)) return rows;
+        if (!Array.isArray(rows)) {
+          return rows;
+        }
         const columns = Array.isArray(fields)
           ? fields.map((f: any) => f?.name ?? '')
           : undefined;
@@ -358,17 +370,24 @@ function postgresPool(pool: pg.Pool): Pool {
     async getSchema(): Promise<TableSchema[]> {
       try {
         const res = await pool.query(`
-          SELECT table_name, column_name
+          SELECT table_schema, table_name, column_name
           FROM information_schema.columns
-          WHERE table_schema = 'public'
+          WHERE table_schema NOT IN ('pg_catalog', 'information_schema')
         `);
 
-        const map = new Map<string, string[]>();
+        const map = new Map<string, TableSchema>();
         res.rows.forEach(r => {
-          if (!map.has(r.table_name)) map.set(r.table_name, []);
-          map.get(r.table_name)?.push(r.column_name);
+          const key = `${r.table_schema}.${r.table_name}`;
+          if (!map.has(key)) {
+            map.set(key, {
+              table: r.table_name,
+              schema: r.table_schema,
+              columns: []
+            });
+          }
+          map.get(key)?.columns.push(r.column_name);
         });
-        return Array.from(map.entries()).map(([table, columns]) => ({ table, columns }));
+        return Array.from(map.values());
       } catch (e) {
         console.error('Error fetching pg schema', e);
         return [];
@@ -424,7 +443,10 @@ async function createMSSQLPool(config: MSSQLConfig): Promise<Pool> {
     options: {
       encrypt: config.encrypt,
       trustServerCertificate: config.trustServerCertificate,
-    },
+      cryptoCredentialsDetails: {
+        minVersion: 'TLSv1'
+      }
+    } as any,
   });
 
   await pool.connect();
@@ -468,9 +490,13 @@ function mssqlPool(pool: mssql.ConnectionPool): Pool {
         const schemaMap = new Map<string, string>();
         const fkMap = new Map<string, ForeignKey[]>();
         res.recordset.forEach((r: any) => {
-          if (!map.has(r.TABLE_NAME)) map.set(r.TABLE_NAME, []);
+          if (!map.has(r.TABLE_NAME)) {
+            map.set(r.TABLE_NAME, []);
+          }
           map.get(r.TABLE_NAME)?.push(r.COLUMN_NAME);
-          if (!schemaMap.has(r.TABLE_NAME)) schemaMap.set(r.TABLE_NAME, r.TABLE_SCHEMA);
+          if (!schemaMap.has(r.TABLE_NAME)) {
+            schemaMap.set(r.TABLE_NAME, r.TABLE_SCHEMA);
+          }
         });
 
         fkRes.recordset.forEach((r: any) => {
@@ -482,7 +508,9 @@ function mssqlPool(pool: mssql.ConnectionPool): Pool {
             schema: r.table_schema,
             referencedSchema: r.referenced_table_schema
           };
-          if (!fkMap.has(r.table_name)) fkMap.set(r.table_name, []);
+          if (!fkMap.has(r.table_name)) {
+            fkMap.set(r.table_name, []);
+          }
           fkMap.get(r.table_name)?.push(entry);
         });
 
@@ -517,10 +545,14 @@ function mssqlConn(req: mssql.Request): Conn {
         ];
 
         for (const meta of sources) {
-          if (!meta) continue;
+          if (!meta) {
+            continue;
+          }
           if (Array.isArray(meta)) {
             return meta.map(col => {
-              if (typeof col === 'string') return col;
+              if (typeof col === 'string') {
+                return col;
+              }
               return col?.name ?? col?.colName ?? col?.columnName ?? col?.label ?? '';
             });
           }
@@ -540,7 +572,7 @@ function mssqlConn(req: mssql.Request): Conn {
         return undefined;
       };
 
-      req.arrayRowMode = true;
+      (req as any).arrayRowMode = true;
       const res: any = await req.query(q);
 
         if (res.recordsets && res.recordsets.length > 0) {
@@ -552,11 +584,19 @@ function mssqlConn(req: mssql.Request): Conn {
         if (res.rowsAffected) {
           const statementInfos = getStatementInfos(q);
           if (Array.isArray(res.rowsAffected) && res.rowsAffected.length > 1) {
-              const details = res.rowsAffected.map((count: number, index: number) => ({
-              Step: statementInfos[index]?.label || `Operation #${index + 1}`,
-                  RowsAffected: count,
-              Type: statementInfos[index]?.type || 'Statement'
-              }));
+              const details = res.rowsAffected.map((count: number, index: number) => {
+                const info = statementInfos[index];
+                if (info) {
+                  return { Step: info.label, RowsAffected: count, Type: info.type };
+                }
+                let stepLabel = `Trigger / Internal (Seq ${index + 1})`;
+                if (statementInfos.length === 1) {
+                  stepLabel = `Trigger Execution (caused by ${statementInfos[0].type})`;
+                }
+                return {
+                  Step: stepLabel, RowsAffected: count, Type: 'Trigger'
+                };
+              });
               return [details];
           }
 
@@ -652,7 +692,9 @@ function splitSqlStatements(sql: string): string[] {
 
     if (ch === ';' && !inSingle && !inDouble) {
       const trimmed = current.trim();
-      if (trimmed.length > 0) statements.push(trimmed);
+      if (trimmed.length > 0) {
+        statements.push(trimmed);
+      }
       current = '';
       continue;
     }
@@ -661,44 +703,49 @@ function splitSqlStatements(sql: string): string[] {
   }
 
   const finalTrimmed = current.trim();
-  if (finalTrimmed.length > 0) statements.push(finalTrimmed);
+  if (finalTrimmed.length > 0) {
+    statements.push(finalTrimmed);
+  }
   return statements;
 }
 
 function getStatementInfo(statement: string): { type: string; label: string } {
   const cleaned = statement.trim();
-  if (!cleaned) return { type: 'Statement', label: 'Operation' };
+  if (!cleaned) {
+    return { type: 'Statement', label: 'Operation' };
+  }
 
-  const tableNamePattern = /([#\w.\[\]]+)/;
+  // Regex mejorado para soportar [], "", `` y #temp tables (Universal)
+  const namePat = "([#\\w.\\[\\]\"`]+)";
 
-  const ddlMatch = cleaned.match(/\b(CREATE|ALTER|DROP|TRUNCATE)\s+TABLE\s+([#\w.\[\]]+)/i);
+  const ddlMatch = cleaned.match(new RegExp(`\\b(CREATE|ALTER|DROP|TRUNCATE)\\s+TABLE\\s+${namePat}`, 'i'));
   if (ddlMatch) {
     const type = `${ddlMatch[1].toUpperCase()} TABLE`;
     const target = ddlMatch[2];
     return { type, label: `${type} ${target}` };
   }
 
-  const insertMatch = cleaned.match(/\bINSERT\s+INTO\s+([#\w.\[\]]+)/i);
+  const insertMatch = cleaned.match(new RegExp(`\\bINSERT\\s+INTO\\s+${namePat}`, 'i'));
   if (insertMatch) {
     return { type: 'INSERT', label: `INSERT ${insertMatch[1]}` };
   }
 
-  const updateMatch = cleaned.match(/\bUPDATE\s+([#\w.\[\]]+)/i);
+  const updateMatch = cleaned.match(new RegExp(`\\bUPDATE\\s+${namePat}`, 'i'));
   if (updateMatch) {
     return { type: 'UPDATE', label: `UPDATE ${updateMatch[1]}` };
   }
 
-  const deleteMatch = cleaned.match(/\bDELETE\s+FROM\s+([#\w.\[\]]+)/i);
+  const deleteMatch = cleaned.match(new RegExp(`\\bDELETE\\s+FROM\\s+${namePat}`, 'i'));
   if (deleteMatch) {
     return { type: 'DELETE', label: `DELETE ${deleteMatch[1]}` };
   }
 
-  const mergeMatch = cleaned.match(/\bMERGE\s+INTO\s+([#\w.\[\]]+)/i);
+  const mergeMatch = cleaned.match(new RegExp(`\\bMERGE\\s+INTO\\s+${namePat}`, 'i'));
   if (mergeMatch) {
     return { type: 'MERGE', label: `MERGE ${mergeMatch[1]}` };
   }
 
-  const execMatch = cleaned.match(/\bEXEC(?:UTE)?\s+([#\w.\[\]]+)/i);
+  const execMatch = cleaned.match(new RegExp(`\\bEXEC(?:UTE)?\\s+${namePat}`, 'i'));
   if (execMatch) {
     return { type: 'EXEC', label: `EXEC ${execMatch[1]}` };
   }
@@ -715,4 +762,101 @@ function getStatementInfo(statement: string): { type: string; label: string } {
   }
 
   return { type: 'Statement', label: 'Operation' };
+}
+
+interface TrinoConfig extends BaseConfig {
+  driver: 'trino';
+}
+
+async function createTrinoPool(config: TrinoConfig): Promise<Pool> {
+  return trinoPool(config);
+}
+
+function trinoPool(config: TrinoConfig): Pool {
+  return {
+    async getConnection(): Promise<Conn> {
+      return trinoConn(config);
+    },
+    end() {},
+    async getSchema(): Promise<TableSchema[]> {
+      try {
+        const [catalog] = (config.database || '').split('/');
+        const client: any = Trino.create({
+          server: `${config.host}:${config.port}`,
+          catalog: catalog,
+          schema: 'information_schema',
+          auth: {
+            user: config.user,
+            password: config.password,
+          },
+        });
+
+        const rows = await new Promise<any[]>((resolve, reject) => {
+          const all: any[] = [];
+          client.execute({
+            query: `SELECT table_schema, table_name, column_name FROM columns WHERE table_schema NOT IN ('information_schema', 'sys')`,
+            data: (_err: any, data: any[]) => {
+              if (data) {
+                all.push(...data);
+              }
+            },
+            success: () => resolve(all),
+            error: (err: any) => reject(err),
+          });
+        });
+
+        const map = new Map<string, TableSchema>();
+        rows.forEach((r) => {
+          const key = `${r[0]}.${r[1]}`;
+          if (!map.has(key)) {
+            map.set(key, { table: r[1], schema: r[0], columns: [] });
+          }
+          map.get(key)?.columns.push(r[2]);
+        });
+        return Array.from(map.values());
+      } catch (e) {
+        console.error('Error fetching trino schema', e);
+        return [];
+      }
+    },
+  };
+}
+
+function trinoConn(config: TrinoConfig): Conn {
+  const [catalog, schema] = (config.database || '').split('/');
+  const client: any = Trino.create({
+    server: `${config.host}:${config.port}`,
+    catalog: catalog,
+    schema: schema || 'default',
+    auth: {
+      user: config.user,
+      password: config.password,
+    },
+  });
+
+  return {
+    async query(q: string): Promise<ExecutionResult> {
+      return new Promise((resolve, reject) => {
+        const rows: any[] = [];
+        let columns: string[] | undefined;
+        client.execute({
+          query: q,
+          data: (_err: any, data: any[], cols: any[]) => {
+            if (cols && !columns) {
+              columns = cols.map((c) => c.name);
+            }
+            if (data) {
+              rows.push(...data);
+            }
+          },
+          success: () => {
+            resolve([{ rows, columns }]);
+          },
+          error: (err: any) => reject(new Error(err.message || err)),
+        });
+      });
+    },
+    release() {},
+    destroy() {},
+  };
 }

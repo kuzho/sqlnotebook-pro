@@ -19,7 +19,8 @@ const formatterLanguageByDriver: Record<string, string> = {
   mssql: 'tsql',
   mysql: 'mysql',
   postgres: 'postgresql',
-  sqlite: 'sqlite'
+  sqlite: 'sqlite',
+  trino: 'trino'
 };
 
 export function activate(context: vscode.ExtensionContext) {
@@ -117,7 +118,12 @@ export function activate(context: vscode.ExtensionContext) {
       'sqlnotebook.expandCell',
       async (cell: vscode.NotebookCell) => {
         const editor = vscode.window.activeNotebookEditor;
-        if (!editor || !cell) return;
+        if (!editor || !cell) {
+          return;
+        }
+        if (!editor || !cell) {
+          return;
+        }
         const range = new vscode.NotebookRange(cell.index, cell.index + 1);
         editor.selection = range;
         editor.revealRange(range);
@@ -132,7 +138,9 @@ export function activate(context: vscode.ExtensionContext) {
       'sqlnotebook.collapseCell',
       async (cell: vscode.NotebookCell) => {
         const editor = vscode.window.activeNotebookEditor;
-        if (!editor || !cell) return;
+        if (!editor || !cell) {
+          return;
+        }
         const range = new vscode.NotebookRange(cell.index, cell.index + 1);
         editor.selection = range;
         editor.revealRange(range);
@@ -172,10 +180,14 @@ export function activate(context: vscode.ExtensionContext) {
 
   context.subscriptions.push(
     vscode.commands.registerCommand('sqlnotebook.formatCell', async (cell: vscode.NotebookCell) => {
-      if (!cell || cell.kind !== vscode.NotebookCellKind.Code) return;
+      if (!cell || cell.kind !== vscode.NotebookCellKind.Code) {
+        return;
+      }
       const doc = cell.document;
       const source = doc.getText();
-      if (!source.trim()) return;
+      if (!source.trim()) {
+        return;
+      }
 
       const activeNotebook = vscode.window.activeNotebookEditor?.notebook;
       const driver = kernelManager.getDriverForNotebook(activeNotebook);
@@ -183,7 +195,7 @@ export function activate(context: vscode.ExtensionContext) {
 
       let formatted = source;
       try {
-        formatted = formatSql(source, { language });
+        formatted = formatSql(source, { language: language as any });
       } catch (e: any) {
         vscode.window.showErrorMessage(`SQL format failed: ${e?.message || e}`);
         return;
@@ -216,7 +228,7 @@ async function handleExport({ data, columns, rows, format }: { data?: any[], col
       defaultUri = vscode.Uri.file(path.join(os.homedir(), 'Downloads', defaultFilename));
   }
 
-  const filters = format === 'xlsx'
+  const filters: { [name: string]: string[] } = format === 'xlsx'
     ? { 'Excel files': ['xlsx'] }
     : { 'CSV files': ['csv'] };
 
@@ -226,7 +238,9 @@ async function handleExport({ data, columns, rows, format }: { data?: any[], col
     defaultUri
   });
 
-  if (!uri) return;
+  if (!uri) {
+    return;
+  }
 
   try {
     const filePath = uri.fsPath;
@@ -235,7 +249,7 @@ async function handleExport({ data, columns, rows, format }: { data?: any[], col
           columns!.map(col => String(col ?? '')),
           ...rows!
         ])
-      : XLSX.utils.json_to_sheet(data);
+      : XLSX.utils.json_to_sheet(data || []);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Data");
 
@@ -247,7 +261,7 @@ async function handleExport({ data, columns, rows, format }: { data?: any[], col
       fs.writeFileSync(filePath, buffer);
     }
 
-    const openAfterExport = vscode.workspace.getConfiguration('SQLNotebook').get('openAfterExport');
+    const openAfterExport = vscode.workspace.getConfiguration('sqlnotebook').get('openAfterExport');
 
     if (openAfterExport) {
       await vscode.env.openExternal(vscode.Uri.file(filePath));

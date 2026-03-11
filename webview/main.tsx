@@ -22,8 +22,12 @@ function processFormData(form: HTMLFormElement) {
   // @ts-ignore: Object.fromEntries
   const data = Object.fromEntries(new FormData(form));
 
-  if (data.encrypt) data.encrypt = !!data.encrypt;
-  if (data.trustServerCertificate) data.trustServerCertificate = !!data.trustServerCertificate;
+  if (data.encrypt) {
+    data.encrypt = !!data.encrypt;
+  }
+  if (data.trustServerCertificate) {
+    data.trustServerCertificate = !!data.trustServerCertificate;
+  }
   return data;
 }
 

@@ -103,8 +103,12 @@ export class SQLSerializer implements vscode.NotebookSerializer {
         'sql'
       );
 
-      if (outputs.length > 0) cell.outputs = outputs;
-      if (savedSummary) cell.executionSummary = savedSummary;
+      if (outputs.length > 0) {
+        cell.outputs = outputs;
+      }
+      if (savedSummary) {
+        cell.executionSummary = savedSummary;
+      }
 
       return cell;
 

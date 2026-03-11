@@ -84,8 +84,8 @@ export class ConnectionListItem extends vscode.TreeItem {
   constructor(public readonly config: ConnData, public readonly collapsibleState: vscode.TreeItemCollapsibleState) {
     super(config.name, collapsibleState);
     this.iconPath = {
-      dark: path.join(mediaDir, 'dark', 'database.svg'),
-      light: path.join(mediaDir, 'light', 'database.svg'),
+      dark: vscode.Uri.file(path.join(mediaDir, 'dark', 'database.svg')),
+      light: vscode.Uri.file(path.join(mediaDir, 'light', 'database.svg')),
     };
     this.description = config.driver;
     this.contextValue = 'database';

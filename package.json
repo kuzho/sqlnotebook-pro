@@ -7,7 +7,7 @@
   "repository": {
     "url": "https://github.com/kuzho/sqlnotebook-pro.git"
   },
-  "version": "2.1.3",
+  "version": "2.1.4",
   "preview": false,
   "engines": {
     "vscode": "^1.75.0",
@@ -71,7 +71,7 @@
           "when": "notebookType == 'sql-notebook'"
         }
       ],
-     "notebook/cell/title": [
+      "notebook/cell/title": [
         {
           "command": "sqlnotebook.collapseCell",
           "group": "inline@0",
@@ -197,20 +197,26 @@
           "description": "List of saved database connection configurations.",
           "scope": "window"
         },
-        "SQLNotebook.queryTimeout": {
+        "sqlnotebook.queryTimeout": {
           "type": "number",
           "default": 30000,
           "description": "Query timeout in milliseconds for cell query execution."
         },
-        "SQLNotebook.maxResultRows": {
+        "sqlnotebook.maxResultRows": {
           "type": "number",
           "default": 100,
           "description": "Maximum number of result rows to display before truncating result table."
         },
-        "SQLNotebook.openAfterExport": {
+        "sqlnotebook.openAfterExport": {
           "type": "boolean",
           "default": true,
           "description": "Automatically open Excel/CSV files after exporting."
+        },
+        "sqlnotebook.executeSelection": {
+          "type": "boolean",
+          "default": true,
+          "description": "If enabled, running a cell with a text selection will only execute the selected query. If disabled, the entire cell is always executed.",
+          "scope": "window"
         }
       }
     },
@@ -228,13 +234,15 @@
           "id": "sqlnotebook.connectionForm",
           "name": "New SQL Connection",
           "contextualTitle": "New Connection",
-          "visibility": "visible"
+          "visibility": "visible",
+          "icon": "media/logo.svg"
         },
         {
           "type": "webview",
           "id": "sqlnotebook.parameters",
           "name": "Parameters",
-          "visibility": "visible"
+          "visibility": "visible",
+          "icon": "media/logo.svg"
         },
         {
           "id": "sqlnotebook-helpfeedback",
@@ -244,7 +252,14 @@
           "contextualTitle": "Help and Feedback"
         }
       ]
-    }
+    },
+    "keybindings": [
+      {
+        "command": "sqlnotebook.openParameters",
+        "key": "f5",
+        "when": "editorTextFocus && editorLangId == 'sql'"
+      }
+    ]
   },
   "scripts": {
     "build": "npm run compile && npx @vscode/vsce package",
@@ -272,9 +287,9 @@
     "@types/vscode": "^1.75.0",
     "@types/vscode-notebook-renderer": "^1.57.8",
     "@types/vscode-webview": "^1.57.0",
-    "@vscode/codicons": "^0.0.35",
     "@typescript-eslint/eslint-plugin": "^5.30.7",
     "@typescript-eslint/parser": "^5.30.7",
+    "@vscode/codicons": "^0.0.35",
     "@vscode/vsce": "^3.2.0",
     "esbuild": "^0.27.2",
     "eslint": "^8.20.0",
@@ -284,7 +299,7 @@
     "shx": "^0.3.4",
     "typescript": "^5.0.4",
     "vscode-notebook-error-overlay": "^1.0.1",
-    "vscode-test": "^1.6.1"
+    "vscode-test": "^1.4.1"
   },
   "dependencies": {
     "@tanstack/react-table": "^8.21.3",
@@ -297,8 +312,12 @@
     "react-dom": "^17.0.2",
     "sql-formatter": "^15.4.0",
     "sql.js": "^1.7.0",
+    "trino-client": "^0.2.0",
     "vscode-languageclient": "^7.0.0",
     "xlsx": "https://cdn.sheetjs.com/xlsx-latest/xlsx-latest.tgz"
+  },
+  "overrides": {
+    "axios": "^1.7.9"
   },
   "prettier": {
     "semi": true,

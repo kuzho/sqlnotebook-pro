@@ -59,7 +59,9 @@ class SQLConfigurationViewProvider implements vscode.WebviewViewProvider {
              } catch(e) {}
           }
 
-          if (!isValid(tempConfig, true)) return;
+          if (!isValid(tempConfig, true)) {
+            return;
+          }
 
           try {
              vscode.window.setStatusBarMessage('$(sync~spin) Testing connection...', 2000);
@@ -92,7 +94,9 @@ class SQLConfigurationViewProvider implements vscode.WebviewViewProvider {
             port: parseInt(port),
           };
 
-          if (!isValid(newConfig)) return;
+          if (!isValid(newConfig)) {
+            return;
+          }
 
           const config = vscode.workspace.getConfiguration('sqlnotebook');
           const connections = config.get<ConnData[]>('connections') || [];
@@ -133,7 +137,9 @@ class SQLConfigurationViewProvider implements vscode.WebviewViewProvider {
 
 function isValid(config: ConnData, isTest = false): boolean {
   if (config.driver === 'sqlite') {
-    if (config.path) return true;
+    if (config.path) {
+      return true;
+    }
     vscode.window.showErrorMessage(`Invalid "Path".`);
     return false;
   }

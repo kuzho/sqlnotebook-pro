@@ -42,7 +42,9 @@ export class ParameterProvider implements vscode.WebviewViewProvider {
                 targetUri = vscode.window.activeNotebookEditor.notebook.uri.toString();
             } else {
                 const visible = vscode.window.visibleNotebookEditors.find(ne => ne.notebook.notebookType === 'sql-notebook');
-                if (visible) targetUri = visible.notebook.uri.toString();
+                if (visible) {
+                    targetUri = visible.notebook.uri.toString();
+                }
             }
         }
 
@@ -84,7 +86,9 @@ export class ParameterProvider implements vscode.WebviewViewProvider {
             targetUri = vscode.window.activeNotebookEditor.notebook.uri.toString();
           } else {
             const visible = vscode.window.visibleNotebookEditors.find(ne => ne.notebook.notebookType === 'sql-notebook');
-            if (visible) targetUri = visible.notebook.uri.toString();
+            if (visible) {
+              targetUri = visible.notebook.uri.toString();
+            }
           }
         }
 
@@ -125,20 +129,28 @@ export class ParameterProvider implements vscode.WebviewViewProvider {
     this._context.subscriptions.push(
       vscode.workspace.onWillSaveNotebookDocument(async e => {
         const notebook = e.notebook;
-        if (notebook.notebookType !== 'sql-notebook') return;
+        if (notebook.notebookType !== 'sql-notebook') {
+          return;
+        }
 
         const uriKey = notebook.uri.toString();
         const useLocal = this._useLocalByUri.get(uriKey);
-        if (!useLocal) return;
+        if (!useLocal) {
+          return;
+        }
 
         const pending = this._pendingLocalParamsByUri.get(uriKey);
-        if (!pending) return;
+        if (!pending) {
+          return;
+        }
 
         const currentMetadata = notebook.metadata || {};
         const custom = currentMetadata.custom || {};
         const currentParams = (custom.parameters || {}) as Record<string, StoredParameter>;
 
-        if (areParamsEqual(currentParams, pending)) return;
+        if (areParamsEqual(currentParams, pending)) {
+          return;
+        }
 
         const edit = new vscode.WorkspaceEdit();
         edit.set(notebook.uri, [vscode.NotebookEdit.updateNotebookMetadata({
@@ -151,11 +163,17 @@ export class ParameterProvider implements vscode.WebviewViewProvider {
 
     this._context.subscriptions.push(
       vscode.workspace.onDidSaveNotebookDocument((notebook) => {
-        if (notebook.notebookType !== 'sql-notebook') return;
+        if (notebook.notebookType !== 'sql-notebook') {
+          return;
+        }
         const uriKey = notebook.uri.toString();
         const useLocal = this._useLocalByUri.get(uriKey);
-        if (!useLocal) return;
-        if (!notebook.metadata?.custom?.parameters) return;
+        if (!useLocal) {
+          return;
+        }
+        if (!notebook.metadata?.custom?.parameters) {
+          return;
+        }
 
         vscode.window.setStatusBarMessage('SQL Parameters saved', 2000);
       })
@@ -205,7 +223,9 @@ export class ParameterProvider implements vscode.WebviewViewProvider {
     if (uri) {
       const notebook = vscode.workspace.notebookDocuments.find(nb => nb.uri.toString() === uri);
       const runtime = this._runtimeParamsByUri.get(uri);
-      if (runtime) return runtime;
+      if (runtime) {
+        return runtime;
+      }
       if (notebook && notebook.metadata?.custom?.parameters) {
         const stored = notebook.metadata.custom.parameters;
         this._runtimeParamsByUri.set(uri, stored);
@@ -238,14 +258,22 @@ export class ParameterProvider implements vscode.WebviewViewProvider {
 function areParamsEqual(a: Record<string, StoredParameter>, b: Record<string, StoredParameter>): boolean {
   const aKeys = Object.keys(a).sort();
   const bKeys = Object.keys(b).sort();
-  if (aKeys.length !== bKeys.length) return false;
+  if (aKeys.length !== bKeys.length) {
+    return false;
+  }
   for (let i = 0; i < aKeys.length; i++) {
     const key = aKeys[i];
-    if (key !== bKeys[i]) return false;
+    if (key !== bKeys[i]) {
+      return false;
+    }
     const aNorm = normalizeParam(a[key] as StoredParameter);
     const bNorm = normalizeParam(b[key] as StoredParameter);
-    if (aNorm.value !== bNorm.value) return false;
-    if (aNorm.raw !== bNorm.raw) return false;
+    if (aNorm.value !== bNorm.value) {
+      return false;
+    }
+    if (aNorm.raw !== bNorm.raw) {
+      return false;
+    }
   }
   return true;
 }

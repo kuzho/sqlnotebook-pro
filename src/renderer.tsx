@@ -1,3 +1,5 @@
+/// <reference lib="dom" />
+
 import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import ReactDOM from 'react-dom';
 import type { ActivationFunction } from 'vscode-notebook-renderer';
@@ -270,7 +272,7 @@ const FilterMenu = ({
 
   const uniqueValues = useMemo(() => {
     const unique = column.getFacetedUniqueValues?.();
-    if (!unique || typeof unique.keys !== 'function') return [];
+    if (!unique || typeof unique.keys !== 'function') {return [];}
 
     return Array.from(unique.keys()).map(val => {
       const label =
@@ -306,7 +308,7 @@ const FilterMenu = ({
       const showAbove = spaceBelow < MENU_HEIGHT;
 
       let left = rect.right - 240;
-      if (left < 0) left = rect.left;
+      if (left < 0) {left = rect.left;}
 
       setCoords({
         x: left,
@@ -318,7 +320,7 @@ const FilterMenu = ({
   }, [isOpen]);
 
   useEffect(() => {
-    if (!isOpen) return;
+    if (!isOpen) {return;}
     const close = (e: MouseEvent) => {
       if (triggerRef.current && !triggerRef.current.contains(e.target as Node)) {
          onClose();
@@ -442,7 +444,7 @@ const SmartCell = ({ value }: { value: any }) => {
 };
 
 const normalizeRows = (rows: any[], columnOrder: string[] | null) => {
-  if (!columnOrder || !Array.isArray(rows)) return rows;
+  if (!columnOrder || !Array.isArray(rows)) {return rows;}
   return rows.map(row => {
     if (Array.isArray(row)) {
       const obj: Record<string, any> = {};
@@ -516,10 +518,10 @@ const TableApp = ({ data, postMessage }: { data: any, postMessage?: (msg: any) =
           { header: 'message', accessorKey: 'message' }
         ];
       }
-      if (!rows || !Array.isArray(rows) || rows.length === 0) return [];
+      if (!rows || !Array.isArray(rows) || rows.length === 0) {return [];}
 
       const firstRow = rows.find(row => row && typeof row === 'object');
-      if (!firstRow) return [];
+      if (!firstRow) {return [];}
 
       if (columnOrder && Array.isArray(columnOrder)) {
         return columnOrder.map((header, index) => {
@@ -611,7 +613,7 @@ const TableApp = ({ data, postMessage }: { data: any, postMessage?: (msg: any) =
   };
 
   const handleCopy = useCallback(() => {
-    if (!selection) return;
+    if (!selection) {return;}
 
     const getVal = (r: number, cId: string) => {
       const cell = tableRows[r]?.getVisibleCells().find(c => c.column.id === cId);
@@ -621,7 +623,7 @@ const TableApp = ({ data, postMessage }: { data: any, postMessage?: (msg: any) =
 
     let rowsToText: string[] = [];
 
-    if (selection.type === 'multi' && selection.ranges) {
+    if (selection.type === 'multi' && Array.isArray(selection.ranges)) {
       selection.ranges.forEach((range, idx) => {
         const { r1, c1, r2, c2 } = range;
         const minR = Math.min(r1, r2), maxR = Math.max(r1, r2);
@@ -637,7 +639,7 @@ const TableApp = ({ data, postMessage }: { data: any, postMessage?: (msg: any) =
           rowsToText.push(line.join('\t'));
         }
 
-        if (idx < selection.ranges.length - 1) {
+        if (selection.ranges && idx < selection.ranges.length - 1) {
           rowsToText.push('');
         }
       });
@@ -742,13 +744,13 @@ const TableApp = ({ data, postMessage }: { data: any, postMessage?: (msg: any) =
   };
 
   const getCellClass = (r:number, c:number, colId: string) => {
-    if (!selection) return '';
+    if (!selection) {return '';}
     let isSel = false;
     let rangeForBorders = null;
 
-    if (selection.type==='all') isSel=true;
-    if (selection.type==='row' && selection.ids?.has(r)) isSel=true;
-    if (selection.type==='col' && selection.ids?.has(colId)) isSel=true;
+    if (selection.type==='all') {isSel=true;}
+    if (selection.type==='row' && selection.ids?.has(r)) {isSel=true;}
+    if (selection.type==='col' && selection.ids?.has(colId)) {isSel=true;}
 
     if (selection.type==='range' && selection.range) {
       const {r1,c1,r2,c2}=selection.range;
@@ -772,7 +774,7 @@ const TableApp = ({ data, postMessage }: { data: any, postMessage?: (msg: any) =
     if(isSel && rangeForBorders) {
        const {r1,c1,r2,c2}=rangeForBorders;
        const minR=Math.min(r1,r2), maxR=Math.max(r1,r2), minC=Math.min(c1,c2), maxC=Math.max(c1,c2);
-       if(r===minR) borders+='bt '; if(r===maxR) borders+='bb '; if(c===minC) borders+='bl '; if(c===maxC) borders+='br ';
+       if(r===minR) {borders+='bt ';} if(r===maxR) {borders+='bb ';} if(c===minC) {borders+='bl ';} if(c===maxC) {borders+='br ';}
     }
     return isSel ? `selected-bg ${borders}` : '';
   };

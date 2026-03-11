@@ -15,6 +15,31 @@ interface Parameter {
   value: string;
 }
 
+const unformatSqlValue = (sqlValue: string): string => {
+  const trimmed = String(sqlValue || '').trim();
+
+  // For backward compatibility, handle the old format ('val1','val2')
+  let processableString = trimmed;
+  if (trimmed.startsWith('(') && trimmed.endsWith(')')) {
+    processableString = trimmed.slice(1, -1);
+  }
+
+  // This handles the new format "'val1','val2'" -> "val1,val2"
+  // and also single values "'my_value'" -> "my_value"
+  const items = processableString.split(',')
+    .map(item => {
+        const trimmedItem = item.trim();
+        // remove surrounding quotes 'val1' -> val1
+        if (trimmedItem.startsWith("'") && trimmedItem.endsWith("'")) {
+          const dequoted = trimmedItem.slice(1, -1);
+          // un-escape quotes O''Malley -> O'Malley
+          return dequoted.replace(/''/g, "'");
+        }
+        return trimmedItem; // Fallback for malformed items
+    });
+    return items.join(',');
+};
+
 const Parameters: React.FC = () => {
   const [parameters, setParameters] = React.useState<Parameter[]>(() => {
     const state = vscode.getState();
@@ -31,11 +56,14 @@ const Parameters: React.FC = () => {
         if (message.type === 'set_parameters') {
         const { parameters: newParamsObj, useLocal: newUseLocal, hasActiveFile: newHasActiveFile } = message.payload;
 
-        const newParamsArray = Object.entries(newParamsObj).map(([key, val], idx) => ({
-          id: Date.now() + idx,
-          name: key.replace(/^@/, ''),
-          value: String(val)
-        }));
+        const newParamsArray = Object.entries(newParamsObj).map(([key, val], idx) => {
+          const displayValue = unformatSqlValue(String(val));
+          return {
+            id: Date.now() + idx,
+            name: key.replace(/^@/, ''),
+            value: displayValue
+          };
+        });
 
         if (newParamsArray.length === 0) {
               newParamsArray.push({ id: Date.now(), name: '', value: '' });
@@ -64,7 +92,10 @@ const Parameters: React.FC = () => {
       type: 'parameters_updated',
       payload: {
         parameters: parameters.reduce((acc, p) => {
-          if (p.name) acc[`@${p.name}`] = p.value;
+          if (p.name) {
+            // Send the raw value to the backend. The controller will handle all formatting.
+            acc[`@${p.name}`] = p.value;
+          }
           return acc;
         }, {} as Record<string, string>),
         useLocal
@@ -89,7 +120,7 @@ const Parameters: React.FC = () => {
     <div style={{ padding: '10px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
       <h4>SQL Parameters</h4>
       <p style={{ fontSize: '12px', opacity: 0.7, marginTop: '-5px', marginBottom: '2px', lineHeight: '1.4' }}>
-        Define variables (e.g., <code>@myVar</code>).<br/>For <code>IN(@myVar)</code> clauses, use a comma-separated list (e.g., <code>val1,val2</code>).
+        Define variables (e.g., <code>@myVar</code>).<br/>For lists, use comma-separated values (e.g., <code>val1,val2</code>).
       </p>
 
       <div style={{ display: 'flex', alignItems: 'center', marginTop: '2px', marginBottom: '2px', gap: '6px' }}>
@@ -149,6 +180,7 @@ const Parameters: React.FC = () => {
           <VSCodeTextField
             placeholder="value"
             value={param.value}
+            title={param.value}
             onInput={(e: any) => handleParameterChange(param.id, 'value', e.target.value)}
             style={{ flex: 1 }}
           />

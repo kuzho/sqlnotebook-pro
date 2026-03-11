@@ -11,7 +11,8 @@ const DEFAULT_PORTS: { [key: string]: string } = {
   mysql: '3306',
   postgres: '5432',
   mssql: '1433',
-  sqlite: ''
+  sqlite: '',
+  trino: '8080'
 };
 
 const Form: React.FC<{
@@ -64,11 +65,15 @@ const Form: React.FC<{
           setDriver(config.driver);
 
           setTimeout(() => {
-            if(dropdownRef.current) dropdownRef.current.value = config.driver;
+            if (dropdownRef.current) {
+              dropdownRef.current.value = config.driver;
+            }
 
             const setField = (name: string, val: any) => {
                const el = formRef.current?.elements.namedItem(name) as any;
-               if (!el) return;
+               if (!el) {
+                 return;
+               }
 
                if (el.tagName === 'VSCODE-CHECKBOX' || el.type === 'checkbox') {
                  el.checked = !!val;
@@ -117,6 +122,7 @@ const Form: React.FC<{
           <VSCodeOption>mysql</VSCodeOption>
           <VSCodeOption>postgres</VSCodeOption>
           <VSCodeOption>sqlite</VSCodeOption>
+          <VSCodeOption>trino</VSCodeOption>
         </VSCodeDropdown>
       </div>
 
@@ -136,7 +142,11 @@ const Form: React.FC<{
             type="password"
             placeholder="(Leave empty to keep current password)"
           />
-          <TextOption label="Database Name" objectKey="database" />
+          <TextOption
+            label={driver === 'trino' ? "Catalog / Schema" : "Database Name"}
+            objectKey="database"
+            placeholder={driver === 'trino' ? "hive/default" : ""}
+          />
         </>
       )}
 
@@ -176,14 +186,16 @@ export default Form;
 
 function useDropdownValue(onChange?: (newVal: string) => void) {
   const [value, setValue] = React.useState<string>('mssql');
-  const ref = React.useRef<HTMLInputElement>(null);
+  const ref = React.useRef<any>(null);
 
   React.useEffect(() => {
     const { current } = ref;
     const handleChange = (e: Event) => {
         const newVal = (e.target as HTMLInputElement)?.value;
         setValue(newVal);
-        if(onChange) onChange(newVal);
+        if (onChange) {
+          onChange(newVal);
+        }
     };
     current?.addEventListener('change', handleChange);
     return () => current?.removeEventListener('change', handleChange);
@@ -201,6 +213,7 @@ function showDriverConfig(driver: string) {
         </>
       );
     case 'postgres': return <></>;
+    case 'trino': return <></>;
     case 'mssql':
       return (
         <>
@@ -215,7 +228,7 @@ function showDriverConfig(driver: string) {
 
 const TextOption: React.FC<{ label: string; objectKey: string; type?: string; placeholder?: string; defaultValue?: string }> = ({ objectKey, label, type, placeholder, defaultValue }) => {
   return (
-    <VSCodeTextField name={objectKey} type={type} placeholder={placeholder || ""} value={defaultValue|| ""}>
+    <VSCodeTextField name={objectKey} type={type as any} placeholder={placeholder || ""} value={defaultValue|| ""}>
       <span style={{ color: 'var(--vscode-editor-foreground)' }}>{label}</span>
     </VSCodeTextField>
   );

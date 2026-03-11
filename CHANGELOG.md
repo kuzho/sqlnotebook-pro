@@ -1,5 +1,11 @@
 # Change Log
 
+## [2.1.4] - 2026-02-12
+
+### 🚀 Features & Fixes
+- **Trino Compatibility & Parameter Fix:** Re-engineered the parameter formatter to be compatible with strict SQL dialects like Trino. It now intelligently quotes non-numeric values while leaving numbers as literals. This resolves `Incorrect syntax near ','` errors and officially enables support for the Trino driver.
+- **TLS Connection Support:** Added support for `encrypt` and `trustServerCertificate` options in MSSQL connections. This resolves `UNSUPPORTED_PROTOCOL` errors when connecting to older SQL Server instances (e.g., SQL Server 2012) that have specific TLS requirements.
+
 ## [2.1.3] - 2026-02-10
 
 ### 🐛 Bug Fixes & Polish

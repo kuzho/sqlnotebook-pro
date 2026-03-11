@@ -28,6 +28,27 @@ Define reusable variables and run parameterized queries with a dedicated side pa
 </div>
 <br>
 
+#### 💡 Pro Tip: Universal Parameter Logic
+The extension automatically formats lists as `'val1','val2'`. To create filters that are **optional** (ignored if the field is empty), use this "Universal Template" logic in your `WHERE` clause:
+
+```sql
+/*<SQL_PARAMS>
+{
+  "@Status": "Active, Pending",
+  "@Country": ""
+}
+</SQL_PARAMS>*/
+
+SELECT * FROM users
+WHERE 1 = 1
+  -- If @Status is empty, it becomes '' and the filter is ignored.
+  -- If it has values, it becomes IN ('Active','Pending')
+  AND ('' IN (@Status) OR status_column IN (@Status))
+
+  -- This filter will be ignored because @Country is empty
+  AND ('' IN (@Country) OR country_code IN (@Country))
+```
+
 ### 3. Interactive Data Grid (Excel-Style)
 Filter, sort, and analyze your data without writing extra queries.
 * **Elastic Layout:** The grid auto-expands horizontally to fit your data.

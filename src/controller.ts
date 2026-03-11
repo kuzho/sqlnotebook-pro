@@ -69,10 +69,10 @@ export class KernelManager {
   }
 
   public getDriverForNotebook(notebook: vscode.NotebookDocument | undefined): ConnData['driver'] | undefined {
-    if (!notebook) return undefined;
+    if (!notebook) { return undefined; }
     const uri = notebook.uri.toString();
     const kernel = this.selectedKernelByNotebook.get(uri);
-    if (kernel) return kernel.getDriver();
+    if (kernel) { return kernel.getDriver(); }
     if (this.controllers.size === 1) {
       return [...this.controllers.values()][0].getDriver();
     }
@@ -115,7 +115,7 @@ export class SQLNotebookKernel {
   }
 
   public async getSchemaOrLoad(): Promise<TableSchema[]> {
-    if (this.schemaCache) return this.schemaCache;
+    if (this.schemaCache) { return this.schemaCache; }
 
     try {
         const pool = await this.getPool();
@@ -165,8 +165,8 @@ export class SQLNotebookKernel {
   }
 
   private async getPool(): Promise<Pool> {
-    if (this.pool) return this.pool;
-    let password = this.config.password;
+    if (this.pool) { return this.pool; }
+    let password = (this.config as any).password;
     if (!password && this.config.driver !== 'sqlite') {
       try {
         password = (await this.context.secrets.get(this.config.passwordKey)) || undefined;
@@ -176,7 +176,7 @@ export class SQLNotebookKernel {
     const poolConfig = {
       ...this.config,
       password,
-      queryTimeout: vscode.workspace.getConfiguration('SQLNotebook').get('queryTimeout') ?? 30000
+      queryTimeout: vscode.workspace.getConfiguration('sqlnotebook').get('queryTimeout') ?? 30000
     } as PoolConfig;
 
     this.pool = await getPool(poolConfig);
@@ -190,8 +190,13 @@ export class SQLNotebookKernel {
 
     let rawQuery = cell.document.getText();
 
+    const PARAMS_REGEX = /\/\*\s*<SQL_PARAMS>\s*([\s\S]*?)\s*<\/SQL_PARAMS>\s*\*\//;
+    rawQuery = rawQuery.replace(PARAMS_REGEX, '').trim();
+
+    const executeSelection = vscode.workspace.getConfiguration('sqlnotebook').get<boolean>('executeSelection', true);
+
     const editor = vscode.window.activeTextEditor;
-    if (editor && editor.document.uri.toString() === cell.document.uri.toString()) {
+    if (executeSelection && editor && editor.document.uri.toString() === cell.document.uri.toString()) {
       const selection = editor.selection;
       if (!selection.isEmpty) {
         const selectedText = editor.document.getText(selection);
@@ -205,38 +210,13 @@ export class SQLNotebookKernel {
       const params = this.parameterProvider.getParameters(cell.notebook.uri.toString());
       Object.keys(params).forEach(key => {
         const param = params[key];
-        const value = typeof param === 'string' ? param : String(param?.value ?? '');
+        // Get the raw value, whether it's a string or from the object structure
+        const rawValue = typeof param === 'string' ? param : String(param?.value ?? '');
+        // Ensure the value is formatted correctly before replacement. This is idempotent.
+        const finalValue = formatParameterValue(rawValue);
         const variableRegex = new RegExp(key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g');
-
-        let finalValue = value;
-
-        const isSingleQuoted = (v: string) => v.startsWith("'") && v.endsWith("'");
-        const isDoubleQuoted = (v: string) => v.startsWith('"') && v.endsWith('"');
-
-        if (value.includes(',')) {
-          const items = value.split(',').map(item => item.trim()).filter(item => item.length > 0);
-          finalValue = items
-            .map(item => {
-              if (isSingleQuoted(item)) return item;
-              if (isDoubleQuoted(item)) {
-                const inner = item.slice(1, -1).replace(/'/g, "''");
-                return `'${inner}'`;
-              }
-              return `'${item.replace(/'/g, "''")}'`;
-            })
-            .join(',');
-        } else {
-          const trimmed = value.trim();
-          if (trimmed.length > 0 && !isSingleQuoted(trimmed)) {
-            if (isDoubleQuoted(trimmed)) {
-              const inner = trimmed.slice(1, -1).replace(/'/g, "''");
-              finalValue = `'${inner}'`;
-            } else {
-              finalValue = `'${trimmed.replace(/'/g, "''")}'`;
-            }
-          }
-        }
-        rawQuery = rawQuery.replace(variableRegex, finalValue);
+        // Use a replacer function to ensure special characters in `finalValue` are not interpreted.
+        rawQuery = rawQuery.replace(variableRegex, () => finalValue);
       });
     } catch (e) {
       console.error('Failed to replace parameters', e);
@@ -288,7 +268,9 @@ export class SQLNotebookKernel {
       return;
     }
 
-    if (result.length === 0 || (result.length === 1 && result[0].length === 0)) {
+    const first = result[0];
+    const rows = first && 'rows' in first ? (first as any).rows : (first as any[]);
+    if (result.length === 0 || (result.length === 1 && rows?.length === 0)) {
       const emptyMsg = [{ Status: 'Success', Message: 'Query executed. No rows returned.' }];
       const myMimeType = 'application/vnd.code-sql-notebook.table+json';
 
@@ -301,7 +283,7 @@ export class SQLNotebookKernel {
       return;
     }
 
-    const maxRows = vscode.workspace.getConfiguration('SQLNotebook').get<number>('maxResultRows') || 100;
+    const maxRows = vscode.workspace.getConfiguration('sqlnotebook').get<number>('maxResultRows') || 100;
 
     const normalizeResult = (item: any) => {
       if (item && typeof item === 'object' && 'rows' in item) {
@@ -338,6 +320,27 @@ export class SQLNotebookKernel {
       })
     );
   }
+}
+
+/**
+ * Formats a raw user-provided value into a SQL-safe, comma-separated list of string literals.
+ * This approach is the most compatible for drivers that perform implicit type conversion (MSSQL, MySQL, Postgres).
+ */
+function formatParameterValue(value: string): string {
+  const trimmedValue = value.trim();
+
+  const processItem = (item: string): string => {
+    const trimmedItem = item.trim();
+    // Clean up any existing surrounding quotes from the user, e.g., "abc" or 'abc' -> abc
+    const isQuotedByUser = (trimmedItem.startsWith("'") && trimmedItem.endsWith("'")) || (trimmedItem.startsWith('"') && trimmedItem.endsWith('"'));
+    const cleanItem = isQuotedByUser ? trimmedItem.slice(1, -1) : trimmedItem;
+
+    // Always quote the final item, escaping internal quotes for safety.
+    return `'${cleanItem.replace(/'/g, "''")}'`;
+  };
+
+  const items = trimmedValue.split(',').map(processItem);
+  return items.join(',');
 }
 
 function writeErr(execution: vscode.NotebookCellExecution, err: string) {

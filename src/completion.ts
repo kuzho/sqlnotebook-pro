@@ -26,14 +26,16 @@ const DRIVER_KEYWORDS: Record<string, string[]> = {
   mssql: ['TOP', 'NVARCHAR', 'NCHAR', 'DATETIME2', 'TRY_CONVERT', 'TRY_CAST', 'ISNULL'],
   postgres: ['ILIKE', 'SERIAL', 'TEXT', 'RETURNING'],
   mysql: ['AUTO_INCREMENT', 'ENGINE', 'TINYINT', 'MEDIUMINT', 'IFNULL'],
-  sqlite: ['AUTOINCREMENT', 'INTEGER', 'TEXT', 'IFNULL']
+  sqlite: ['AUTOINCREMENT', 'INTEGER', 'TEXT', 'IFNULL'],
+  trino: ['PARTITION BY', 'OVER', 'ROWS', 'RANGE', 'UNBOUNDED', 'PRECEDING', 'FOLLOWING', 'WINDOW', 'LAMBDA']
 };
 
 const DRIVER_FUNCTIONS: Record<string, string[]> = {
   mssql: ['GETDATE', 'DATEADD', 'DATEDIFF', 'FORMAT', 'LEN'],
   postgres: ['NOW', 'DATE_TRUNC', 'COALESCE'],
   mysql: ['NOW', 'DATE_ADD', 'DATE_SUB', 'IFNULL'],
-  sqlite: ['DATETIME', 'STRFTIME', 'IFNULL']
+  sqlite: ['DATETIME', 'STRFTIME', 'IFNULL'],
+  trino: ['date_diff', 'date_add', 'date_trunc', 'format_datetime', 'json_extract', 'json_format', 'try_cast']
 };
 
 type QueryContext = 'select' | 'from' | 'where' | 'join' | 'order' | 'group' | 'unknown';
@@ -56,7 +58,9 @@ export class SqlCompletionItemProvider implements vscode.CompletionItemProvider 
   }
 
   private async refreshConsolidatedSchema() {
-    if (this.isRefreshing) return;
+    if (this.isRefreshing) {
+      return;
+    }
     this.isRefreshing = true;
 
     try {
@@ -153,11 +157,15 @@ export class SqlCompletionItemProvider implements vscode.CompletionItemProvider 
 
   private getJoinSuggestions(aliasMap: Map<string, string>): vscode.CompletionItem[] {
     const fks = this.getForeignKeys();
-    if (fks.length === 0) return [];
+    if (fks.length === 0) {
+      return [];
+    }
 
     const aliasesByTable = new Map<string, string[]>();
     for (const [alias, table] of aliasMap) {
-      if (!aliasesByTable.has(table)) aliasesByTable.set(table, []);
+      if (!aliasesByTable.has(table)) {
+        aliasesByTable.set(table, []);
+      }
       aliasesByTable.get(table)?.push(alias);
     }
 
@@ -184,15 +192,27 @@ export class SqlCompletionItemProvider implements vscode.CompletionItemProvider 
   private getQueryContext(textBefore: string): QueryContext {
     const clauses = textBefore.match(/\b(SELECT|FROM|WHERE|JOIN|INNER\s+JOIN|LEFT\s+JOIN|RIGHT\s+JOIN|ORDER\s+BY|GROUP\s+BY|HAVING)\b(?=[^;]*$)/gi);
 
-    if (!clauses || clauses.length === 0) return 'unknown';
+    if (!clauses || clauses.length === 0) {
+      return 'unknown';
+    }
 
     const lastClause = clauses[clauses.length - 1].toUpperCase().replace(/\s+/g, ' ');
 
-    if (lastClause === 'SELECT') return 'select';
-    if (lastClause === 'FROM' || lastClause.includes('JOIN')) return 'from';
-    if (lastClause === 'WHERE' || lastClause === 'HAVING') return 'where';
-    if (lastClause === 'ORDER BY') return 'order';
-    if (lastClause === 'GROUP BY') return 'group';
+    if (lastClause === 'SELECT') {
+      return 'select';
+    }
+    if (lastClause === 'FROM' || lastClause.includes('JOIN')) {
+      return 'from';
+    }
+    if (lastClause === 'WHERE' || lastClause === 'HAVING') {
+      return 'where';
+    }
+    if (lastClause === 'ORDER BY') {
+      return 'order';
+    }
+    if (lastClause === 'GROUP BY') {
+      return 'group';
+    }
 
     return 'unknown';
   }
@@ -246,7 +266,9 @@ export class SqlCompletionItemProvider implements vscode.CompletionItemProvider 
         });
         onItems.push(...cols);
       }
-      if (onItems.length > 0) return onItems;
+      if (onItems.length > 0) {
+        return onItems;
+      }
     }
 
     const queryContext = this.getQueryContext(textBefore);
@@ -297,7 +319,9 @@ export class SqlCompletionItemProvider implements vscode.CompletionItemProvider 
       const lookupName = this.normalizeTableForLookup(tableName);
       for (const [, schema] of this.consolidatedSchema) {
         const table = schema.find(t => t.table.toLowerCase() === lookupName.toLowerCase());
-        if (!table) continue;
+        if (!table) {
+          continue;
+        }
 
         table.columns.forEach(col => {
           if (!columnsByName.has(col)) {
@@ -344,14 +368,18 @@ export class SqlCompletionItemProvider implements vscode.CompletionItemProvider 
 
   private getAliasItems(aliasMap: Map<string, string>, textBefore: string): vscode.CompletionItem[] {
     const tailMatch = textBefore.match(/\b(SELECT|WHERE|ORDER\s+BY|GROUP\s+BY|HAVING)\s*([a-zA-Z_][\w]*)?$/i);
-    if (!tailMatch) return [];
+    if (!tailMatch) {
+      return [];
+    }
 
     const prefix = (tailMatch[2] || '').toLowerCase();
 
     const items: vscode.CompletionItem[] = [];
 
     for (const [alias, table] of aliasMap) {
-      if (prefix && !alias.toLowerCase().startsWith(prefix)) continue;
+      if (prefix && !alias.toLowerCase().startsWith(prefix)) {
+        continue;
+      }
       const label = `${alias}.`;
       const item = new vscode.CompletionItem(label, vscode.CompletionItemKind.Field);
       item.detail = `Columns for ${table}`;
@@ -389,7 +417,9 @@ export class SqlCompletionItemProvider implements vscode.CompletionItemProvider 
     const aggregates = new Set(['COUNT', 'SUM', 'AVG', 'MIN', 'MAX']);
     const afterGroupByColumn = /\bGROUP\s+BY\s+[\w\]\[\.`"]+(?:\s*,\s*[\w\]\[\.`"]+)*\s*$/i.test(textBefore);
 
-    if (!afterGroupByColumn) return items;
+    if (!afterGroupByColumn) {
+      return items;
+    }
 
     const head: vscode.CompletionItem[] = [];
     const tail: vscode.CompletionItem[] = [];
@@ -437,7 +467,9 @@ export class SqlCompletionItemProvider implements vscode.CompletionItemProvider 
       }
     }
 
-    if (!foundColumns) return [];
+    if (!foundColumns) {
+      return [];
+    }
 
     return foundColumns.map(col => {
       const item = new vscode.CompletionItem(col, vscode.CompletionItemKind.Field);
@@ -505,8 +537,14 @@ export class SqlCompletionItemProvider implements vscode.CompletionItemProvider 
       ? DRIVER_KEYWORDS[driver]
       : [];
     const contextKeywords = CONTEXT_KEYWORDS[context];
-    const baseKeywords = contextKeywords.length > 0 ? contextKeywords : SQL_KEYWORDS;
-    const keywords = [...baseKeywords, ...driverKeywords];
+    let baseKeywords = contextKeywords.length > 0 ? [...contextKeywords] : [...SQL_KEYWORDS];
+
+    // If we are in a FROM or JOIN context, also suggest clauses that can come after the table.
+    if (context === 'from' || context === 'join') {
+      baseKeywords.push('WHERE', 'GROUP BY', 'ORDER BY', 'HAVING', 'LIMIT');
+    }
+
+    const keywords = [...new Set([...baseKeywords, ...driverKeywords])];
 
     const driverFunctions = driver && DRIVER_FUNCTIONS[driver]
       ? DRIVER_FUNCTIONS[driver]
