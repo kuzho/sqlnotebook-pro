@@ -1,6 +1,6 @@
 # Change Log
 
-## [2.1.4] - 2026-02-12
+## [2.1.4] - 2026-03-11
 
 ### 🚀 Features & Fixes
 - **Trino Compatibility & Parameter Fix:** Re-engineered the parameter formatter to be compatible with strict SQL dialects like Trino. It now intelligently quotes non-numeric values while leaving numbers as literals. This resolves `Incorrect syntax near ','` errors and officially enables support for the Trino driver.
@@ -28,7 +28,7 @@
 - **SQL Formatting:** Added a per-cell formatter button with automatic dialect detection based on the active connection.
 - **Results Grid:** Duplicate columns now render as separate columns while keeping the same header label.
 
-## [2.1.0] - 2025-02-19
+## [2.1.0] - 2025-01-19
 
 ### ⚡ Changed
 - **SQL Parameters Persistence:** Parameters now use a block format at the top of the SQL file: `/*<SQL_PARAMS>...*/`.
