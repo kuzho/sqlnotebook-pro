@@ -28,7 +28,7 @@
 - **SQL Formatting:** Added a per-cell formatter button with automatic dialect detection based on the active connection.
 - **Results Grid:** Duplicate columns now render as separate columns while keeping the same header label.
 
-## [2.1.0] - 2025-01-19
+## [2.1.0] - 2026-01-19
 
 ### ⚡ Changed
 - **SQL Parameters Persistence:** Parameters now use a block format at the top of the SQL file: `/*<SQL_PARAMS>...*/`.
