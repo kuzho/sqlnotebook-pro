@@ -253,6 +253,7 @@ export class SQLNotebookKernel {
 
     let result: ExecutionResult;
     try {
+      console.log('[DEBUG] conn object before query:', conn, 'typeof query:', typeof conn.query);
       result = await conn.query(rawQuery);
       conn.release();
     } catch (err: any) {

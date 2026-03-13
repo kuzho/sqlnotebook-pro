@@ -1,5 +1,10 @@
 # Change Log
 
+## [2.1.5] - 2026-03-12
+
+### 🐞 Bug Fixes
+- **Trino Driver:** Fixed major compatibility issues with Trino. Now queries execute correctly, errors are shown in the notebook, and the driver no longer fails with `this.client.query is not a function`. Improved error reporting for Trino SQL syntax and connection problems.
+
 ## [2.1.4] - 2026-03-11
 
 ### 🚀 Features & Fixes

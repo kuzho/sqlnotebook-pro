@@ -2,6 +2,8 @@ import * as vscode from 'vscode';
 import { ConnData } from './connections';
 import { getPool, PoolConfig } from './driver';
 
+const axios = require('axios');
+
 export let globalFormProvider: SQLConfigurationViewProvider | undefined;
 
 export function activateFormProvider(context: vscode.ExtensionContext) {
@@ -61,6 +63,47 @@ class SQLConfigurationViewProvider implements vscode.WebviewViewProvider {
 
           if (!isValid(tempConfig, true)) {
             return;
+          }
+
+          if (tempConfig.driver === 'trino') {
+            try {
+              vscode.window.setStatusBarMessage('$(sync~spin) Testing Trino connection...', 3000);
+              const [catalog, schema] = (tempConfig.database || '').split('/');
+              const host = tempConfig.host.startsWith('http') ? tempConfig.host : `http://${tempConfig.host}`;
+              const url = `${host}:${tempConfig.port}/v1/statement`;
+
+              const response = await axios.post(url, 'SELECT 1', {
+                headers: {
+                  'X-Trino-User': tempConfig.user,
+                  'X-Trino-Catalog': catalog || 'tpch',
+                  'X-Trino-Schema': schema || 'default',
+                },
+                auth: {
+                  username: tempConfig.user,
+                  password: tempConfig.password || ''
+                },
+                timeout: 5000
+              });
+
+              if (response.status === 200 && response.data && response.data.stats) {
+                const state = response.data.stats.state;
+                if (state === 'FINISHED' || state === 'QUEUED') {
+                  vscode.window.showInformationMessage(`Connection Test Successful! Estado: ${state} ✅`);
+                } else {
+                  throw new Error(`Trino returned status ${state}`);
+                }
+              } else {
+                const state = response.data && response.data.stats ? response.data.stats.state : 'UNKNOWN';
+                throw new Error(`Trino returned status ${state}`);
+              }
+            } catch (err: any) {
+              let message = err.message;
+              if (err.response && err.response.data && err.response.data.message) {
+                message = err.response.data.message;
+              }
+              vscode.window.showErrorMessage(`Connection Failed: ${message}`);
+            }
+            break;
           }
 
           try {

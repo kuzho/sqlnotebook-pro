@@ -7,7 +7,7 @@
   "repository": {
     "url": "https://github.com/kuzho/sqlnotebook-pro.git"
   },
-  "version": "2.1.4",
+  "version": "2.1.5",
   "preview": false,
   "engines": {
     "vscode": "^1.75.0",
@@ -312,7 +312,7 @@
     "react-dom": "^17.0.2",
     "sql-formatter": "^15.4.0",
     "sql.js": "^1.7.0",
-    "trino-client": "^0.2.0",
+    "trino-client": "^0.2.9",
     "vscode-languageclient": "^7.0.0",
     "xlsx": "https://cdn.sheetjs.com/xlsx-latest/xlsx-latest.tgz"
   },

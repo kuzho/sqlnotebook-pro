@@ -6,10 +6,10 @@ import * as fs from 'fs/promises';
 import type { Database as SqliteDatabase } from 'sql.js';
 import * as path from 'path';
 import * as vscode from 'vscode';
-import { Trino } from 'trino-client';
+
+const trinoLib = require('trino-client');
 
 const supportedDrivers = ['mysql', 'postgres', 'mssql', 'sqlite', 'trino'] as const;
-
 export type DriverKey = typeof supportedDrivers[number];
 
 export type TableSchema = {
@@ -103,6 +103,7 @@ async function createSqLitePool({
   }
 
   const fullPath = path.resolve(workspaceRoot(), filepath);
+  console.log('[DEBUG][SQLite] Opening DB at path:', fullPath);
   const buff = await fs.readFile(fullPath);
   const db = new sqlite.Database(buff);
 
@@ -146,24 +147,35 @@ function sqlitePool(pool: SqliteDatabase, dbFile?: string): Pool {
 
 function sqliteConn(conn: SqliteDatabase, dbFile?: string): Conn {
   return {
-    async query(q: string): Promise<ExecutionResult> {
-      const stm = conn.prepare(q);
-      const columns = stm.getColumnNames();
-      const result: any[][] = [];
+        async query(q: string): Promise<ExecutionResult> {
+          const stm = conn.prepare(q);
+          const columns = stm.getColumnNames();
+          const result: any[][] = [];
 
-      while (stm.step()) {
-        result.push(stm.get());
-      }
+          let isSelect = /^\s*select/i.test(q);
+          let affectedRows = 0;
 
-      stm.free();
-      if (dbFile) {
-        const data = conn.export();
-        const buffer = Buffer.from(data);
-        await fs.writeFile(dbFile, buffer);
-      }
+          while (stm.step()) {
+            result.push(stm.get());
+            if (!isSelect) affectedRows++;
+          }
 
-      return [{ rows: result, columns }];
-    },
+          stm.free();
+          if (isSelect) {
+            console.log(`[DEBUG][SQLite] SELECT returned ${result.length} rows.`);
+          } else {
+            console.log(`[DEBUG][SQLite] Non-SELECT affected ${affectedRows} rows.`);
+          }
+
+          if (dbFile) {
+            const data = conn.export();
+            const buffer = Buffer.from(data);
+            await fs.writeFile(dbFile, buffer);
+            console.log('[DEBUG][SQLite] Database written to:', dbFile);
+          }
+
+          return [{ rows: result, columns }];
+        },
     destroy: () => {},
     release: () => {},
   };
@@ -780,34 +792,21 @@ function trinoPool(config: TrinoConfig): Pool {
     end() {},
     async getSchema(): Promise<TableSchema[]> {
       try {
-        const [catalog] = (config.database || '').split('/');
-        const client: any = Trino.create({
-          server: `${config.host}:${config.port}`,
-          catalog: catalog,
-          schema: 'information_schema',
-          auth: {
-            user: config.user,
-            password: config.password,
-          },
-        });
+        const client = resolveTrinoClient(config, 'information_schema');
+        const query = `SELECT table_schema, table_name, column_name
+                      FROM columns
+                      WHERE table_schema NOT IN ('information_schema', 'sys')`;
 
-        const rows = await new Promise<any[]>((resolve, reject) => {
-          const all: any[] = [];
-          client.execute({
-            query: `SELECT table_schema, table_name, column_name FROM columns WHERE table_schema NOT IN ('information_schema', 'sys')`,
-            data: (_err: any, data: any[]) => {
-              if (data) {
-                all.push(...data);
-              }
-            },
-            success: () => resolve(all),
-            error: (err: any) => reject(err),
-          });
-        });
+        const result = await runTrinoQuery(client, query);
+        let rows: any[] = [];
+        const tabular = result[0];
+        if (tabular && typeof tabular === 'object' && 'rows' in tabular && Array.isArray((tabular as any).rows)) {
+          rows = (tabular as any).rows;
+        }
 
         const map = new Map<string, TableSchema>();
-        rows.forEach((r) => {
-          const key = `${r[0]}.${r[1]}`;
+        rows.forEach((r: any) => {
+          const key = `${r[0]}.${r[1]}`; // schema.table
           if (!map.has(key)) {
             map.set(key, { table: r[1], schema: r[0], columns: [] });
           }
@@ -818,45 +817,79 @@ function trinoPool(config: TrinoConfig): Pool {
         console.error('Error fetching trino schema', e);
         return [];
       }
-    },
+    }
   };
 }
 
 function trinoConn(config: TrinoConfig): Conn {
-  const [catalog, schema] = (config.database || '').split('/');
-  const client: any = Trino.create({
-    server: `${config.host}:${config.port}`,
-    catalog: catalog,
-    schema: schema || 'default',
-    auth: {
-      user: config.user,
-      password: config.password,
-    },
-  });
+  // 'client' vive en el closure de esta función
+  const client = resolveTrinoClient(config);
 
   return {
     async query(q: string): Promise<ExecutionResult> {
-      return new Promise((resolve, reject) => {
-        const rows: any[] = [];
-        let columns: string[] | undefined;
-        client.execute({
-          query: q,
-          data: (_err: any, data: any[], cols: any[]) => {
-            if (cols && !columns) {
-              columns = cols.map((c) => c.name);
-            }
-            if (data) {
-              rows.push(...data);
-            }
-          },
-          success: () => {
-            resolve([{ rows, columns }]);
-          },
-          error: (err: any) => reject(new Error(err.message || err)),
-        });
-      });
+      return runTrinoQuery(client, q);
     },
     release() {},
     destroy() {},
   };
+}
+
+function resolveTrinoClient(config: TrinoConfig, schemaOverride?: string): any {
+  const [catalog, dbSchema] = (config.database || '').split('/');
+  const schema = schemaOverride || dbSchema || 'default';
+  const host = config.host.startsWith('http') ? config.host : `http://${config.host}`;
+  
+  const opts = {
+    server: `${host}:${config.port}`,
+    catalog: catalog || 'tpch',
+    schema: schema,
+    // Usamos la clase BasicAuth que tus logs confirmaron
+    auth: new trinoLib.BasicAuth(config.user, config.password || ''),
+  };
+
+  if (trinoLib.Trino && typeof trinoLib.Trino.create === 'function') {
+    return trinoLib.Trino.create(opts);
+  }
+  throw new Error("No se pudo encontrar el constructor Trino o el método create en la librería.");
+}
+
+async function runTrinoQuery(client: any, q: string): Promise<ExecutionResult> {
+  const rows: any[] = [];
+  let columns: string[] = [];
+
+  try {
+    if (!client || typeof client.query !== 'function') {
+      console.error('Trino client object:', client);
+      throw new Error('Trino client does not have a query method. Check trino-client version and usage.');
+    }
+    const iterator = await client.query(q);
+    if (!iterator || typeof iterator[Symbol.asyncIterator] !== 'function') {
+      console.error('Trino query did not return an async iterator:', iterator);
+      throw new Error('Trino client query did not return an async iterator.');
+    }
+    for await (const result of iterator) {
+      if (!result) { continue; }
+      if (result.error) {
+        console.error('[Trino][ERROR]', result.error);
+        // Devuelve el error como resultado para mostrarlo en el notebook
+        return [[{
+          Status: '❌ Error',
+          Message: result.error.message || 'Unknown Trino error',
+          ErrorCode: result.error.errorCode,
+          ErrorName: result.error.errorName,
+          ErrorType: result.error.errorType
+        }]];
+      }
+      if (result.columns && columns.length === 0) {
+        columns = result.columns.map((c: any) => c.name);
+      }
+      if (result.data) {
+        rows.push(...result.data);
+      }
+    }
+    return [{ rows, columns }];
+  } catch (err: any) {
+    console.error('Trino Query Error:', err);
+    throw err;
+  }
 }
