@@ -143,9 +143,9 @@ const Form: React.FC<{
             placeholder="(Leave empty to keep current password)"
           />
           <TextOption
-            label={driver === 'trino' ? "Catalog / Schema" : "Database Name"}
+            label={driver === 'trino' ? "Catalog / Schema (optional)" : "Database Name"}
             objectKey="database"
-            placeholder={driver === 'trino' ? "hive/default" : ""}
+            placeholder={driver === 'trino' ? "hive/default (or leave empty for all catalogs)" : ""}
           />
         </>
       )}

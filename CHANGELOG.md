@@ -1,5 +1,12 @@
 # Change Log
 
+## [2.1.6] - 2026-03-15
+
+### 🐞 Bug Fixes
+- **Trino HTTPS/443 Connectivity:** Fixed connection failures (`400` errors) when using domain hosts on port `443`. Trino endpoint construction now respects explicit protocols and automatically defaults to HTTPS on port 443.
+- **Trino Connection Test:** Updated the connection test flow to use the same robust endpoint normalization logic as runtime queries.
+- **Trino Schema Discovery:** Improved metadata loading to discover schemas across catalogs (when no catalog/schema is specified), enabling broader navigation and autocomplete for Trino environments.
+
 ## [2.1.5] - 2026-03-12
 
 ### 🐞 Bug Fixes

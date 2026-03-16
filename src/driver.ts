@@ -780,6 +780,48 @@ interface TrinoConfig extends BaseConfig {
   driver: 'trino';
 }
 
+function parseTrinoCatalogSchema(database?: string): { catalog?: string; schema?: string } {
+  const raw = (database || '').trim();
+  if (!raw || raw === '*' || raw.toLowerCase() === 'all') {
+    return {};
+  }
+
+  if (raw.includes('/')) {
+    const [catalog, schema] = raw.split('/').map(v => v.trim());
+    return { catalog: catalog || undefined, schema: schema || undefined };
+  }
+
+  if (raw.includes('.')) {
+    const [catalog, schema] = raw.split('.').map(v => v.trim());
+    return { catalog: catalog || undefined, schema: schema || undefined };
+  }
+
+  return { catalog: raw };
+}
+
+function buildTrinoServer(hostInput: string, port: number): string {
+  const trimmedHost = (hostInput || '').trim();
+  const defaultProtocol = port === 443 ? 'https' : 'http';
+  const hasScheme = /^https?:\/\//i.test(trimmedHost);
+  const parsed = new URL(hasScheme ? trimmedHost : `${defaultProtocol}://${trimmedHost}`);
+
+  if (!parsed.port && Number.isFinite(port) && port > 0) {
+    parsed.port = String(port);
+  }
+
+  let basePath = parsed.pathname || '';
+  if (basePath.endsWith('/v1/statement')) {
+    basePath = basePath.slice(0, -('/v1/statement'.length));
+  }
+  basePath = basePath.replace(/\/+$/, '');
+
+  return `${parsed.protocol}//${parsed.host}${basePath}`;
+}
+
+function quoteTrinoIdentifier(identifier: string): string {
+  return `"${identifier.replace(/"/g, '""')}"`;
+}
+
 async function createTrinoPool(config: TrinoConfig): Promise<Pool> {
   return trinoPool(config);
 }
@@ -792,26 +834,48 @@ function trinoPool(config: TrinoConfig): Pool {
     end() {},
     async getSchema(): Promise<TableSchema[]> {
       try {
-        const client = resolveTrinoClient(config, 'information_schema');
-        const query = `SELECT table_schema, table_name, column_name
-                      FROM columns
-                      WHERE table_schema NOT IN ('information_schema', 'sys')`;
+        const discoveryClient = resolveTrinoClient(config, 'information_schema');
+        const catalogsResult = await runTrinoQuery(discoveryClient, 'SHOW CATALOGS');
+        const catalogsTabular = catalogsResult[0] as any;
+        const discoveredCatalogs: string[] =
+          catalogsTabular && typeof catalogsTabular === 'object' && 'rows' in catalogsTabular && Array.isArray(catalogsTabular.rows)
+            ? catalogsTabular.rows.map((r: any[]) => String(r[0]))
+            : [];
 
-        const result = await runTrinoQuery(client, query);
-        let rows: any[] = [];
-        const tabular = result[0];
-        if (tabular && typeof tabular === 'object' && 'rows' in tabular && Array.isArray((tabular as any).rows)) {
-          rows = (tabular as any).rows;
-        }
+        const configured = parseTrinoCatalogSchema(config.database);
+        const catalogsToScan = configured.catalog
+          ? [configured.catalog]
+          : discoveredCatalogs;
 
         const map = new Map<string, TableSchema>();
-        rows.forEach((r: any) => {
-          const key = `${r[0]}.${r[1]}`; // schema.table
-          if (!map.has(key)) {
-            map.set(key, { table: r[1], schema: r[0], columns: [] });
+        for (const catalog of catalogsToScan) {
+          const query = `SELECT table_schema, table_name, column_name
+                        FROM ${quoteTrinoIdentifier(catalog)}.information_schema.columns
+                        WHERE table_schema NOT IN ('information_schema', 'sys')`;
+
+          try {
+            const result = await runTrinoQuery(discoveryClient, query);
+            const tabular = result[0] as any;
+            const rows: any[] =
+              tabular && typeof tabular === 'object' && 'rows' in tabular && Array.isArray(tabular.rows)
+                ? tabular.rows
+                : [];
+
+            rows.forEach((r: any) => {
+              const schemaName = String(r[0]);
+              const tableName = String(r[1]);
+              const columnName = String(r[2]);
+              const key = `${catalog}.${schemaName}.${tableName}`;
+              if (!map.has(key)) {
+                map.set(key, { table: tableName, schema: `${catalog}.${schemaName}`, columns: [] });
+              }
+              map.get(key)?.columns.push(columnName);
+            });
+          } catch (catalogError) {
+            console.warn(`Skipping Trino catalog '${catalog}' during schema load`, catalogError);
           }
-          map.get(key)?.columns.push(r[2]);
-        });
+        }
+
         return Array.from(map.values());
       } catch (e) {
         console.error('Error fetching trino schema', e);
@@ -835,15 +899,15 @@ function trinoConn(config: TrinoConfig): Conn {
 }
 
 function resolveTrinoClient(config: TrinoConfig, schemaOverride?: string): any {
-  const [catalog, dbSchema] = (config.database || '').split('/');
-  const schema = schemaOverride || dbSchema || 'default';
-  const host = config.host.startsWith('http') ? config.host : `http://${config.host}`;
+  const parsed = parseTrinoCatalogSchema(config.database);
+  const catalog = parsed.catalog || 'system';
+  const schema = schemaOverride || parsed.schema || (catalog === 'system' ? 'runtime' : 'default');
+  const server = buildTrinoServer(config.host, config.port);
   
   const opts = {
-    server: `${host}:${config.port}`,
-    catalog: catalog || 'tpch',
+    server,
+    catalog,
     schema: schema,
-    // Usamos la clase BasicAuth que tus logs confirmaron
     auth: new trinoLib.BasicAuth(config.user, config.password || ''),
   };
 

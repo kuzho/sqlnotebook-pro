@@ -4,6 +4,44 @@ import { getPool, PoolConfig } from './driver';
 
 const axios = require('axios');
 
+function parseTrinoCatalogSchema(database?: string): { catalog?: string; schema?: string } {
+  const raw = (database || '').trim();
+  if (!raw || raw === '*' || raw.toLowerCase() === 'all') {
+    return {};
+  }
+
+  if (raw.includes('/')) {
+    const [catalog, schema] = raw.split('/').map(v => v.trim());
+    return { catalog: catalog || undefined, schema: schema || undefined };
+  }
+
+  if (raw.includes('.')) {
+    const [catalog, schema] = raw.split('.').map(v => v.trim());
+    return { catalog: catalog || undefined, schema: schema || undefined };
+  }
+
+  return { catalog: raw };
+}
+
+function buildTrinoStatementUrl(hostInput: string, port: number): string {
+  const trimmedHost = (hostInput || '').trim();
+  const defaultProtocol = port === 443 ? 'https' : 'http';
+  const hasScheme = /^https?:\/\//i.test(trimmedHost);
+  const parsed = new URL(hasScheme ? trimmedHost : `${defaultProtocol}://${trimmedHost}`);
+
+  if (!parsed.port && Number.isFinite(port) && port > 0) {
+    parsed.port = String(port);
+  }
+
+  let basePath = parsed.pathname || '';
+  if (basePath.endsWith('/v1/statement')) {
+    basePath = basePath.slice(0, -('/v1/statement'.length));
+  }
+  basePath = basePath.replace(/\/+$/, '');
+
+  return `${parsed.protocol}//${parsed.host}${basePath}/v1/statement`;
+}
+
 export let globalFormProvider: SQLConfigurationViewProvider | undefined;
 
 export function activateFormProvider(context: vscode.ExtensionContext) {
@@ -50,7 +88,7 @@ class SQLConfigurationViewProvider implements vscode.WebviewViewProvider {
           const tempConfig = {
             ...rest,
             name: 'TEST_CONN',
-            port: parseInt(port),
+            port: parseInt(port, 10),
             password: password
           };
 
@@ -68,9 +106,10 @@ class SQLConfigurationViewProvider implements vscode.WebviewViewProvider {
           if (tempConfig.driver === 'trino') {
             try {
               vscode.window.setStatusBarMessage('$(sync~spin) Testing Trino connection...', 3000);
-              const [catalog, schema] = (tempConfig.database || '').split('/');
-              const host = tempConfig.host.startsWith('http') ? tempConfig.host : `http://${tempConfig.host}`;
-              const url = `${host}:${tempConfig.port}/v1/statement`;
+              const parsed = parseTrinoCatalogSchema(tempConfig.database);
+              const catalog = parsed.catalog || 'system';
+              const schema = parsed.schema || (catalog === 'system' ? 'runtime' : 'default');
+              const url = buildTrinoStatementUrl(tempConfig.host, tempConfig.port);
 
               const response = await axios.post(url, 'SELECT 1', {
                 headers: {
@@ -134,7 +173,7 @@ class SQLConfigurationViewProvider implements vscode.WebviewViewProvider {
             name: displayName,
             group: group || '',
             passwordKey,
-            port: parseInt(port),
+            port: parseInt(port, 10),
           };
 
           if (!isValid(newConfig)) {
