@@ -1,5 +1,25 @@
 # Change Log
 
+## [2.1.7] - 2026-03-20
+
+### ⚡ Changed
+- **SQL Parameters (Cell-First Execution):** Removed run-by-selection behavior. Query execution now always runs the full cell, avoiding accidental partial runs caused by transient text selections.
+- **SQL Parameters (Storage Model):** Simplified parameter scope to active notebook runtime + notebook metadata persistence. Removed global parameter fallback complexity and improved consistency when switching/opening/closing notebooks.
+- **SQL Parameters (Type-Aware Values):** Added structured parameter types (`text`, `checkbox`, `select`) with runtime resolution support in execution.
+  - `checkbox` supports `checkedValue` / `uncheckedValue`.
+  - `select` supports option lists and selected value handling.
+  - Text parameters keep backward-compatible behavior.
+- **SQL Parameters (Save Flow):** Improved manual save behavior and save-state feedback (`SAVED` / `UNSAVED`), with clearer synchronization between webview state and notebook metadata.
+
+### 🐛 Bug Fixes
+- **Parameters Panel Responsiveness:** Reworked layout to prevent field overlap in narrow sidebars and long lists (no more `value` overlapping `Text`/`@name`).
+- **Parameters Panel Top Controls:** Improved wrapping and stability for add/save/status controls when panel width is constrained.
+- **Parameters Panel Large Lists:** Added incremental rendering and progressive loading for better performance with many parameters.
+
+### 🎨 UI/UX
+- **Parameters Panel:** Redesigned parameter rows as responsive cards with stable grid layout and always-visible delete action.
+- **Sticky Header:** Kept parameter controls visible while scrolling long parameter lists.
+
 ## [2.1.6] - 2026-03-15
 
 ### 🐞 Bug Fixes

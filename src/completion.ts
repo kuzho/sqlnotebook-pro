@@ -43,6 +43,9 @@ type QueryContext = 'select' | 'from' | 'where' | 'join' | 'order' | 'group' | '
 export class SqlCompletionItemProvider implements vscode.CompletionItemProvider {
   private consolidatedSchema: Map<string, TableSchema[]> = new Map();
   private isRefreshing = false;
+  private usageByTable = new Map<string, number>();
+  private usageByColumn = new Map<string, number>();
+  private lastStatementSignatureByDocument = new Map<string, string>();
 
   constructor(
     private kernelManager: KernelManager,
@@ -109,7 +112,7 @@ export class SqlCompletionItemProvider implements vscode.CompletionItemProvider 
   private isClauseKeyword(value: string): boolean {
     const token = value.toUpperCase();
     const keywords = new Set([
-      'WHERE', 'JOIN', 'INNER', 'LEFT', 'RIGHT', 'FULL', 'ON', 'GROUP', 'ORDER',
+      'SELECT', 'FROM', 'WHERE', 'JOIN', 'INNER', 'LEFT', 'RIGHT', 'FULL', 'ON', 'GROUP', 'ORDER',
       'HAVING', 'LIMIT', 'OFFSET', 'UNION', 'EXCEPT', 'INTERSECT'
     ]);
     return keywords.has(token);
@@ -155,7 +158,10 @@ export class SqlCompletionItemProvider implements vscode.CompletionItemProvider 
     return fks;
   }
 
-  private getJoinSuggestions(aliasMap: Map<string, string>): vscode.CompletionItem[] {
+  private getJoinSuggestions(
+    aliasMap: Map<string, string>,
+    preferredPair?: [string, string]
+  ): vscode.CompletionItem[] {
     const fks = this.getForeignKeys();
     if (fks.length === 0) {
       return [];
@@ -179,7 +185,10 @@ export class SqlCompletionItemProvider implements vscode.CompletionItemProvider 
           const text = `${left}.${fk.column} = ${right}.${fk.referencedColumn}`;
           const item = new vscode.CompletionItem(text, vscode.CompletionItemKind.Snippet);
           item.detail = `FK: ${fk.table}.${fk.column} -> ${fk.referencedTable}.${fk.referencedColumn}`;
-          item.sortText = `0_${text}`;
+          const isPreferredPair = preferredPair
+            && ((left === preferredPair[0] && right === preferredPair[1])
+              || (left === preferredPair[1] && right === preferredPair[0]));
+          item.sortText = `${isPreferredPair ? '0' : '1'}_${text}`;
           item.insertText = text;
           items.push(item);
         });
@@ -187,6 +196,38 @@ export class SqlCompletionItemProvider implements vscode.CompletionItemProvider 
     });
 
     return items;
+  }
+
+  private getPreferredJoinAliasPair(text: string, aliasMap: Map<string, string>): [string, string] | undefined {
+    const entries: Array<{ alias: string; table: string; kind: 'from' | 'join' }> = [];
+    const regex = /\b(from|join)\s+([^\s,]+)(?:\s+as)?(?:\s+([a-zA-Z_][\w]*))?/gi;
+    let match: RegExpExecArray | null;
+
+    while ((match = regex.exec(text)) !== null) {
+      const kind = match[1].toLowerCase() as 'from' | 'join';
+      const table = this.normalizeTableForLookup(match[2]);
+      const aliasCandidate = match[3];
+      const alias = aliasCandidate && !this.isClauseKeyword(aliasCandidate)
+        ? aliasCandidate
+        : table;
+      entries.push({ alias, table, kind });
+    }
+
+    if (entries.length < 2) {
+      return undefined;
+    }
+
+    const last = entries[entries.length - 1];
+    if (last.kind !== 'join') {
+      return undefined;
+    }
+
+    const previous = entries[entries.length - 2];
+    if (!aliasMap.has(last.alias) || !aliasMap.has(previous.alias)) {
+      return undefined;
+    }
+
+    return [previous.alias, last.alias];
   }
 
   private getQueryContext(textBefore: string): QueryContext {
@@ -217,6 +258,76 @@ export class SqlCompletionItemProvider implements vscode.CompletionItemProvider 
     return 'unknown';
   }
 
+  private isPositionInSqlComment(text: string, offset: number): boolean {
+    let inSingleQuote = false;
+    let inDoubleQuote = false;
+    let inBracketIdentifier = false;
+    let inLineComment = false;
+    let inBlockComment = false;
+
+    for (let i = 0; i < offset; i++) {
+      const ch = text[i];
+      const next = i + 1 < offset ? text[i + 1] : '';
+
+      if (inLineComment) {
+        if (ch === '\n') {
+          inLineComment = false;
+        }
+        continue;
+      }
+
+      if (inBlockComment) {
+        if (ch === '*' && next === '/') {
+          inBlockComment = false;
+          i++;
+        }
+        continue;
+      }
+
+      if (!inDoubleQuote && !inBracketIdentifier && ch === "'") {
+        if (inSingleQuote && next === "'") {
+          i++;
+          continue;
+        }
+        inSingleQuote = !inSingleQuote;
+        continue;
+      }
+
+      if (!inSingleQuote && !inBracketIdentifier && ch === '"') {
+        inDoubleQuote = !inDoubleQuote;
+        continue;
+      }
+
+      if (!inSingleQuote && !inDoubleQuote && ch === '[') {
+        inBracketIdentifier = true;
+        continue;
+      }
+
+      if (inBracketIdentifier && ch === ']') {
+        inBracketIdentifier = false;
+        continue;
+      }
+
+      if (inSingleQuote || inDoubleQuote || inBracketIdentifier) {
+        continue;
+      }
+
+      if (ch === '-' && next === '-') {
+        inLineComment = true;
+        i++;
+        continue;
+      }
+
+      if (ch === '/' && next === '*') {
+        inBlockComment = true;
+        i++;
+        continue;
+      }
+    }
+
+    return inLineComment || inBlockComment;
+  }
+
   async provideCompletionItems(
     document: vscode.TextDocument,
     position: vscode.Position,
@@ -224,10 +335,23 @@ export class SqlCompletionItemProvider implements vscode.CompletionItemProvider 
     context: vscode.CompletionContext
   ): Promise<vscode.CompletionItem[]> {
 
+    const activeEditor = vscode.window.activeTextEditor;
+    if (
+      activeEditor
+      && activeEditor.document.uri.toString() === document.uri.toString()
+      && activeEditor.selections.some(selection => !selection.isEmpty)
+    ) {
+      return [];
+    }
+
     const cellText = this.getCellText(document, position);
     const offsetInCell = document.offsetAt(position);
     const textBefore = cellText.substring(0, offsetInCell);
     const lineText = document.getText(new vscode.Range(new vscode.Position(position.line, 0), position));
+
+    if (this.isPositionInSqlComment(cellText, offsetInCell)) {
+      return [];
+    }
 
     const paramMatch = textBefore.match(/@[a-zA-Z0-9_]*$/);
     if (paramMatch) {
@@ -249,34 +373,58 @@ export class SqlCompletionItemProvider implements vscode.CompletionItemProvider 
       return this.getColumnsForTable(tableName);
     }
 
-    const onClauseMatch = textBefore.match(/\bON\s+$/i);
-    if (onClauseMatch) {
+    const inOnContext = /\bON\b(?=[^;]*$)/i.test(textBefore)
+      && /\b(JOIN|INNER\s+JOIN|LEFT\s+JOIN|RIGHT\s+JOIN|FULL\s+OUTER\s+JOIN)\b(?=[^;]*$)/i.test(textBefore);
+    if (inOnContext) {
       const aliasMap = this.buildAliasMap(textBefore, true);
+      const preferredPair = this.getPreferredJoinAliasPair(textBefore, aliasMap);
       const onItems: vscode.CompletionItem[] = [];
-      onItems.push(...this.getJoinSuggestions(aliasMap));
+      onItems.push(...this.getJoinSuggestions(aliasMap, preferredPair));
       for (const [alias, table] of aliasMap) {
+        const aliasRank = preferredPair && (alias === preferredPair[0] || alias === preferredPair[1])
+          ? '0'
+          : '1';
         const cols = this.getColumnsForTable(table).map(item => {
           const col = item.label.toString();
           const qualified = `${alias}.${col}`;
           const aliasItem = new vscode.CompletionItem(qualified, vscode.CompletionItemKind.Field);
           aliasItem.detail = `Column of ${table}`;
-          aliasItem.sortText = `0_${qualified}`;
+          aliasItem.sortText = `${aliasRank}_${qualified}`;
           aliasItem.insertText = qualified;
           return aliasItem;
         });
         onItems.push(...cols);
       }
+      const boolKeywords = ['AND', 'OR', 'IS NULL', 'IS NOT NULL'].map(k => {
+        const item = new vscode.CompletionItem(k, vscode.CompletionItemKind.Keyword);
+        item.detail = 'Join condition keyword';
+        item.sortText = `9_${k}`;
+        return item;
+      });
+      onItems.push(...boolKeywords);
       if (onItems.length > 0) {
-        return onItems;
+        return this.dedupeByLabel(onItems);
       }
     }
 
     const queryContext = this.getQueryContext(textBefore);
+    const currentStatement = this.getCurrentStatement(textBefore);
+    this.learnUsageFromStatement(document.uri.toString(), currentStatement);
 
     const aliasMap = this.buildAliasMap(textBefore);
     const tablesInQuery = this.getTablesInQuery(textBefore);
 
-    const allTables = this.getAllTables(queryContext);
+    const identifierMatch = lineText.match(/([\w\[\]"`\.]+)$/);
+    const rawIdentifier = (identifierMatch?.[1] || '').trim();
+    const currentIdentifier = this.isClauseKeyword(rawIdentifier) ? '' : rawIdentifier;
+    const tableReplaceRange = identifierMatch
+      && !this.isClauseKeyword(rawIdentifier)
+      ? new vscode.Range(
+          new vscode.Position(position.line, position.character - identifierMatch[1].length),
+          position
+        )
+      : undefined;
+    const allTables = this.getAllTables(queryContext, currentIdentifier, tableReplaceRange, tablesInQuery);
     const allColumns = this.getAllColumns(queryContext);
     const scopedColumns = tablesInQuery.size > 0
       ? this.getColumnsForTables(Array.from(tablesInQuery))
@@ -300,20 +448,53 @@ export class SqlCompletionItemProvider implements vscode.CompletionItemProvider 
         : keywordItems;
 
     if (queryContext === 'from') {
-      return [...snippets, ...allTables, ...keywordItems];
+      // FROM/JOIN style ranking like SQL editors: tables first, then clauses.
+      const relatedTables = this.getRelatedTables(tablesInQuery);
+      const joinClauseSnippets = this.getJoinClauseSnippets(currentStatement);
+      this.sortByRelevance(allTables, relatedTables, currentIdentifier);
+      this.setSortPrefix(snippets, '00');
+      this.setSortPrefix(joinClauseSnippets, '05');
+      this.applySessionUsageBoost(allTables, 'table', '08');
+      this.boostPrefixMatches(allTables, currentIdentifier, '10');
+      this.setSortPrefix(keywordItems, '80');
+      return this.dedupeByLabel([...snippets, ...joinClauseSnippets, ...allTables, ...keywordItems]);
     }
 
     if (queryContext === 'select' || queryContext === 'where' || queryContext === 'order' || queryContext === 'group') {
+      // SELECT/WHERE style ranking: alias token -> alias columns -> scoped columns -> keywords.
       const columns = scopedColumns.length > 0 ? scopedColumns : allColumns;
-      const baseColumns = aliasMap.size > 0 ? [] : columns;
-      return [...snippets, ...aliasItems, ...baseColumns, ...orderedKeywords];
+      const qualifiedColumns = aliasMap.size > 0 ? this.getQualifiedColumnsForAliases(aliasMap) : [];
+
+      this.setSortPrefix(snippets, '00');
+      this.setSortPrefix(aliasItems, '10');
+      this.setSortPrefix(qualifiedColumns, '20');
+      this.setSortPrefix(columns, '30');
+      this.applySessionUsageBoost(qualifiedColumns, 'column', '22');
+      this.applySessionUsageBoost(columns, 'column', '32');
+      this.boostPrefixMatches(qualifiedColumns, currentIdentifier, '15');
+      this.boostPrefixMatches(columns, currentIdentifier, '25');
+      this.setSortPrefix(orderedKeywords, '80');
+
+      return this.dedupeByLabel([
+        ...snippets,
+        ...aliasItems,
+        ...qualifiedColumns,
+        ...columns,
+        ...orderedKeywords
+      ]);
     }
 
-    return [...snippets, ...allColumns, ...allTables, ...orderedKeywords];
+    this.setSortPrefix(snippets, '00');
+    this.setSortPrefix(allTables, '20');
+    this.setSortPrefix(allColumns, '30');
+    this.applySessionUsageBoost(allTables, 'table', '22');
+    this.applySessionUsageBoost(allColumns, 'column', '32');
+    this.setSortPrefix(orderedKeywords, '80');
+    return this.dedupeByLabel([...snippets, ...allTables, ...allColumns, ...orderedKeywords]);
   }
 
   private getColumnsForTables(tables: string[]): vscode.CompletionItem[] {
-    const columnsByName = new Map<string, { tables: Set<string> }>();
+    const columnsByName = new Map<string, { tables: Set<string>; count: number }>();
 
     for (const tableName of tables) {
       const lookupName = this.normalizeTableForLookup(tableName);
@@ -325,9 +506,11 @@ export class SqlCompletionItemProvider implements vscode.CompletionItemProvider 
 
         table.columns.forEach(col => {
           if (!columnsByName.has(col)) {
-            columnsByName.set(col, { tables: new Set() });
+            columnsByName.set(col, { tables: new Set(), count: 0 });
           }
-          columnsByName.get(col)?.tables.add(table.table);
+          const info = columnsByName.get(col)!;
+          info.tables.add(table.table);
+          info.count++; // Track how many times this column appears across tables
         });
       }
     }
@@ -339,7 +522,9 @@ export class SqlCompletionItemProvider implements vscode.CompletionItemProvider 
 
       const item = new vscode.CompletionItem(colName, vscode.CompletionItemKind.Field);
       item.detail = `Column in: ${tableList}${moreCount}`;
-      item.sortText = `0_${colName}`;
+      // Columns appearing in more tables get higher priority (common columns first)
+      const commonRank = info.count > 1 ? '0' : '1';
+      item.sortText = `${commonRank}_${colName}`;
       item.insertText = colName;
       items.push(item);
     });
@@ -479,20 +664,72 @@ export class SqlCompletionItemProvider implements vscode.CompletionItemProvider 
     });
   }
 
-  private getAllTables(context: QueryContext): vscode.CompletionItem[] {
+  private getAllTables(
+    context: QueryContext,
+    currentIdentifier = '',
+    replaceRange?: vscode.Range,
+    tablesInQuery?: Set<string>
+  ): vscode.CompletionItem[] {
     const allTables: vscode.CompletionItem[] = [];
 
     const prioritizeTables = context === 'from';
+    const parts = currentIdentifier.split('.');
+    const hasQualifier = parts.length > 1;
+    const qualifierPrefix = parts
+      .slice(0, -1)
+      .map(p => this.normalizeName(p))
+      .filter(Boolean)
+      .join('.');
+    const tablePrefix = this.normalizeName(parts[parts.length - 1] || '');
 
     for (const [kernelId, schema] of this.consolidatedSchema) {
       const connectionName = kernelId.replace('sql-notebook-', '');
 
       schema.forEach(t => {
+        const normalizedSchema = this.normalizeName(t.schema || '');
+        const normalizedSchemaLower = normalizedSchema.toLowerCase();
+        const qualifierPrefixLower = qualifierPrefix.toLowerCase();
+        const tablePrefixLower = tablePrefix.toLowerCase();
+
+        if (hasQualifier && qualifierPrefix) {
+          if (!normalizedSchema) {
+            return;
+          }
+          if (!normalizedSchemaLower.startsWith(qualifierPrefixLower)) {
+            return;
+          }
+        }
+
+        if (tablePrefix && !t.table.toLowerCase().startsWith(tablePrefixLower)) {
+          return;
+        }
+
         const label = t.schema ? `${t.schema}.${t.table}` : t.table;
         const tableItem = new vscode.CompletionItem(label, vscode.CompletionItemKind.Class);
         tableItem.detail = t.schema ? `Table (${t.schema})` : `Table (${connectionName})`;
-        tableItem.sortText = prioritizeTables ? `0_${label}` : `2_${label}`;
-        tableItem.insertText = label;
+        
+        const qualifierRank = hasQualifier
+          ? (normalizedSchemaLower === qualifierPrefixLower ? '0' : '1')
+          : (prioritizeTables ? '2' : '4');
+        
+        // Prefix match: if it starts with what user typed
+        const isPrefixMatch = tablePrefix && t.table.toLowerCase().startsWith(tablePrefixLower);
+        const tableRank = isPrefixMatch ? '0' : (tablePrefix ? '1' : '2');
+        
+        // Check if this table is already used in the query (less relevant in FROM)
+        // But still show it if there are FK relationships
+        const isUsedInQuery = tablesInQuery && tablesInQuery.has(t.table.toLowerCase());
+        const usageRank = isUsedInQuery ? '3' : '2'; // Used tables go after new ones in FROM
+        
+        tableItem.sortText = `${qualifierRank}${tableRank}${usageRank}_${label}`;
+
+        tableItem.filterText = label;
+        if (replaceRange) {
+          tableItem.textEdit = vscode.TextEdit.replace(replaceRange, label);
+        } else {
+          tableItem.insertText = label;
+        }
+
         allTables.push(tableItem);
       });
     }
@@ -591,5 +828,251 @@ export class SqlCompletionItemProvider implements vscode.CompletionItemProvider 
     }
 
     return items;
+  }
+
+  private setSortPrefix(items: vscode.CompletionItem[], prefix: string): vscode.CompletionItem[] {
+    items.forEach(item => {
+      const label = item.label.toString();
+      item.sortText = `${prefix}_${label}`;
+    });
+    return items;
+  }
+
+  private dedupeByLabel(items: vscode.CompletionItem[]): vscode.CompletionItem[] {
+    const seen = new Set<string>();
+    const result: vscode.CompletionItem[] = [];
+
+    for (const item of items) {
+      const key = `${item.kind ?? ''}:${item.label.toString()}`;
+      if (seen.has(key)) {
+        continue;
+      }
+      seen.add(key);
+      result.push(item);
+    }
+
+    return result;
+  }
+
+  private boostPrefixMatches(
+    items: vscode.CompletionItem[],
+    prefix: string,
+    boostedPrefix: string
+  ): vscode.CompletionItem[] {
+    const normalizedPrefix = this.normalizeName(prefix || '').toLowerCase();
+    if (!normalizedPrefix) {
+      return items;
+    }
+
+    items.forEach(item => {
+      const label = item.label.toString().toLowerCase();
+      const terminal = label.split('.').pop() || label;
+      if (terminal.startsWith(normalizedPrefix)) {
+        item.sortText = `${boostedPrefix}_${item.label.toString()}`;
+      }
+    });
+
+    return items;
+  }
+
+  private getCurrentStatement(textBefore: string): string {
+    const chunks = textBefore.split(';');
+    return chunks[chunks.length - 1] || textBefore;
+  }
+
+  private getTableReferences(text: string): Array<{ table: string; alias: string }> {
+    const refs: Array<{ table: string; alias: string }> = [];
+    const regex = /\b(from|join)\s+([^\s,]+)(?:\s+as)?(?:\s+([a-zA-Z_][\w]*))?/gi;
+    let match: RegExpExecArray | null;
+
+    while ((match = regex.exec(text)) !== null) {
+      const table = this.normalizeTableForLookup(match[2]);
+      const aliasCandidate = match[3];
+      const alias = aliasCandidate && !this.isClauseKeyword(aliasCandidate)
+        ? aliasCandidate
+        : table;
+      refs.push({ table, alias });
+    }
+
+    return refs;
+  }
+
+  private normalizeStatementSignature(statement: string): string {
+    return statement
+      .replace(/--.*$/gm, '')
+      .replace(/\/\*[\s\S]*?\*\//g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .toLowerCase();
+  }
+
+  private incrementUsage(store: Map<string, number>, key: string, delta = 1): void {
+    if (!key) {
+      return;
+    }
+    const current = store.get(key) || 0;
+    // Cap counts to avoid integer growth during long sessions.
+    store.set(key, Math.min(current + delta, 100000));
+  }
+
+  private learnUsageFromStatement(documentKey: string, statement: string): void {
+    const signature = this.normalizeStatementSignature(statement);
+    if (!signature || signature.length < 4) {
+      return;
+    }
+
+    const prev = this.lastStatementSignatureByDocument.get(documentKey);
+    if (prev === signature) {
+      return;
+    }
+    this.lastStatementSignatureByDocument.set(documentKey, signature);
+
+    const refs = this.getTableReferences(statement);
+    for (const ref of refs) {
+      this.incrementUsage(this.usageByTable, ref.table.toLowerCase(), 2);
+    }
+
+    const aliasToTable = new Map<string, string>();
+    for (const ref of refs) {
+      aliasToTable.set(ref.alias.toLowerCase(), ref.table.toLowerCase());
+      aliasToTable.set(ref.table.toLowerCase(), ref.table.toLowerCase());
+    }
+
+    const qualifiedRegex = /\b([a-zA-Z_][\w]*)\.([a-zA-Z_][\w]*)\b/g;
+    let q: RegExpExecArray | null;
+    while ((q = qualifiedRegex.exec(statement)) !== null) {
+      const alias = q[1].toLowerCase();
+      const col = q[2].toLowerCase();
+      const mappedTable = aliasToTable.get(alias);
+      this.incrementUsage(this.usageByColumn, col, 1);
+      if (mappedTable) {
+        this.incrementUsage(this.usageByColumn, `${mappedTable}.${col}`, 2);
+      }
+    }
+  }
+
+  private applySessionUsageBoost(
+    items: vscode.CompletionItem[],
+    kind: 'table' | 'column',
+    basePrefix: string
+  ): vscode.CompletionItem[] {
+    items.forEach(item => {
+      const originalLabel = item.label.toString();
+      const label = originalLabel.toLowerCase();
+      const terminal = label.split('.').pop() || label;
+
+      let score = 0;
+      if (kind === 'table') {
+        score = this.usageByTable.get(terminal) || 0;
+      } else {
+        score = (this.usageByColumn.get(label) || 0)
+          + (this.usageByColumn.get(terminal) || 0);
+      }
+
+      if (score <= 0) {
+        return;
+      }
+
+      const usageRank = String(Math.max(0, 9999 - score)).padStart(4, '0');
+      item.sortText = `${basePrefix}_${usageRank}_${originalLabel}`;
+    });
+
+    return items;
+  }
+
+  private getJoinClauseSnippets(textBefore: string): vscode.CompletionItem[] {
+    const refs = this.getTableReferences(textBefore);
+    if (refs.length === 0) {
+      return [];
+    }
+
+    const anchor = refs[refs.length - 1];
+    const usedTables = new Set(refs.map(r => r.table.toLowerCase()));
+    const snippets: vscode.CompletionItem[] = [];
+
+    for (const fk of this.getForeignKeys()) {
+      const leftTable = this.normalizeTableForLookup(fk.table);
+      const rightTable = this.normalizeTableForLookup(fk.referencedTable);
+
+      let joinTable = '';
+      let leftExpr = '';
+      let rightExpr = '';
+
+      if (leftTable.toLowerCase() === anchor.table.toLowerCase() && !usedTables.has(rightTable.toLowerCase())) {
+        joinTable = fk.referencedTable;
+        const joinAlias = rightTable;
+        leftExpr = `${anchor.alias}.${fk.column}`;
+        rightExpr = `${joinAlias}.${fk.referencedColumn}`;
+      } else if (rightTable.toLowerCase() === anchor.table.toLowerCase() && !usedTables.has(leftTable.toLowerCase())) {
+        joinTable = fk.table;
+        const joinAlias = leftTable;
+        leftExpr = `${anchor.alias}.${fk.referencedColumn}`;
+        rightExpr = `${joinAlias}.${fk.column}`;
+      }
+
+      if (!joinTable) {
+        continue;
+      }
+
+      const joinBase = this.normalizeTableForLookup(joinTable);
+      const label = `JOIN ${joinTable} ON`;
+      const item = new vscode.CompletionItem(label, vscode.CompletionItemKind.Snippet);
+      item.detail = `Suggested by FK (${anchor.table} ↔ ${joinBase})`;
+      item.sortText = `05_${label}`;
+      item.insertText = new vscode.SnippetString(`JOIN ${joinTable} ${joinBase} ON ${leftExpr} = ${rightExpr}`);
+      snippets.push(item);
+    }
+
+    return this.dedupeByLabel(snippets);
+  }
+
+  private getRelatedTables(tablesInQuery: Set<string>): Set<string> {
+    const related = new Set<string>();
+    const fks = this.getForeignKeys();
+
+    for (const fk of fks) {
+      const tableNorm = this.normalizeTableForLookup(fk.table).toLowerCase();
+      const refTableNorm = this.normalizeTableForLookup(fk.referencedTable).toLowerCase();
+
+      for (const table of tablesInQuery) {
+        const queryTableNorm = table.toLowerCase();
+        // If query table is the source of a FK, add the referenced table
+        if (queryTableNorm === tableNorm) {
+          related.add(refTableNorm);
+        }
+        // If query table is the target of a FK, add the source table (for JOINS)
+        if (queryTableNorm === refTableNorm) {
+          related.add(tableNorm);
+        }
+      }
+    }
+
+    return related;
+  }
+
+  private sortByRelevance(
+    items: vscode.CompletionItem[],
+    relatedTables: Set<string>,
+    currentIdentifier: string
+  ): void {
+    // Assign sortText so VS Code orders them correctly:
+    // tier 1 = prefix match, tier 2 = FK-related, tier 3 = rest
+    const currentId = this.normalizeName(currentIdentifier).toLowerCase();
+
+    items.forEach(item => {
+      const label = item.label.toString().toLowerCase();
+      const table = label.split('.').pop() || label;
+
+      let tier: string;
+      if (currentId && table.startsWith(currentId)) {
+        tier = '1';
+      } else if (relatedTables.has(table)) {
+        tier = '2';
+      } else {
+        tier = '3';
+      }
+
+      item.sortText = `${tier}_${label}`;
+    });
   }
 }

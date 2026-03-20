@@ -7,7 +7,7 @@
   "repository": {
     "url": "https://github.com/kuzho/sqlnotebook-pro.git"
   },
-  "version": "2.1.6",
+  "version": "2.1.7",
   "preview": false,
   "engines": {
     "vscode": "^1.75.0",
@@ -211,12 +211,6 @@
           "type": "boolean",
           "default": true,
           "description": "Automatically open Excel/CSV files after exporting."
-        },
-        "sqlnotebook.executeSelection": {
-          "type": "boolean",
-          "default": true,
-          "description": "If enabled, running a cell with a text selection will only execute the selected query. If disabled, the entire cell is always executed.",
-          "scope": "window"
         }
       }
     },

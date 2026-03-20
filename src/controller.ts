@@ -193,27 +193,12 @@ export class SQLNotebookKernel {
     const PARAMS_REGEX = /\/\*\s*<SQL_PARAMS>\s*([\s\S]*?)\s*<\/SQL_PARAMS>\s*\*\//;
     rawQuery = rawQuery.replace(PARAMS_REGEX, '').trim();
 
-    const executeSelection = vscode.workspace.getConfiguration('sqlnotebook').get<boolean>('executeSelection', true);
-
-    const editor = vscode.window.activeTextEditor;
-    if (executeSelection && editor && editor.document.uri.toString() === cell.document.uri.toString()) {
-      const selection = editor.selection;
-      if (!selection.isEmpty) {
-        const selectedText = editor.document.getText(selection);
-        if (selectedText.trim().length > 0) {
-          rawQuery = selectedText;
-        }
-      }
-    }
-
     try {
       const params = this.parameterProvider.getParameters(cell.notebook.uri.toString());
       Object.keys(params).forEach(key => {
-        const param = params[key];
-        // Get the raw value, whether it's a string or from the object structure
-        const rawValue = typeof param === 'string' ? param : String(param?.value ?? '');
-        // Ensure the value is formatted correctly before replacement. This is idempotent.
-        const finalValue = formatParameterValue(rawValue);
+        const param = params[key] as StoredParameterValue;
+        const resolved = resolveParameter(param);
+        const finalValue = resolved.raw ? resolved.value : formatParameterValue(resolved.value);
         const variableRegex = new RegExp(key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g');
         // Use a replacer function to ensure special characters in `finalValue` are not interpreted.
         rawQuery = rawQuery.replace(variableRegex, () => finalValue);
@@ -321,6 +306,46 @@ export class SQLNotebookKernel {
       })
     );
   }
+}
+
+type StoredParameterType = 'text' | 'checkbox' | 'select';
+
+type StoredParameterValue = string | {
+  value?: string;
+  raw?: boolean;
+  type?: StoredParameterType;
+  options?: string[];
+  checked?: boolean;
+  checkedValue?: string;
+  uncheckedValue?: string;
+};
+
+function resolveParameter(param: StoredParameterValue): { value: string; raw: boolean } {
+  if (typeof param === 'string') {
+    return { value: param, raw: false };
+  }
+
+  if (!param || typeof param !== 'object') {
+    return { value: '', raw: false };
+  }
+
+  const type = param.type === 'checkbox' || param.type === 'select' ? param.type : 'text';
+  const raw = !!param.raw;
+
+  if (type === 'checkbox') {
+    const checked = !!param.checked;
+    const checkedValue = String(param.checkedValue ?? 'true');
+    const uncheckedValue = String(param.uncheckedValue ?? 'false');
+    return { value: checked ? checkedValue : uncheckedValue, raw };
+  }
+
+  if (type === 'select') {
+    const options = Array.isArray(param.options) ? param.options.map(v => String(v)) : [];
+    const selected = String(param.value ?? '');
+    return { value: selected || options[0] || '', raw };
+  }
+
+  return { value: String(param.value ?? ''), raw };
 }
 
 /**

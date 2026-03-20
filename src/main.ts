@@ -76,7 +76,7 @@ export function activate(context: vscode.ExtensionContext) {
 
   const completionProvider = new SqlCompletionItemProvider(kernelManager, parameterProvider);
   context.subscriptions.push(
-    vscode.languages.registerCompletionItemProvider('sql', completionProvider, '.', ' ')
+    vscode.languages.registerCompletionItemProvider('sql', completionProvider, '.', ' ', ',', '(', '\n')
   );
 
   context.subscriptions.push(
