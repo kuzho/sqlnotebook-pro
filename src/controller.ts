@@ -208,6 +208,7 @@ export class SQLNotebookKernel {
     }
 
     if (!rawQuery.trim()) {
+      const now = new Date();
       const emptyMsg = [{
         Status: '⚠️ Info',
         Message: 'Empty cell - No query found'
@@ -215,7 +216,7 @@ export class SQLNotebookKernel {
       const myMimeType = 'application/vnd.code-sql-notebook.table+json';
       const outputData = {
           rows: emptyMsg,
-          info: { executionTime: new Date().toLocaleTimeString() }
+          info: makeExecutionInfo(now)
       };
       writeSuccess(execution, [[vscode.NotebookCellOutputItem.json(outputData, myMimeType)]]);
       return;
@@ -247,7 +248,8 @@ export class SQLNotebookKernel {
       return;
     }
 
-    const endTime = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    const finishedAt = new Date();
+    const executionInfo = makeExecutionInfo(finishedAt);
 
     if (typeof result === 'string') {
       writeSuccess(execution, [[text(result)]]);
@@ -262,7 +264,7 @@ export class SQLNotebookKernel {
 
       const outputData = {
         rows: emptyMsg,
-        info: { executionTime: endTime }
+        info: executionInfo
       };
 
       writeSuccess(execution, [[vscode.NotebookCellOutputItem.json(outputData, myMimeType)]]);
@@ -292,7 +294,7 @@ export class SQLNotebookKernel {
             rows: displayData,
             columns: normalized.columns,
             info: {
-                executionTime: endTime,
+              ...executionInfo,
                 truncated: isTruncated,
                 totalRows: normalized.rows.length
             }
@@ -370,6 +372,7 @@ function formatParameterValue(value: string): string {
 }
 
 function writeErr(execution: vscode.NotebookCellExecution, err: string) {
+  const now = new Date();
   const errorData = [{
       Status: '❌ Error',
       Message: err
@@ -379,7 +382,7 @@ function writeErr(execution: vscode.NotebookCellExecution, err: string) {
 
   const outputData = {
       rows: errorData,
-      info: { executionTime: new Date().toLocaleTimeString() }
+      info: makeExecutionInfo(now)
   };
 
   execution.replaceOutput([
@@ -396,4 +399,15 @@ const { text } = vscode.NotebookCellOutputItem;
 function writeSuccess(execution: vscode.NotebookCellExecution, outputs: vscode.NotebookCellOutputItem[][]) {
   execution.replaceOutput(outputs.map((items) => new vscode.NotebookCellOutput(items)));
   execution.end(true, Date.now());
+}
+
+function makeExecutionInfo(date: Date) {
+  const pad = (value: number) => String(value).padStart(2, '0');
+  const executionTime = `${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
+  const executionDate = `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+
+  return {
+    executionTime,
+    executionDate
+  };
 }

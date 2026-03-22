@@ -1,5 +1,12 @@
 # Change Log
 
+## [2.1.8] - 2026-03-22
+
+### ⚡ Changed
+- **Results Metadata:** Added `executionDate` to the result `info` payload alongside `executionTime`, so executions now report both date and time.
+- **Results Toolbar:** Updated the results header to display both launch time (`🕒`) and launch date (`📅`).
+- **Format Standardization:** Execution timestamp fields now use fixed formats for consistency across locales: `executionDate` as `YYYY-MM-DD` and `executionTime` as `HH:mm:ss`.
+
 ## [2.1.7] - 2026-03-20
 
 ### ⚡ Changed

@@ -466,13 +466,26 @@ const normalizeRows = (rows: any[], columnOrder: string[] | null) => {
   });
 };
 
+const formatExecutionTime = (date: Date) => {
+  const pad = (value: number) => String(value).padStart(2, '0');
+  return `${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
+};
+
+const formatExecutionDate = (date: Date) => {
+  const pad = (value: number) => String(value).padStart(2, '0');
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+};
+
 const TableApp = ({ data, postMessage }: { data: any, postMessage?: (msg: any) => void }) => {
   const rawRows = Array.isArray(data) ? data : (data.rows || []);
   const columnOrder = !Array.isArray(data) && Array.isArray(data.columns) ? data.columns : null;
   const rows = useMemo(() => normalizeRows(rawRows, columnOrder), [rawRows, columnOrder]);
   const executionTimeFromBackend = !Array.isArray(data) && data.info?.executionTime;
-  const fallbackTime = useMemo(() => new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }), []);
+  const executionDateFromBackend = !Array.isArray(data) && data.info?.executionDate;
+  const fallbackTime = useMemo(() => formatExecutionTime(new Date()), []);
+  const fallbackDate = useMemo(() => formatExecutionDate(new Date()), []);
   const runTime = executionTimeFromBackend || fallbackTime;
+  const runDate = executionDateFromBackend || fallbackDate;
   const [sorting, setSorting] = useState<SortingState>([]);
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
   const [activeMenuId, setActiveMenuId] = useState<string | null>(null);
@@ -822,6 +835,9 @@ const TableApp = ({ data, postMessage }: { data: any, postMessage?: (msg: any) =
         <span className="toolbar-time">
            🕒 {runTime}
         </span>
+          <span className="toolbar-time">
+            📅 {runDate}
+          </span>
         <div style={{flex:1}}/>
         {!isSelectNoRows && (
           <>
