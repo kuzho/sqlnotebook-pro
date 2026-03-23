@@ -242,9 +242,31 @@ function isValid(config: ConnData, isTest = false): boolean {
 
 async function getWebviewContent(webview: vscode.Webview, extensionUri: vscode.Uri) {
   const bundlePath = getUri(webview, extensionUri, ['dist', 'webview', 'main-bundle.js']);
-  return `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"><title>New Connection</title></head><body><div id="root"></div><script src="${bundlePath}"></script></body></html>`;
+  const nonce = getNonce();
+  return `<!DOCTYPE html>
+  <html lang="en">
+    <head>
+      <meta charset="UTF-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1.0">
+      <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src ${webview.cspSource} https: data:; style-src ${webview.cspSource} 'unsafe-inline'; script-src 'nonce-${nonce}';">
+      <title>New Connection</title>
+    </head>
+    <body>
+      <div id="root"></div>
+      <script nonce="${nonce}" src="${bundlePath}"></script>
+    </body>
+  </html>`;
 }
 
 function getUri(webview: vscode.Webview, extensionUri: vscode.Uri, pathList: string[]) {
   return webview.asWebviewUri(vscode.Uri.joinPath(extensionUri, ...pathList));
+}
+
+function getNonce() {
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+  let value = '';
+  for (let i = 0; i < 32; i++) {
+    value += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  return value;
 }

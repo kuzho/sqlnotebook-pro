@@ -440,11 +440,16 @@ function postgresConn(conn: pg.PoolClient): Conn {
 
 interface MSSQLConfig extends BaseConfig {
   driver: 'mssql';
-  encrypt: boolean;
-  trustServerCertificate: boolean;
+  encrypt?: boolean;
+  trustServerCertificate?: boolean;
+  legacyTls10?: boolean;
 }
 
 async function createMSSQLPool(config: MSSQLConfig): Promise<Pool> {
+  const encrypt = config.encrypt !== false;
+  const trustServerCertificate = config.trustServerCertificate === true;
+  const minVersion = config.legacyTls10 ? 'TLSv1' : 'TLSv1.2';
+
   const pool = new mssql.ConnectionPool({
     server: config.host,
     port: config.port,
@@ -453,10 +458,10 @@ async function createMSSQLPool(config: MSSQLConfig): Promise<Pool> {
     database: config.database,
     requestTimeout: config.queryTimeout,
     options: {
-      encrypt: config.encrypt,
-      trustServerCertificate: config.trustServerCertificate,
+      encrypt,
+      trustServerCertificate,
       cryptoCredentialsDetails: {
-        minVersion: 'TLSv1'
+        minVersion
       }
     } as any,
   });

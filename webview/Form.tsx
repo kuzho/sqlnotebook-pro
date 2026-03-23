@@ -97,6 +97,7 @@ const Form: React.FC<{
             setField('multipleStatements', config.multipleStatements);
             setField('encrypt', config.encrypt);
             setField('trustServerCertificate', config.trustServerCertificate);
+            setField('legacyTls10', config.legacyTls10);
 
           }, 0);
           break;
@@ -218,7 +219,8 @@ function showDriverConfig(driver: string) {
       return (
         <>
           <VSCodeCheckbox name="encrypt" checked>Encrypt</VSCodeCheckbox>
-          <VSCodeCheckbox name="trustServerCertificate" checked>Trust Server Certificate</VSCodeCheckbox>
+          <VSCodeCheckbox name="trustServerCertificate">Trust Server Certificate</VSCodeCheckbox>
+          <VSCodeCheckbox name="legacyTls10">Legacy TLS 1.0 (SQL Server 2012)</VSCodeCheckbox>
         </>
       );
     case 'sqlite': return <TextOption objectKey="path" label="Path" />;

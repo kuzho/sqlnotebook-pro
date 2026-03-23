@@ -222,20 +222,31 @@ export class ParameterProvider implements vscode.WebviewViewProvider {
     const scriptUri = webview.asWebviewUri(
       vscode.Uri.joinPath(this._extensionUri, 'dist', 'webview', 'parameters-bundle.js')
     );
+    const nonce = getNonce();
 
     return `<!DOCTYPE html>
       <html lang="en">
       <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src ${webview.cspSource} https: data:; style-src ${webview.cspSource} 'unsafe-inline'; script-src 'nonce-${nonce}';">
         <title>SQL Parameters</title>
       </head>
       <body>
         <div id="root"></div>
-        <script src="${scriptUri}"></script>
+        <script nonce="${nonce}" src="${scriptUri}"></script>
       </body>
       </html>`;
   }
+}
+
+function getNonce() {
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+  let value = '';
+  for (let i = 0; i < 32; i++) {
+    value += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  return value;
 }
 
 function areParamsEqual(a: Record<string, StoredParameter>, b: Record<string, StoredParameter>): boolean {

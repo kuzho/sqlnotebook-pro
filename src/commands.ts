@@ -16,7 +16,9 @@ export function deleteConnectionConfiguration(
     const without = current.filter(({ name }) => name !== item.config.name);
 
     await config.update('connections', without, vscode.ConfigurationTarget.Global);
-    await context.secrets.delete(item.config.name);
+    if (item.config.driver !== 'sqlite' && item.config.passwordKey) {
+      await context.secrets.delete(item.config.passwordKey);
+    }
 
     connectionsSidepanel.refresh();
     vscode.window.showInformationMessage(`Deleted connection "${item.config.name}"`);

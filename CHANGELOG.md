@@ -1,5 +1,14 @@
 # Change Log
 
+## [2.1.9] - 2026-03-22
+
+### 🔒 Security
+- **MSSQL TLS Hardening (Secure by Default):** MSSQL connections now default to certificate validation (`trustServerCertificate = false`) and modern TLS minimum (`TLSv1.2`).
+- **Legacy Compatibility Toggle:** Added optional `Legacy TLS 1.0 (SQL Server 2012)` for environments that still require old protocol support.
+- **Credential Hygiene:** Fixed connection deletion to remove the correct secret key from VS Code Secret Storage.
+- **Webview Hardening:** Added Content Security Policy (CSP) with nonce to connection and parameters webviews.
+- **Logging Hygiene:** Removed a debug log that printed connection object details before query execution.
+
 ## [2.1.8] - 2026-03-22
 
 ### ⚡ Changed

@@ -28,6 +28,9 @@ function processFormData(form: HTMLFormElement) {
   if (data.trustServerCertificate) {
     data.trustServerCertificate = !!data.trustServerCertificate;
   }
+  if (data.legacyTls10) {
+    data.legacyTls10 = !!data.legacyTls10;
+  }
   return data;
 }
 
