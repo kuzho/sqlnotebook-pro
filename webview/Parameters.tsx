@@ -159,7 +159,7 @@ const Parameters: React.FC = () => {
     const handleMessage = (event: MessageEvent) => {
       const message = event.data;
         if (message.type === 'set_parameters') {
-        const { parameters: newParamsObj, hasActiveFile: newHasActiveFile } = message.payload;
+        const { parameters: newParamsObj, hasActiveFile: newHasActiveFile, isDirty: nextIsDirty } = message.payload;
 
         const newParamsArray = Object.entries(newParamsObj || {}).map(([key, val], idx) => toParameter(key, val as IncomingStoredParameter, idx));
 
@@ -169,7 +169,7 @@ const Parameters: React.FC = () => {
 
         setParameters(newParamsArray);
         setHasActiveFile(newHasActiveFile);
-        setIsDirty(false);
+        setIsDirty(!!nextIsDirty);
         }
 
         if (message.type === 'save_now_result') {

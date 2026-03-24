@@ -1,5 +1,10 @@
 # Change Log
 
+## [2.2.0] - 2026-03-24
+
+### 🐛 Bug Fixes
+- **Parameters Panel Save State:** Fixed a bug where switching from a SQL notebook to another editor incorrectly reset the save status badge to `SAVED`, even when parameter changes had not been persisted to disk. The `UNSAVED` indicator is now preserved correctly across editor switches until the file is actually saved.
+
 ## [2.1.9] - 2026-03-22
 
 ### 🔒 Security

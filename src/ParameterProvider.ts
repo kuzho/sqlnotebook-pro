@@ -180,12 +180,14 @@ export class ParameterProvider implements vscode.WebviewViewProvider {
       const savedParams = editor.notebook.metadata?.custom?.parameters as Record<string, StoredParameter> | undefined;
       const runtimeParams = this._runtimeParamsByUri.get(this._activeUri);
       const displayParams = runtimeParams || savedParams || {};
+      const isDirty = runtimeParams ? !areParamsEqual(savedParams || {}, runtimeParams) : false;
 
       this._view?.webview.postMessage({
         type: 'set_parameters',
         payload: {
           parameters: displayParams,
-          hasActiveFile: true
+          hasActiveFile: true,
+          isDirty
         }
       });
     } else {
@@ -198,7 +200,8 @@ export class ParameterProvider implements vscode.WebviewViewProvider {
         type: 'set_parameters',
         payload: {
           parameters: {},
-          hasActiveFile: false
+          hasActiveFile: false,
+          isDirty: false
         }
       });
     }
