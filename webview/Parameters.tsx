@@ -69,8 +69,10 @@ const Parameters: React.FC = () => {
 
   const [hasActiveFile, setHasActiveFile] = React.useState(false);
   const [saveMessage, setSaveMessage] = React.useState('');
+  const [validationMessage, setValidationMessage] = React.useState('');
   const [isDirty, setIsDirty] = React.useState(false);
   const [visibleCount, setVisibleCount] = React.useState(LIST_BATCH_SIZE);
+  const [editingIds, setEditingIds] = React.useState<number[]>([]);
   const listRef = React.useRef<HTMLDivElement>(null);
 
   const getDefaultParam = React.useCallback((): Parameter => {
@@ -125,6 +127,9 @@ const Parameters: React.FC = () => {
     return items.reduce((acc, p) => {
       if (p.name) {
         const key = `@${p.name}`;
+        if (Object.prototype.hasOwnProperty.call(acc, key)) {
+          return acc;
+        }
         if (p.type === 'checkbox') {
           acc[key] = {
             value: p.checked ? p.checkedValue : p.uncheckedValue,
@@ -159,7 +164,11 @@ const Parameters: React.FC = () => {
     const handleMessage = (event: MessageEvent) => {
       const message = event.data;
         if (message.type === 'set_parameters') {
-        const { parameters: newParamsObj, hasActiveFile: newHasActiveFile, isDirty: nextIsDirty } = message.payload;
+        const {
+          parameters: newParamsObj,
+          hasActiveFile: newHasActiveFile,
+          isDirty: nextIsDirty
+        } = message.payload;
 
         const newParamsArray = Object.entries(newParamsObj || {}).map(([key, val], idx) => toParameter(key, val as IncomingStoredParameter, idx));
 
@@ -170,6 +179,13 @@ const Parameters: React.FC = () => {
         setParameters(newParamsArray);
         setHasActiveFile(newHasActiveFile);
         setIsDirty(!!nextIsDirty);
+        setSaveMessage('');
+        setValidationMessage('');
+        setEditingIds([]);
+        }
+
+        if (message.type === 'query_execution_start') {
+          setEditingIds([]);
         }
 
         if (message.type === 'save_now_result') {
@@ -206,6 +222,7 @@ const Parameters: React.FC = () => {
 
   const handleAddParameter = () => {
     setIsDirty(true);
+    setValidationMessage('');
     setParameters([...parameters, getDefaultParam()]);
     setVisibleCount(prev => Math.max(prev + 1, LIST_BATCH_SIZE));
     window.requestAnimationFrame(() => {
@@ -217,12 +234,33 @@ const Parameters: React.FC = () => {
 
   const handleRemoveParameter = (id: number) => {
     setIsDirty(true);
+    setValidationMessage('');
     setParameters(parameters.filter(p => p.id !== id));
   };
 
   const handleParameterChange = (id: number, field: keyof Parameter, newValue: string | boolean) => {
+    if (field === 'name') {
+      const candidate = String(newValue || '').trim();
+      if (candidate) {
+        const duplicated = parameters.some(p => p.id !== id && p.name.trim().toLowerCase() === candidate.toLowerCase());
+        if (duplicated) {
+          setValidationMessage(`Duplicate variable: @${candidate}`);
+          return;
+        }
+      }
+      setValidationMessage('');
+    }
+
     setIsDirty(true);
     setParameters(parameters.map(p => (p.id === id ? { ...p, [field]: newValue } : p)));
+  };
+
+  const openEdit = (id: number) => {
+    setEditingIds(prev => (prev.includes(id) ? prev : [...prev, id]));
+  };
+
+  const closeEdit = (id: number) => {
+    setEditingIds(prev => prev.filter(existingId => existingId !== id));
   };
 
   const handleTypeChange = (id: number, nextType: 'text' | 'checkbox' | 'select') => {
@@ -299,9 +337,6 @@ const Parameters: React.FC = () => {
     <div style={{ padding: '10px', display: 'flex', flexDirection: 'column', gap: '10px', height: '100vh', boxSizing: 'border-box', overflow: 'hidden' }}>
       <div style={{ flexShrink: 0, position: 'sticky', top: 0, zIndex: 2, background: 'var(--vscode-sideBar-background)', paddingBottom: '6px' }}>
       <h4>SQL Parameters</h4>
-      <p style={{ fontSize: '12px', opacity: 0.7, marginTop: '-5px', marginBottom: '2px', lineHeight: '1.4' }}>
-        Define variables (e.g., <code>@myVar</code>).<br/>For lists, use comma-separated values (e.g., <code>val1,val2</code>).
-      </p>
 
       <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '2px', flexShrink: 0, flexWrap: 'wrap' }}>
         <VSCodeButton
@@ -349,6 +384,9 @@ const Parameters: React.FC = () => {
         {saveMessage && (
           <span style={{ fontSize: '11px', opacity: 0.9, color: '#4CAF50', width: '100%' }}>{saveMessage}</span>
         )}
+        {validationMessage && (
+          <span style={{ fontSize: '11px', opacity: 0.95, color: '#ff5f56', width: '100%' }}>{validationMessage}</span>
+        )}
       </div>
       <div style={{ fontSize: '11px', opacity: 0.75, marginTop: '4px' }}>
         Showing {Math.min(visibleCount, parameters.length)} of {parameters.length} parameters
@@ -374,78 +412,152 @@ const Parameters: React.FC = () => {
             background: 'rgba(128, 128, 128, 0.06)'
           }}
         >
-          <div style={{ display: 'grid', gridTemplateColumns: 'minmax(90px, 120px) minmax(140px, 1fr)', gap: '6px', width: '100%' }}>
-            <VSCodeDropdown
-              value={param.type}
-              style={{ width: '100%', minWidth: '90px' }}
-              onChange={(e: any) => handleTypeChange(param.id, String(e.target?.value || 'text') as 'text' | 'checkbox' | 'select')}
+          <div style={{ gridColumn: '1 / -1', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '6px', width: '100%' }}>
+            <div
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px',
+                padding: '4px 8px',
+                borderRadius: '6px',
+                fontSize: '12px',
+                fontWeight: 600,
+                background: 'rgba(128, 128, 128, 0.15)',
+                border: '1px solid rgba(128, 128, 128, 0.3)'
+              }}
             >
-              <VSCodeOption value="text">Text</VSCodeOption>
-              <VSCodeOption value="checkbox">Checkbox</VSCodeOption>
-              <VSCodeOption value="select">Select</VSCodeOption>
-            </VSCodeDropdown>
-            <VSCodeTextField
-              placeholder="name"
-              value={param.name}
-              title={param.name}
-              onInput={(e: any) => handleParameterChange(param.id, 'name', e.target.value.replace(/[^a-zA-Z0-9_]/g, ''))}
-              style={{ width: '100%', minWidth: '120px' }}
-            >
-              <span slot="start">@</span>
-            </VSCodeTextField>
-
-            {param.type === 'text' && (
-              <VSCodeTextField
-                placeholder="value"
-                value={param.value}
-                title={param.value}
-                onInput={(e: any) => handleParameterChange(param.id, 'value', e.target.value)}
-                style={{ gridColumn: '1 / -1', width: '100%', minWidth: '120px' }}
-              />
-            )}
-
-            {param.type === 'checkbox' && (
-              <div style={{ display: 'grid', gridTemplateColumns: 'minmax(70px, auto) minmax(90px, 1fr) minmax(90px, 1fr)', gap: '6px', alignItems: 'center', gridColumn: '1 / -1' }}>
-                <VSCodeCheckbox
-                  checked={param.checked}
-                  onChange={(e: any) => {
-                    const checked = e?.target?.checked ?? e?.detail?.checked;
-                    handleParameterChange(param.id, 'checked', !!checked);
-                  }}
+              <span>{param.name ? `@${param.name}` : '@'}</span>
+              <span style={{ opacity: 0.8 }}>{param.type}</span>
+            </div>
+            <div style={{ display: 'flex', gap: '4px', alignSelf: 'start' }}>
+              {!editingIds.includes(param.id) && (
+                <VSCodeButton
+                  appearance="icon"
+                  onClick={() => openEdit(param.id)}
+                  title="Edit variable"
+                  style={{ flexShrink: 0, marginTop: '2px' }}
                 >
-                  On
-                </VSCodeCheckbox>
-                <VSCodeTextField
-                  placeholder="checked"
-                  value={param.checkedValue}
-                  title={param.checkedValue}
-                  onInput={(e: any) => handleParameterChange(param.id, 'checkedValue', e.target.value)}
-                  style={{
-                    width: '100%',
-                    minWidth: '90px',
-                    border: param.checked ? '1px solid #4CAF50' : '1px solid transparent',
-                    borderRadius: '6px',
-                    background: param.checked ? 'rgba(76, 175, 80, 0.08)' : undefined
-                  }}
-                />
-                <VSCodeTextField
-                  placeholder="unchecked"
-                  value={param.uncheckedValue}
-                  title={param.uncheckedValue}
-                  onInput={(e: any) => handleParameterChange(param.id, 'uncheckedValue', e.target.value)}
-                  style={{
-                    width: '100%',
-                    minWidth: '90px',
-                    border: !param.checked ? '1px solid #4CAF50' : '1px solid transparent',
-                    borderRadius: '6px',
-                    background: !param.checked ? 'rgba(76, 175, 80, 0.08)' : undefined
-                  }}
-                />
-              </div>
-            )}
+                  ✏️
+                </VSCodeButton>
+              )}
+              {editingIds.includes(param.id) && (
+                <VSCodeButton
+                  appearance="icon"
+                  onClick={() => closeEdit(param.id)}
+                  title="Done"
+                  style={{ flexShrink: 0, marginTop: '2px' }}
+                >
+                  ✓
+                </VSCodeButton>
+              )}
+              <VSCodeButton
+                appearance="icon"
+                onClick={() => handleRemoveParameter(param.id)}
+                title="Remove"
+                style={{ flexShrink: 0, marginTop: '2px' }}
+              >
+                🗑️
+              </VSCodeButton>
+            </div>
+          </div>
 
-            {param.type === 'select' && (
-              <div style={{ display: 'grid', gridTemplateColumns: 'minmax(120px, 1.6fr) minmax(110px, 1fr)', gap: '6px', alignItems: 'center', gridColumn: '1 / -1' }}>
+          {!editingIds.includes(param.id) && (
+            <div style={{ gridColumn: '1 / -1', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '6px', width: '100%' }}>
+              {param.type === 'text' && (
+                <VSCodeTextField
+                  placeholder="value"
+                  value={param.value}
+                  title={param.value}
+                  onInput={(e: any) => handleParameterChange(param.id, 'value', e.target.value)}
+                  style={{ width: '100%', minWidth: '120px' }}
+                />
+              )}
+
+              {param.type === 'checkbox' && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  <VSCodeCheckbox
+                    checked={param.checked}
+                    onChange={(e: any) => {
+                      const checked = e?.target?.checked ?? e?.detail?.checked;
+                      handleParameterChange(param.id, 'checked', !!checked);
+                    }}
+                  >
+                    On
+                  </VSCodeCheckbox>
+                  <span style={{ fontSize: '12px', opacity: 0.9 }}>
+                    {param.checked ? param.checkedValue : param.uncheckedValue}
+                  </span>
+                </div>
+              )}
+
+              {param.type === 'select' && (
+                <VSCodeDropdown
+                  value={param.value}
+                  style={{ width: '100%', minWidth: '110px' }}
+                  onChange={(e: any) => handleParameterChange(param.id, 'value', String(e.target?.value || ''))}
+                >
+                  {param.optionsText.split(',').map((item) => item.trim()).filter(Boolean).map(option => (
+                    <VSCodeOption key={option} value={option}>{option}</VSCodeOption>
+                  ))}
+                  {param.optionsText.split(',').map((item) => item.trim()).filter(Boolean).length === 0 && (
+                    <VSCodeOption value="">No options</VSCodeOption>
+                  )}
+                </VSCodeDropdown>
+              )}
+            </div>
+          )}
+
+          {editingIds.includes(param.id) && (
+            <div style={{ gridColumn: '1 / -1', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '6px', width: '100%' }}>
+              <VSCodeDropdown
+                value={param.type}
+                style={{ width: '100%', minWidth: '90px' }}
+                onChange={(e: any) => handleTypeChange(param.id, String(e.target?.value || 'text') as 'text' | 'checkbox' | 'select')}
+              >
+                <VSCodeOption value="text">Text</VSCodeOption>
+                <VSCodeOption value="checkbox">Checkbox</VSCodeOption>
+                <VSCodeOption value="select">Select</VSCodeOption>
+              </VSCodeDropdown>
+              <VSCodeTextField
+                placeholder="name"
+                value={param.name}
+                title={param.name}
+                onInput={(e: any) => handleParameterChange(param.id, 'name', e.target.value.replace(/[^a-zA-Z0-9_]/g, ''))}
+                style={{ width: '100%', minWidth: '120px' }}
+              >
+                <span slot="start">@</span>
+              </VSCodeTextField>
+
+              {param.type === 'text' && (
+                <VSCodeTextField
+                  placeholder="value"
+                  value={param.value}
+                  title={param.value}
+                  onInput={(e: any) => handleParameterChange(param.id, 'value', e.target.value)}
+                  style={{ gridColumn: '1 / -1', width: '100%', minWidth: '120px' }}
+                />
+              )}
+
+              {param.type === 'checkbox' && (
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: '6px', alignItems: 'center', gridColumn: '1 / -1' }}>
+                  <VSCodeTextField
+                    placeholder="checked"
+                    value={param.checkedValue}
+                    title={param.checkedValue}
+                    onInput={(e: any) => handleParameterChange(param.id, 'checkedValue', e.target.value)}
+                    style={{ width: '100%' }}
+                  />
+                  <VSCodeTextField
+                    placeholder="unchecked"
+                    value={param.uncheckedValue}
+                    title={param.uncheckedValue}
+                    onInput={(e: any) => handleParameterChange(param.id, 'uncheckedValue', e.target.value)}
+                    style={{ width: '100%' }}
+                  />
+                </div>
+              )}
+
+              {param.type === 'select' && (
                 <VSCodeTextField
                   placeholder="options: a,b,c"
                   value={param.optionsText}
@@ -462,30 +574,11 @@ const Parameters: React.FC = () => {
                       return { ...existing, optionsText, value: nextValue };
                     }));
                   }}
-                  style={{ width: '100%', minWidth: '120px' }}
+                  style={{ width: '100%', minWidth: '120px', gridColumn: '1 / -1' }}
                 />
-                <VSCodeDropdown
-                  value={param.value}
-                  style={{ width: '100%', minWidth: '110px' }}
-                  onChange={(e: any) => handleParameterChange(param.id, 'value', String(e.target?.value || ''))}
-                >
-                  {param.optionsText.split(',').map((item) => item.trim()).filter(Boolean).map(option => (
-                    <VSCodeOption key={option} value={option}>{option}</VSCodeOption>
-                  ))}
-                </VSCodeDropdown>
-              </div>
-            )}
-          </div>
-
-          {/* delete button always visible on the right */}
-          <VSCodeButton
-            appearance="icon"
-            onClick={() => handleRemoveParameter(param.id)}
-            title="Remove"
-            style={{ flexShrink: 0, marginTop: '2px', alignSelf: 'start' }}
-          >
-            🗑️
-          </VSCodeButton>
+              )}
+            </div>
+          )}
         </div>
       ))}
       {visibleCount < parameters.length && (

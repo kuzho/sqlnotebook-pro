@@ -155,6 +155,7 @@ export class SQLNotebookKernel {
   }
 
   private async _execute(cells: vscode.NotebookCell[], _notebook: vscode.NotebookDocument, _controller: vscode.NotebookController): Promise<void> {
+    this.parameterProvider.notifyQueryExecutionStart();
     for (let cell of cells) {
       await this.doExecution(cell);
     }

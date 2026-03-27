@@ -29,23 +29,18 @@ Define reusable variables and run parameterized queries with a dedicated side pa
 <br>
 
 #### 💡 Pro Tip: Universal Parameter Logic
-The extension automatically formats lists as `'val1','val2'`. To create filters that are **optional** (ignored if the field is empty), use this "Universal Template" logic in your `WHERE` clause:
+Define your parameters in the **Parameters Panel** (sidebar). List values like `Active, Pending` are automatically formatted as `'Active','Pending'` when substituted into the query.
+
+To create filters that are **optional** (ignored when the parameter is empty), use this pattern in your `WHERE` clause:
 
 ```sql
-/*<SQL_PARAMS>
-{
-  "@Status": "Active, Pending",
-  "@Country": ""
-}
-</SQL_PARAMS>*/
-
 SELECT * FROM users
 WHERE 1 = 1
-  -- If @Status is empty, it becomes '' and the filter is ignored.
-  -- If it has values, it becomes IN ('Active','Pending')
+  -- @Status = 'Active, Pending' → AND status_column IN ('Active','Pending')
+  -- @Status = ''               → condition is skipped (always true)
   AND ('' IN (@Status) OR status_column IN (@Status))
 
-  -- This filter will be ignored because @Country is empty
+  -- @Country = '' → skipped
   AND ('' IN (@Country) OR country_code IN (@Country))
 ```
 
@@ -123,30 +118,67 @@ For the best visual experience (matching the look & feel of Azure Data Studio), 
 ```
 <br>
 
-## 🚀 Feature Highlights (v2.0.0)
-- **📊 Native Export:** Save results as Excel/CSV using the system dialog. Auto-opens the file after saving.
-- **🛡️ Strict Mode:** Queries are now strictly separated by `-- %%` to prevent formatting errors in complex SQL blocks containing empty lines.
-- **👆 Multi-Select:** Select multiple columns in the grid (Ctrl+Click).
-- **🔌 Smart Ports:** Connection form auto-fills default ports (1433, 3306, 5432) based on the driver.
-- **✏️ Edit Mode:** Right-click to edit Host, User, or Port without re-entering passwords.
-- **☁️ Portable Settings:** Connections are saved in `settings.json`, making it easy to sync between computers.
-- **🔄 Hot Reload:** Edit a connection and run a query immediately—no restart required.
+## 🚀 What's in the Box
+- **🧠 Intellisense:** Schema-aware autocomplete for tables, columns, and SQL keywords across all your connections.
+- **🎛️ Parameters Panel:** Define `@Name` variables (text, dropdown, or checkbox) from the sidebar. Values are substituted at run time and can be saved per file.
+- **📊 Interactive Grid:** Filter, sort, and multi-select (Ctrl+Click) columns, rows, and cell ranges. Export to Excel/XLSX or CSV with one click.
+- **🖼️ Embedded Images:** Images pasted into markdown cells are stored as notebook attachments and rendered inline — no external files needed.
+- **📋 JSON Formatting:** Query results containing JSON strings are automatically pretty-printed.
+- **🔌 Connection Groups:** Organize connections by environment or project. Edit host/user/port without re-entering passwords. Auto-fills default ports per driver.
+- **🔒 Secure Credentials:** Passwords stored in the OS keychain via VS Code Secret Storage, never in plain text.
+- **☁️ Portable Settings:** Connection details live in `settings.json` — sync them across machines with VS Code Settings Sync.
+
+## Parameter Casting Recommendations (MySQL, MSSQL, SQLite, Postgres, Trino)
+
+Parameters are substituted as SQL string literals.
+- Single value: `'text'`
+- List value: `'1','2','3'` (best used with `IN (@Param)`)
+
+If your column is numeric/date/boolean, cast as needed in your query:
+
+```sql
+-- MySQL
+CAST(@Id AS UNSIGNED)
+CAST(@CreatedAt AS DATETIME)
+
+-- MSSQL
+TRY_CAST(@Id AS INT)
+TRY_CAST(@CreatedAt AS DATETIME2)
+
+-- SQLite
+CAST(@Id AS INTEGER)
+date(@CreatedAt)
+
+-- Postgres
+CAST(@Id AS INTEGER)
+CAST(@CreatedAt AS DATE)
+
+-- Trino
+CAST(@Id AS INTEGER)
+CAST(@CreatedAt AS DATE)
+```
+
+For lists, prefer:
+
+```sql
+WHERE some_column IN (@Ids)
+```
+
+And for optional filters:
+
+```sql
+AND ('' IN (@Ids) OR some_column IN (@Ids))
+```
 
 ## Usage
 
-1.  **Open a SQL File:** Open any `.sql` file, click `Open With...` (or right-click the tab), and select **SQL Notebook**.
-2.  **Separate Queries:** Use the standard separator `-- %%` to define independent executable cells.
-    ```sql
-    SELECT * FROM users
-
-    -- %%
-
-    SELECT * FROM orders
-    ```
-3.  **Create Connection:** Use the "SQL Notebook" sidebar to add a connection.
-    - *Tip:* Enter a "Group Name" to create a folder automatically.
-4.  **Select Connection:** Click the **Select Kernel** button (top-right corner of the editor) or the current connection name to choose which database to use.
-5.  **Run Queries:** Click the **Play** button on each cell.
+1. **Open a SQL File as a Notebook:** Right-click any `.sql` file in the Explorer → **Open With** → **SQL Notebook**. If the file is already open in the text editor, right-click the tab → **Reopen Editor With** → **SQL Notebook**.
+2. **Add Cells:** Use the **+ SQL** or **+ Markdown** buttons at the bottom of the notebook to add new cells. Each SQL cell runs independently.
+   > *Already have a plain `.sql` file with `-- %%` separators? It migrates automatically — each block becomes a separate cell.*
+3. **Create a Connection:** Use the **SQL Notebook** sidebar panel to add a database connection. Enter a **Group Name** to organize it into a folder automatically.
+4. **Select Connection:** Click the connection name in the top-right of the editor (or the **Select Kernel** button) to choose which database to run against.
+5. **Define Parameters *(optional)*:** Click the **Parameters** icon in the notebook toolbar to open the panel. Add `@Name` variables with text, dropdown, or checkbox types — substituted at run time, saveable per file.
+6. **Run Queries:** Click the **▶** button on a cell, or use **Run All** from the toolbar.
 
 ## Configuration
 

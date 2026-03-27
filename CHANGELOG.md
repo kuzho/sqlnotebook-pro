@@ -1,5 +1,16 @@
 # Change Log
 
+## [3.0.0] - 2026-03-25
+
+### ✨ New Features
+- **Redesigned Parameters Panel:** Completely rebuilt the SQL Parameters panel with a compact, per-row UI. Each parameter shows a badge (`@name type`) alongside its inline value control. Click the ✏️ button to expand a full edit form for that row, and ✓ to confirm. Edit mode is automatically closed when a query starts executing.
+- **Embedded Images in Markdown Cells:** Markdown cells now render images embedded as `attachment:` links (e.g. `![alt](attachment:filename.png)`) by resolving them from the notebook's stored attachments. Images are displayed inline without requiring external file paths.
+- **JSON Cell Formatting:** SQL query results that return a single JSON string are now pretty-printed in the output cell, making JSON payloads easy to read directly in the notebook.
+
+### 🔧 Internal
+- Removed legacy client-side paste/drop/input event listeners that attempted to convert local image paths to base64 inline. Image embedding is now handled cleanly via the `attachment:` protocol.
+- Fixed implicit `any` TypeScript errors in the attachment injection utility.
+
 ## [2.2.0] - 2026-03-24
 
 ### 🐛 Bug Fixes

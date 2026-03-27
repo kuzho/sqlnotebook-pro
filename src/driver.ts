@@ -103,7 +103,6 @@ async function createSqLitePool({
   }
 
   const fullPath = path.resolve(workspaceRoot(), filepath);
-  console.log('[DEBUG][SQLite] Opening DB at path:', fullPath);
   const buff = await fs.readFile(fullPath);
   const db = new sqlite.Database(buff);
 
@@ -157,21 +156,15 @@ function sqliteConn(conn: SqliteDatabase, dbFile?: string): Conn {
 
           while (stm.step()) {
             result.push(stm.get());
-            if (!isSelect) affectedRows++;
+            if (!isSelect) {affectedRows++;}
           }
 
           stm.free();
-          if (isSelect) {
-            console.log(`[DEBUG][SQLite] SELECT returned ${result.length} rows.`);
-          } else {
-            console.log(`[DEBUG][SQLite] Non-SELECT affected ${affectedRows} rows.`);
-          }
 
           if (dbFile) {
             const data = conn.export();
             const buffer = Buffer.from(data);
             await fs.writeFile(dbFile, buffer);
-            console.log('[DEBUG][SQLite] Database written to:', dbFile);
           }
 
           return [{ rows: result, columns }];
@@ -293,7 +286,6 @@ function mysqlConn(conn: mysql.PoolConnection, queryTimeout: number): Conn {
         timeout: queryTimeout,
         rowsAsArray: true,
       })) as any;
-      console.debug('mysql query result', { result, ok });
 
       const normalizeRows = (rows: any, fields: any) => {
         if (!Array.isArray(rows)) {
@@ -412,7 +404,6 @@ function postgresConn(conn: pg.PoolClient): Conn {
   return {
     async query(q: string): Promise<ExecutionResult> {
       const response = (await conn.query({ text: q, rowMode: 'array' })) as any as pg.QueryResult<any>[];
-      console.debug('pg query response', { response });
 
       const maybeResponses = !!response.length
         ? response

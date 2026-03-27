@@ -1,6 +1,17 @@
 /// <reference lib="dom" />
 
 import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
+// Utilidad para reemplazar attachment: links por base64
+function injectAttachmentsIntoMarkdown(markdown: string, attachments: Record<string, Record<string, string>>) {
+  if (!attachments) {return markdown;}
+  return markdown.replace(/!\[([^\]]*)\]\(attachment:([^\)]+)\)/g, (full: string, alt: string, filename: string) => {
+    const att = attachments[filename];
+    if (!att) {return full;}
+    const mime = Object.keys(att)[0];
+    const base64 = att[mime];
+    return `![${alt}](data:${mime};base64,${base64})`;
+  });
+}
 import ReactDOM from 'react-dom';
 import type { ActivationFunction } from 'vscode-notebook-renderer';
 import {
@@ -937,6 +948,10 @@ export const activate: ActivationFunction = (context) => {
   return {
     renderOutputItem(data, element) {
       const json = data.json();
+      // Si es una celda markdown con attachments, reemplazar attachment: links
+      if (json && json.kind === 1 && json.attachments) {
+        json.value = injectAttachmentsIntoMarkdown(json.value, json.attachments);
+      }
       try { ReactDOM.unmountComponentAtNode(element); } catch(e){}
       element.innerHTML = '';
       ReactDOM.render(<TableApp data={json} postMessage={context.postMessage} />, element);

@@ -5,6 +5,7 @@ export class ParameterProvider implements vscode.WebviewViewProvider {
   private _view?: vscode.WebviewView;
   private _activeUri: string | null = null;
   private _runtimeParamsByUri = new Map<string, Record<string, StoredParameter>>();
+  private _explicitSaveRequests = new Set<string>();
 
   constructor(
     private readonly _extensionUri: vscode.Uri,
@@ -85,44 +86,12 @@ export class ParameterProvider implements vscode.WebviewViewProvider {
                 await vscode.workspace.applyEdit(edit);
               }
             }
+            this._explicitSaveRequests.add(notebook.uri.toString());
             await notebook.save();
-            this._view?.webview.postMessage({
-              type: 'save_now_result',
-              payload: { message: 'Saved' }
-            });
           }
         }
       }
     });
-
-    this._context.subscriptions.push(
-      vscode.workspace.onWillSaveNotebookDocument(async e => {
-        const notebook = e.notebook;
-        if (notebook.notebookType !== 'sql-notebook') {
-          return;
-        }
-        if (e.reason !== vscode.TextDocumentSaveReason.Manual) {
-          return;
-        }
-        const uriKey = notebook.uri.toString();
-        const pending = this._runtimeParamsByUri.get(uriKey);
-        if (!pending) {
-          return;
-        }
-        const currentMetadata = notebook.metadata || {};
-        const custom = currentMetadata.custom || {};
-        const currentParams = (custom.parameters || {}) as Record<string, StoredParameter>;
-        if (areParamsEqual(currentParams, pending)) {
-          return;
-        }
-        const edit = new vscode.WorkspaceEdit();
-        edit.set(notebook.uri, [vscode.NotebookEdit.updateNotebookMetadata({
-          ...currentMetadata,
-          custom: { ...custom, parameters: pending }
-        })]);
-        await vscode.workspace.applyEdit(edit);
-      })
-    );
 
     this._context.subscriptions.push(
       vscode.workspace.onDidSaveNotebookDocument((notebook) => {
@@ -130,7 +99,13 @@ export class ParameterProvider implements vscode.WebviewViewProvider {
           return;
         }
 
-        if (this._activeUri !== notebook.uri.toString()) {
+        const uriKey = notebook.uri.toString();
+        if (!this._explicitSaveRequests.has(uriKey)) {
+          return;
+        }
+        this._explicitSaveRequests.delete(uriKey);
+
+        if (this._activeUri !== uriKey) {
           return;
         }
 
@@ -149,6 +124,7 @@ export class ParameterProvider implements vscode.WebviewViewProvider {
 
         const uriKey = notebook.uri.toString();
         this._runtimeParamsByUri.delete(uriKey);
+        this._explicitSaveRequests.delete(uriKey);
 
         if (this._activeUri === uriKey) {
           this._activeUri = null;
@@ -219,6 +195,15 @@ export class ParameterProvider implements vscode.WebviewViewProvider {
       }
     }
     return {};
+  }
+
+  public notifyQueryExecutionStart(): void {
+    if (this._view?.webview) {
+      this._view.webview.postMessage({
+        type: 'query_execution_start',
+        payload: {}
+      });
+    }
   }
 
   private _getHtmlForWebview(webview: vscode.Webview) {
