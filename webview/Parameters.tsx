@@ -1,4 +1,7 @@
+// Removed FlatpickrDateField component
 import * as React from 'react';
+import flatpickr from 'flatpickr';
+import 'flatpickr/dist/themes/dark.css';
 import {
   VSCodeTextField,
   VSCodeButton,
@@ -20,7 +23,7 @@ interface Parameter {
   id: number;
   name: string;
   value: string;
-  type: 'text' | 'checkbox' | 'select';
+  type: 'text' | 'checkbox' | 'select' | 'date';
   checked: boolean;
   checkedValue: string;
   uncheckedValue: string;
@@ -29,7 +32,7 @@ interface Parameter {
 
 type IncomingStoredParameter = string | {
   value?: string;
-  type?: 'text' | 'checkbox' | 'select';
+  type?: 'text' | 'checkbox' | 'select' | 'date';
   options?: string[];
   checked?: boolean;
   checkedValue?: string;
@@ -102,7 +105,10 @@ const Parameters: React.FC = () => {
       };
     }
 
-    const inferredType = rawParam?.type === 'checkbox' || rawParam?.type === 'select' ? rawParam.type : 'text';
+    let inferredType: Parameter['type'] = 'text';
+    if (rawParam?.type === 'checkbox' || rawParam?.type === 'select' || rawParam?.type === 'date') {
+      inferredType = rawParam.type;
+    }
     const checkedValue = String(rawParam?.checkedValue ?? 'true');
     const uncheckedValue = String(rawParam?.uncheckedValue ?? 'false');
     const value = unformatSqlValue(String(rawParam?.value ?? ''));
@@ -148,6 +154,11 @@ const Parameters: React.FC = () => {
             value: selected,
             type: 'select',
             options
+          };
+        } else if (p.type === 'date') {
+          acc[key] = {
+            value: p.value,
+            type: 'date'
           };
         } else {
           // Keep text parameters in legacy string format for backward compatibility.
@@ -263,7 +274,7 @@ const Parameters: React.FC = () => {
     setEditingIds(prev => prev.filter(existingId => existingId !== id));
   };
 
-  const handleTypeChange = (id: number, nextType: 'text' | 'checkbox' | 'select') => {
+  const handleTypeChange = (id: number, nextType: 'text' | 'checkbox' | 'select' | 'date') => {
     setIsDirty(true);
     setParameters(parameters.map(p => {
       if (p.id !== id) {
@@ -286,6 +297,21 @@ const Parameters: React.FC = () => {
           ...p,
           type: 'select',
           value: p.value || options[0] || ''
+        };
+      }
+
+      if (nextType === 'date') {
+        // Default to current date/time if empty
+        let value = p.value;
+        if (!value) {
+          const now = new Date();
+          const pad = (n: number) => String(n).padStart(2, '0');
+          value = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}`;
+        }
+        return {
+          ...p,
+          type: 'date',
+          value
         };
       }
 
@@ -463,6 +489,7 @@ const Parameters: React.FC = () => {
 
           {!editingIds.includes(param.id) && (
             <div style={{ gridColumn: '1 / -1', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '6px', width: '100%' }}>
+
               {param.type === 'text' && (
                 <VSCodeTextField
                   placeholder="value"
@@ -470,6 +497,27 @@ const Parameters: React.FC = () => {
                   title={param.value}
                   onInput={(e: any) => handleParameterChange(param.id, 'value', e.target.value)}
                   style={{ width: '100%', minWidth: '120px' }}
+                />
+              )}
+
+              {param.type === 'date' && (
+                <input
+                  type="datetime-local"
+                  value={param.value}
+                  onChange={e => handleParameterChange(param.id, 'value', e.target.value)}
+                  style={{
+                    width: '100%',
+                    minWidth: '120px',
+                    fontSize: '13px',
+                    padding: '7px 10px',
+                    border: '1px solid var(--vscode-input-border, #ccc)',
+                    borderRadius: '4px',
+                    background: 'var(--vscode-input-background, #1e1e1e)',
+                    color: 'var(--vscode-input-foreground, #d4d4d4)',
+                    outline: 'none',
+                    boxSizing: 'border-box',
+                    margin: 0
+                  }}
                 />
               )}
 
@@ -512,11 +560,12 @@ const Parameters: React.FC = () => {
               <VSCodeDropdown
                 value={param.type}
                 style={{ width: '100%', minWidth: '90px' }}
-                onChange={(e: any) => handleTypeChange(param.id, String(e.target?.value || 'text') as 'text' | 'checkbox' | 'select')}
+                onChange={(e: any) => handleTypeChange(param.id, String(e.target?.value || 'text') as 'text' | 'checkbox' | 'select' | 'date')}
               >
                 <VSCodeOption value="text">Text</VSCodeOption>
                 <VSCodeOption value="checkbox">Checkbox</VSCodeOption>
                 <VSCodeOption value="select">Select</VSCodeOption>
+                <VSCodeOption value="date">Date/Time</VSCodeOption>
               </VSCodeDropdown>
               <VSCodeTextField
                 placeholder="name"

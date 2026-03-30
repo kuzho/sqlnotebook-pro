@@ -1,5 +1,10 @@
 # Change Log
 
+## [3.0.1] - 2026-03-30
+
+### ✨ New Features
+- **Date Parameter Support:** Now supports passing a `@date` parameter in SQL queries, allowing filtering by date and datetime values directly from the notebook interface.
+
 ## [3.0.0] - 2026-03-25
 
 ### ✨ New Features
