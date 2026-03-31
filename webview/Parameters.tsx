@@ -1,4 +1,4 @@
-// Removed FlatpickrDateField component
+ 
 import * as React from 'react';
 import flatpickr from 'flatpickr';
 import 'flatpickr/dist/themes/dark.css';
@@ -65,16 +65,23 @@ const unformatSqlValue = (sqlValue: string): string => {
 };
 
 const Parameters: React.FC = () => {
-  const [parameters, setParameters] = React.useState<Parameter[]>(() => {
-    const state = vscode.getState();
-    return state?.parameters || [{ id: Date.now(), name: '', value: '' }];
-  });
+  const [parameters, setParameters] = React.useState<Parameter[]>([{
+    id: Date.now(),
+    name: '',
+    value: '',
+    type: 'text',
+    checked: false,
+    checkedValue: 'true',
+    uncheckedValue: 'false',
+    optionsText: ''
+  }]);
 
   const [hasActiveFile, setHasActiveFile] = React.useState(false);
   const [saveMessage, setSaveMessage] = React.useState('');
   const [validationMessage, setValidationMessage] = React.useState('');
   const [isDirty, setIsDirty] = React.useState(false);
   const [visibleCount, setVisibleCount] = React.useState(LIST_BATCH_SIZE);
+  const [initialized, setInitialized] = React.useState(false);
   const [editingIds, setEditingIds] = React.useState<number[]>([]);
   const listRef = React.useRef<HTMLDivElement>(null);
 
@@ -193,6 +200,7 @@ const Parameters: React.FC = () => {
         setSaveMessage('');
         setValidationMessage('');
         setEditingIds([]);
+        setInitialized(true);
         }
 
         if (message.type === 'update_state') {
@@ -223,14 +231,18 @@ const Parameters: React.FC = () => {
   }, [getDefaultParam, toParameter]);
 
   React.useEffect(() => {
-    vscode.setState({ parameters });
-    vscode.postMessage({
-      type: 'parameters_updated',
-      payload: {
-        parameters: outgoingParameters
-      }
-    });
-  }, [outgoingParameters, parameters]);
+    if (initialized) {
+      vscode.setState({ parameters });
+      vscode.postMessage({
+        type: 'parameters_updated',
+        payload: {
+          parameters: outgoingParameters
+        }
+      });
+    } else {
+      vscode.postMessage({ type: 'ready', payload: {} });
+    }
+  }, [outgoingParameters, parameters, initialized]);
 
   React.useEffect(() => {
     setVisibleCount(prev => {

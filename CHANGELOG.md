@@ -1,5 +1,10 @@
 # Change Log
 
+## [3.0.3] - 2025-05-15
+
+### 🐛 Bug Fixes
+- **Parameters Panel Persistence:** Fixed an issue where SQL parameters would disappear when closing and reopening the side panel. The extension now preserves unsaved parameter changes in memory independently of the panel's visibility and ensures reliable synchronization when the view is reopened.
+
 ## [3.0.2] - 2025-05-14
 
 ### ✨ Features

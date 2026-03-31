@@ -10,19 +10,66 @@ export class ParameterProvider implements vscode.WebviewViewProvider {
   constructor(
     private readonly _extensionUri: vscode.Uri,
     private readonly _context: vscode.ExtensionContext
-  ) {}
+  ) {
+    // Subscriptions move to constructor to persist state independently of the view lifecycle
+    this._context.subscriptions.push(
+      vscode.workspace.onDidSaveNotebookDocument((notebook) => {
+        if (notebook.notebookType !== 'sql-notebook') {
+          return;
+        }
+
+        const uriKey = notebook.uri.toString();
+        if (!this._explicitSaveRequests.has(uriKey)) {
+          return;
+        }
+        this._explicitSaveRequests.delete(uriKey);
+
+        if (this._activeUri !== uriKey) {
+          return;
+        }
+
+        this._view?.webview.postMessage({
+          type: 'save_now_result',
+          payload: { message: 'Saved' }
+        });
+      })
+    );
+
+    this._context.subscriptions.push(
+      vscode.workspace.onDidCloseNotebookDocument((notebook) => {
+        if (notebook.notebookType !== 'sql-notebook') {
+          return;
+        }
+
+        const uriKey = notebook.uri.toString();
+        this._runtimeParamsByUri.delete(uriKey);
+        this._explicitSaveRequests.delete(uriKey);
+
+        if (this._activeUri === uriKey) {
+          this._activeUri = null;
+          this._refreshWebviewWithEmpty();
+        }
+      })
+    );
+
+    this._context.subscriptions.push(
+      vscode.window.onDidChangeActiveNotebookEditor(editor => {
+        this._updateWebviewForEditor(editor);
+      })
+    );
+  }
 
   public resolveWebviewView(
     webviewView: vscode.WebviewView,
     context: vscode.WebviewViewResolveContext,
     _token: vscode.CancellationToken,
   ) {
+
     this._view = webviewView;
+
 
     webviewView.onDidDispose(() => {
       this._view = undefined;
-      this._activeUri = null;
-      this._runtimeParamsByUri.clear();
     });
 
     webviewView.webview.options = {
@@ -35,6 +82,10 @@ export class ParameterProvider implements vscode.WebviewViewProvider {
     webviewView.webview.html = this._getHtmlForWebview(webviewView.webview);
 
     webviewView.webview.onDidReceiveMessage(async data => {
+      if (data.type === 'ready') {
+        this._updateWebviewForEditor(vscode.window.activeNotebookEditor);
+      }
+
       if (data.type === 'parameters_updated') {
         const { parameters } = data.payload;
 
@@ -93,61 +144,19 @@ export class ParameterProvider implements vscode.WebviewViewProvider {
       }
     });
 
-    this._context.subscriptions.push(
-      vscode.workspace.onDidSaveNotebookDocument((notebook) => {
-        if (notebook.notebookType !== 'sql-notebook') {
-          return;
-        }
+    // Forzar sincronización al abrir el panel
+    this._updateWebviewForEditor(vscode.window.activeNotebookEditor);
+  }
 
-        const uriKey = notebook.uri.toString();
-        if (!this._explicitSaveRequests.has(uriKey)) {
-          return;
-        }
-        this._explicitSaveRequests.delete(uriKey);
-
-        if (this._activeUri !== uriKey) {
-          return;
-        }
-
-        this._view?.webview.postMessage({
-          type: 'save_now_result',
-          payload: { message: 'Saved' }
-        });
-      })
-    );
-
-    this._context.subscriptions.push(
-      vscode.workspace.onDidCloseNotebookDocument((notebook) => {
-        if (notebook.notebookType !== 'sql-notebook') {
-          return;
-        }
-
-        const uriKey = notebook.uri.toString();
-        this._runtimeParamsByUri.delete(uriKey);
-        this._explicitSaveRequests.delete(uriKey);
-
-        if (this._activeUri === uriKey) {
-          this._activeUri = null;
-          this._view?.webview.postMessage({
-            type: 'set_parameters',
-            payload: {
-              parameters: {},
-              hasActiveFile: false
-            }
-          });
-        }
-      })
-    );
-
-
-
-    vscode.window.onDidChangeActiveNotebookEditor(editor => {
-      this._updateWebviewForEditor(editor);
+  private _refreshWebviewWithEmpty() {
+    this._view?.webview.postMessage({
+      type: 'set_parameters',
+      payload: {
+        parameters: {},
+        hasActiveFile: false,
+        isDirty: false
+      }
     });
-
-    if (vscode.window.activeNotebookEditor) {
-      this._updateWebviewForEditor(vscode.window.activeNotebookEditor);
-    }
   }
 
   /**
@@ -201,14 +210,7 @@ export class ParameterProvider implements vscode.WebviewViewProvider {
       }
 
       this._activeUri = null;
-      this._view?.webview.postMessage({
-        type: 'set_parameters',
-        payload: {
-          parameters: {},
-          hasActiveFile: false,
-          isDirty: false
-        }
-      });
+      this._refreshWebviewWithEmpty();
     }
   }
 
