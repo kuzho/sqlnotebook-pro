@@ -195,6 +195,16 @@ const Parameters: React.FC = () => {
         setEditingIds([]);
         }
 
+        if (message.type === 'update_state') {
+          const { isDirty: nextIsDirty, hasActiveFile: nextHasActiveFile } = message.payload;
+          if (nextIsDirty !== undefined) {
+            setIsDirty(nextIsDirty);
+          }
+          if (nextHasActiveFile !== undefined) {
+            setHasActiveFile(nextHasActiveFile);
+          }
+        }
+
         if (message.type === 'query_execution_start') {
           setEditingIds([]);
         }

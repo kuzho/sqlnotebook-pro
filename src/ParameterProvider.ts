@@ -86,8 +86,8 @@ export class ParameterProvider implements vscode.WebviewViewProvider {
                 await vscode.workspace.applyEdit(edit);
               }
             }
-            this._explicitSaveRequests.add(notebook.uri.toString());
-            await notebook.save();
+            // Force VS Code to trigger the serializer and migrate to JSON format
+            await vscode.commands.executeCommand('workbench.action.files.save');
           }
         }
       }
@@ -147,6 +147,35 @@ export class ParameterProvider implements vscode.WebviewViewProvider {
 
     if (vscode.window.activeNotebookEditor) {
       this._updateWebviewForEditor(vscode.window.activeNotebookEditor);
+    }
+  }
+
+  /**
+   * Updates the webview state (dirty/saved) without full refresh
+   */
+  public updateWebviewState(state: { isDirty?: boolean; hasActiveFile?: boolean }) {
+    this._view?.webview.postMessage({
+      type: 'update_state',
+      payload: state
+    });
+  }
+
+  /**
+   * Forces a refresh based on the active editor
+   */
+  public refresh() {
+    this._updateWebviewForEditor(vscode.window.activeNotebookEditor);
+  }
+
+  /**
+   * Notifies the webview that a save operation was completed externally (e.g. Ctrl+S)
+   */
+  public onExternalSave(uri: string) {
+    if (this._activeUri === uri) {
+      this._view?.webview.postMessage({
+        type: 'save_now_result',
+        payload: { message: 'Saved' }
+      });
     }
   }
 

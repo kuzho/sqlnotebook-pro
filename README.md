@@ -29,6 +29,10 @@ Define reusable variables and run parameterized queries with a dedicated side pa
 <br>
 
 #### 💡 Pro Tip: Universal Parameter Logic
+#### 📤 Exporting to Legacy SQL
+* **Save (💾):** Saves your notebook in the new JSON-enhanced format (supports images and rich metadata).
+* **Export (📤):** Converts your notebook back to a plain `.sql` file with `-- %%` separators, compatible with legacy versions and other SQL editors.
+
 Define your parameters in the **Parameters Panel** (sidebar). List values like `Active, Pending` are automatically formatted as `'Active','Pending'` when substituted into the query.
 
 To create filters that are **optional** (ignored when the parameter is empty), use this pattern in your `WHERE` clause:

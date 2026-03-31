@@ -1,5 +1,20 @@
 # Change Log
 
+## [3.0.2] - 2025-05-14
+
+### ✨ Features
+- **Export to Legacy SQL:** Added a new button in the notebook toolbar to export the current JSON notebook back to a plain `.sql` file with `-- %%` separators.
+
+### ✨ Improved
+- **Improved Date Compatibility:** Date parameters are now always formatted using a space separator instead of 'T' (e.g. `YYYY-MM-DD HH:mm`). This ensures full compatibility with SQL Server (MSSQL) while remaining valid for MySQL, Postgres, and others, avoiding "Conversion failed" errors.
+- **Sargable Date Queries:** By providing standard SQL date strings, the extension encourages direct comparisons (e.g., `date_col >= @param`) instead of wrapping parameters in CAST/CONVERT functions, improving performance and readability.
+- **Export Logic:** Enhanced the SQL Export to include markdown cells as comments and preserve parameter blocks accurately.
+- **Smart Status Badge:** The Parameters panel now intelligently tracks the notebook's dirty state. It correctly shows `UNSAVED` when editing cells or parameters, `SAVED` after `Ctrl+S`, and `NO FILE` when switching to non-notebook tabs.
+
+### 🐛 Bug Fixes
+- **Save Sync:** Fixed an issue where the "Saved" status in the Parameters panel wouldn't update when saving the notebook using `Ctrl + S`.
+- **Migration via UI Button:** Fixed the "Save" button in the parameters panel so it correctly triggers a file system write, ensuring legacy files migrate to the new JSON format.
+
 ## [3.0.1] - 2026-03-30
 
 ### ✨ New Features

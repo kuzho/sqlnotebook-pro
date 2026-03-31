@@ -7,7 +7,7 @@
   "repository": {
     "url": "https://github.com/kuzho/sqlnotebook-pro.git"
   },
-  "version": "3.0.1",
+  "version": "3.0.2",
   "preview": false,
   "engines": {
     "vscode": "^1.94.0",
@@ -67,6 +67,11 @@
         },
         {
           "command": "sqlnotebook.openParameters",
+          "group": "navigation",
+          "when": "notebookType == 'sql-notebook'"
+        },
+        {
+          "command": "sqlnotebook.exportToSQL",
           "group": "navigation",
           "when": "notebookType == 'sql-notebook'"
         }
@@ -148,6 +153,11 @@
         "command": "sqlnotebook.openParameters",
         "title": "SQL Parameters",
         "icon": "$(symbol-variable)"
+      },
+      {
+        "command": "sqlnotebook.exportToSQL",
+        "title": "Export to Legacy SQL",
+        "icon": "$(export)"
       },
       {
         "command": "sqlnotebook.refreshKernels",

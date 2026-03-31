@@ -235,6 +235,31 @@ export function activate(context: vscode.ExtensionContext) {
     })
   );
 
+  // Intelligent status sync: Mark as dirty and notify panel when cells are modified
+  context.subscriptions.push(
+    vscode.workspace.onDidChangeNotebookDocument(e => {
+      if (e.notebook.notebookType === notebookType) {
+        // Notify the webview to show UNSAVED
+        (parameterProvider as any).updateWebviewState?.({ isDirty: true });
+      }
+    })
+  );
+
+  // Intelligent status sync: Refresh panel when switching between files
+  context.subscriptions.push(
+    vscode.window.onDidChangeActiveNotebookEditor(e => {
+      (parameterProvider as any).refresh?.();
+    })
+  );
+
+  context.subscriptions.push(
+    vscode.workspace.onDidSaveNotebookDocument((n) => {
+      if (n.notebookType === notebookType) {
+        (parameterProvider as any).onExternalSave?.(n.uri.toString());
+      }
+    })
+  );
+
   activateFormProvider(context);
 
   const kernelManager = new KernelManager(context, parameterProvider);
@@ -255,6 +280,41 @@ export function activate(context: vscode.ExtensionContext) {
     vscode.workspace.onDidChangeConfiguration(e => {
       if (e.affectsConfiguration('sqlnotebook.connections')) {
           kernelManager.refresh();
+      }
+    })
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand('sqlnotebook.exportToSQL', async () => {
+      const notebook = vscode.window.activeNotebookEditor?.notebook;
+      if (!notebook || notebook.notebookType !== notebookType) {
+        return;
+      }
+
+      let output = '';
+      const params = notebook.metadata?.custom?.parameters;
+      if (params && typeof params === 'object' && Object.keys(params).length > 0) {
+        output += `/*<SQL_PARAMS>\n${JSON.stringify(params, null, 2)}\n</SQL_PARAMS>*/\n\n`;
+      }
+
+      notebook.getCells().forEach((cell, i) => {
+        if (i > 0) { output += '\n\n-- %%\n\n'; }
+        if (cell.kind === vscode.NotebookCellKind.Markup) {
+          output += `/*markdown\n${cell.document.getText()}\n*/`;
+        } else {
+          output += cell.document.getText();
+        }
+      });
+
+      const uri = await vscode.window.showSaveDialog({
+        defaultUri: notebook.uri.with({ path: notebook.uri.path.replace(/\.sql$/, '') + '_exported.sql' }),
+        filters: { 'SQL files': ['sql'] },
+        saveLabel: 'Export Legacy SQL'
+      });
+
+      if (uri) {
+        await vscode.workspace.fs.writeFile(uri, new TextEncoder().encode(output));
+        vscode.window.showInformationMessage(`Successfully exported to ${path.basename(uri.fsPath)}`);
       }
     })
   );

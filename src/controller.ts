@@ -310,7 +310,7 @@ export class SQLNotebookKernel {
   }
 }
 
-type StoredParameterType = 'text' | 'checkbox' | 'select';
+type StoredParameterType = 'text' | 'checkbox' | 'select' | 'date';
 
 type StoredParameterValue = string | {
   value?: string;
@@ -331,7 +331,7 @@ function resolveParameter(param: StoredParameterValue): { value: string; raw: bo
     return { value: '', raw: false };
   }
 
-  const type = param.type === 'checkbox' || param.type === 'select' ? param.type : 'text';
+  const type = param.type === 'checkbox' || param.type === 'select' || param.type === 'date' ? param.type : 'text';
   const raw = !!param.raw;
 
   if (type === 'checkbox') {
@@ -345,6 +345,10 @@ function resolveParameter(param: StoredParameterValue): { value: string; raw: bo
     const options = Array.isArray(param.options) ? param.options.map(v => String(v)) : [];
     const selected = String(param.value ?? '');
     return { value: selected || options[0] || '', raw };
+  }
+
+  if (type === 'date') {
+    return { value: String(param.value ?? ''), raw };
   }
 
   return { value: String(param.value ?? ''), raw };
@@ -361,7 +365,13 @@ function formatParameterValue(value: string): string {
     const trimmedItem = item.trim();
     // Clean up any existing surrounding quotes from the user, e.g., "abc" or 'abc' -> abc
     const isQuotedByUser = (trimmedItem.startsWith("'") && trimmedItem.endsWith("'")) || (trimmedItem.startsWith('"') && trimmedItem.endsWith('"'));
-    const cleanItem = isQuotedByUser ? trimmedItem.slice(1, -1) : trimmedItem;
+    let cleanItem = isQuotedByUser ? trimmedItem.slice(1, -1) : trimmedItem;
+
+    // Version 3.0.2: Fix for cross-driver date compatibility (No 'T' separator)
+    // Replace 'T' with ' ' if the string looks like an ISO date (YYYY-MM-DDTHH:MM)
+    if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(cleanItem)) {
+      cleanItem = cleanItem.replace('T', ' ');
+    }
 
     // Always quote the final item, escaping internal quotes for safety.
     return `'${cleanItem.replace(/'/g, "''")}'`;
