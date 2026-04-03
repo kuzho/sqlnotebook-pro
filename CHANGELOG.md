@@ -1,5 +1,17 @@
 # Change Log
 
+## [3.0.4] - 2026-04-03
+
+### ⚡ Changed
+- **Canonical SQL Save Format:** Simplified notebook persistence to a single canonical SQL format using `-- %%` separators and embedded metadata blocks in comments.
+- **Format Compatibility:** Existing JSON notebooks are still readable and will normalize to canonical SQL format on save.
+- **Export Command UX:** Updated export action labeling to match the canonical SQL workflow.
+
+### 🐛 Bug Fixes
+- **TypeScript Config Modernization:** Updated TypeScript module settings to avoid deprecated `moduleResolution=node10` behavior in project configs.
+- **Webview Form Typing:** Fixed boolean normalization typing in `webview/main.tsx` when processing form data.
+- **Readonly Output Clone:** Fixed notebook export cell cloning by converting readonly outputs to mutable arrays in `src/main.ts`.
+
 ## [3.0.3] - 2025-05-15
 
 ### 🐛 Bug Fixes

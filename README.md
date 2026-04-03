@@ -29,9 +29,7 @@ Define reusable variables and run parameterized queries with a dedicated side pa
 <br>
 
 #### 💡 Pro Tip: Universal Parameter Logic
-#### 📤 Exporting to Legacy SQL
-* **Save (💾):** Saves your notebook in the new JSON-enhanced format (supports images and rich metadata).
-* **Export (📤):** Converts your notebook back to a plain `.sql` file with `-- %%` separators, compatible with legacy versions and other SQL editors.
+* **Save (💾):** By default, saves your notebook as plain `.sql` with `-- %%` separators and embedded metadata blocks so it stays readable in text editors and Git views.
 
 Define your parameters in the **Parameters Panel** (sidebar). List values like `Active, Pending` are automatically formatted as `'Active','Pending'` when substituted into the query.
 
@@ -173,6 +171,40 @@ And for optional filters:
 ```sql
 AND ('' IN (@Ids) OR some_column IN (@Ids))
 ```
+
+## Cell Separation (`-- %%`)
+
+SQL Notebook Pro uses an explicit separator to split a `.sql` file into notebook cells:
+
+```sql
+-- %%
+```
+
+Rules:
+- Put `-- %%` on its own line.
+- Everything between separators becomes one notebook cell.
+- No separator means the whole file is treated as a single cell.
+- This format is the canonical save format, so files stay readable in text editors and Git diffs.
+
+Example:
+
+```sql
+SELECT * FROM users;
+
+-- %%
+
+SELECT * FROM orders;
+
+-- %%
+
+/*markdown
+# Notes
+This is a markdown cell.
+*/
+```
+
+Tip:
+- If you open an old file without separators, it may appear as one block. Add `-- %%` where you want cell boundaries.
 
 ## Usage
 

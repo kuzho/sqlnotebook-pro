@@ -171,11 +171,10 @@ function parseLegacyNotebook(contents: string): vscode.NotebookData {
         const fullData = JSON.parse(jsonStr);
 
         if (fullData.summary) {
-          savedSummary = {
-            executionOrder: fullData.summary.executionOrder,
-            success: fullData.summary.success,
-            timing: fullData.summary.timing
-          };
+          const normalizedSummary = normalizeExecutionSummary(fullData.summary);
+          if (normalizedSummary) {
+            savedSummary = normalizedSummary;
+          }
         }
 
         const item = vscode.NotebookCellOutputItem.json(
@@ -249,6 +248,126 @@ function parseLegacyNotebook(contents: string): vscode.NotebookData {
   return data;
 }
 
+function getCellOutputPayload(cell: vscode.NotebookCellData): any {
+  if (!cell.outputs || cell.outputs.length === 0) {
+    return undefined;
+  }
+
+  const item = cell.outputs[0].items.find(i => i.mime === 'application/vnd.code-sql-notebook.table+json');
+  if (!item) {
+    return undefined;
+  }
+
+  const jsonStr = new TextDecoder().decode(item.data);
+  try {
+    return JSON.parse(jsonStr);
+  } catch {
+    return {};
+  }
+}
+
+function getCellExecutionSummary(cell: vscode.NotebookCellData): SerializedCell['executionSummary'] {
+  if (!cell.executionSummary) {
+    return undefined;
+  }
+
+  return normalizeExecutionSummary({
+    executionOrder: cell.executionSummary.executionOrder,
+    success: cell.executionSummary.success,
+    timing: cell.executionSummary.timing
+  });
+}
+
+function normalizeExecutionSummary(summary: any): SerializedCell['executionSummary'] {
+  if (!summary || typeof summary !== 'object') {
+    return undefined;
+  }
+
+  const executionOrder = typeof summary.executionOrder === 'number' ? summary.executionOrder : undefined;
+  const success = typeof summary.success === 'boolean' ? summary.success : undefined;
+  const timing = (summary.timing
+    && typeof summary.timing.startTime === 'number'
+    && typeof summary.timing.endTime === 'number')
+    ? {
+        startTime: summary.timing.startTime,
+        endTime: summary.timing.endTime
+      }
+    : undefined;
+
+  if (executionOrder === undefined && success === undefined && timing === undefined) {
+    return undefined;
+  }
+
+  return { executionOrder, success, timing };
+}
+
+async function serializeNotebookCells(data: vscode.NotebookData): Promise<SerializedCell[]> {
+  const notebookDir = getNotebookDirectoryForSerialization();
+
+  return Promise.all(data.cells.map(async (cell): Promise<SerializedCell> => {
+    if (cell.kind === vscode.NotebookCellKind.Markup) {
+      const existingAttachments = getCellAttachments(cell);
+      const embedded = await embedImagesAsBase64(cell.value, notebookDir);
+      const { markdown, attachments: extractedAttachments } = extractAttachmentsFromMarkdown(embedded.markdown);
+      const mergedAttachments = { ...existingAttachments, ...extractedAttachments };
+
+      return {
+        kind: 'markup',
+        language: 'markdown',
+        value: markdown,
+        attachments: Object.keys(mergedAttachments).length > 0 ? mergedAttachments : undefined
+      };
+    }
+
+    return {
+      kind: 'code',
+      language: 'sql',
+      value: cell.value,
+      output: getCellOutputPayload(cell),
+      executionSummary: getCellExecutionSummary(cell)
+    };
+  }));
+}
+
+export async function serializeNotebookAsLegacySql(data: vscode.NotebookData): Promise<string> {
+  const serializedCells = await serializeNotebookCells(data);
+  const parts: string[] = [];
+  const params = data.metadata?.custom?.parameters;
+
+  if (params && typeof params === 'object' && Object.keys(params).length > 0) {
+    parts.push(`${PARAMS_START}\n${JSON.stringify(params, null, 2)}\n${PARAMS_END}`);
+  }
+
+  serializedCells.forEach((cell, index) => {
+    const cellParts: string[] = [];
+
+    if (cell.kind === 'markup') {
+      cellParts.push(`/*markdown\n${cell.value}\n*/`);
+      if (cell.attachments && Object.keys(cell.attachments).length > 0) {
+        cellParts.push(`/*attachments\n${JSON.stringify(cell.attachments, null, 2)}\n*/`);
+      }
+    } else {
+      cellParts.push(cell.value);
+    }
+
+    if (cell.output !== undefined) {
+      const outputData = cell.executionSummary
+        ? { ...cell.output, summary: cell.executionSummary }
+        : cell.output;
+      cellParts.push(`${OUTPUT_START}\n${JSON.stringify(outputData, null, 2)}\n${OUTPUT_END}`);
+    } else if (cell.kind === 'code' && cell.executionSummary) {
+      cellParts.push(`${OUTPUT_START}\n${JSON.stringify({ summary: cell.executionSummary }, null, 2)}\n${OUTPUT_END}`);
+    }
+
+    parts.push(cellParts.join('\n\n'));
+
+    if (index < serializedCells.length - 1) {
+      parts.push('-- %%');
+    }
+  });
+
+  return parts.join('\n\n');
+}
 
 export class SQLSerializer implements vscode.NotebookSerializer {
 
@@ -274,82 +393,8 @@ export class SQLSerializer implements vscode.NotebookSerializer {
     data: vscode.NotebookData,
     _token: vscode.CancellationToken
   ): Promise<Uint8Array> {
-    // Save in JSON v1 format; legacy parser remains for reading old files.
-    const notebookDir = getNotebookDirectoryForSerialization();
-    const embeddedSourceFiles = new Set<string>();
-    const cellPromises = data.cells.map(async (cell): Promise<SerializedCell> => {
-      if (cell.kind === vscode.NotebookCellKind.Markup) {
-        const existingAttachments = getCellAttachments(cell);
-        const embedded = await embedImagesAsBase64(cell.value, notebookDir);
-        for (const filePath of embedded.embeddedFiles) {
-          embeddedSourceFiles.add(filePath);
-        }
-        const { markdown, attachments: extractedAttachments } = extractAttachmentsFromMarkdown(embedded.markdown);
-        const mergedAttachments = { ...existingAttachments, ...extractedAttachments };
+    const finalOutput = await serializeNotebookAsLegacySql(data);
 
-        return {
-          kind: 'markup',
-          language: 'markdown',
-          value: markdown,
-          attachments: Object.keys(mergedAttachments).length > 0 ? mergedAttachments : undefined
-        };
-      }
-
-      let outputPayload: any = undefined;
-      let executionSummary: SerializedCell['executionSummary'] = undefined;
-
-      if (cell.outputs && cell.outputs.length > 0) {
-        const item = cell.outputs[0].items.find(i => i.mime === 'application/vnd.code-sql-notebook.table+json');
-        if (item) {
-          const jsonStr = new TextDecoder().decode(item.data);
-          let fullData: any;
-          try {
-            fullData = JSON.parse(jsonStr);
-          } catch {
-            fullData = {};
-          }
-          outputPayload = fullData;
-        }
-      }
-
-      if (cell.executionSummary) {
-        executionSummary = {
-          executionOrder: cell.executionSummary.executionOrder,
-          success: cell.executionSummary.success,
-          timing: cell.executionSummary.timing
-        };
-      }
-
-      return {
-        kind: 'code',
-        language: 'sql',
-        value: cell.value,
-        output: outputPayload,
-        executionSummary
-      };
-    });
-    const serializedCells = await Promise.all(cellPromises);
-
-    const notebookJson: SerializedNotebook = {
-      format: JSON_NOTEBOOK_FORMAT,
-      version: 1,
-      metadata: {},
-      cells: serializedCells
-    };
-
-    const params = data.metadata?.custom?.parameters;
-    if (params && Object.keys(params).length > 0) {
-      notebookJson.metadata = {
-        ...(notebookJson.metadata ?? {}),
-        parameters: params
-      };
-    }
-
-    const finalOutput = JSON.stringify(notebookJson, null, 2);
-
-    const output = new TextEncoder().encode(finalOutput);
-    // Limpieza de imágenes pegadas ya no es necesaria; todo se embebe automáticamente.
-
-    return output;
+    return new TextEncoder().encode(finalOutput);
   }
 }

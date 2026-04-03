@@ -1,14 +1,14 @@
 {
   "compilerOptions": {
     "jsx": "react",
-    "module": "commonjs",
+    "module": "Node16",
     "target": "ES2021",
     "outDir": "dist",
     "rootDir": "src",
     "lib": ["ES2021"],
     "sourceMap": true,
     "strict": true,
-    "moduleResolution": "node",
+    "moduleResolution": "node16",
     "esModuleInterop": true,
     "skipLibCheck": true
   },

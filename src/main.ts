@@ -284,41 +284,6 @@ export function activate(context: vscode.ExtensionContext) {
     })
   );
 
-  context.subscriptions.push(
-    vscode.commands.registerCommand('sqlnotebook.exportToSQL', async () => {
-      const notebook = vscode.window.activeNotebookEditor?.notebook;
-      if (!notebook || notebook.notebookType !== notebookType) {
-        return;
-      }
-
-      let output = '';
-      const params = notebook.metadata?.custom?.parameters;
-      if (params && typeof params === 'object' && Object.keys(params).length > 0) {
-        output += `/*<SQL_PARAMS>\n${JSON.stringify(params, null, 2)}\n</SQL_PARAMS>*/\n\n`;
-      }
-
-      notebook.getCells().forEach((cell, i) => {
-        if (i > 0) { output += '\n\n-- %%\n\n'; }
-        if (cell.kind === vscode.NotebookCellKind.Markup) {
-          output += `/*markdown\n${cell.document.getText()}\n*/`;
-        } else {
-          output += cell.document.getText();
-        }
-      });
-
-      const uri = await vscode.window.showSaveDialog({
-        defaultUri: notebook.uri.with({ path: notebook.uri.path.replace(/\.sql$/, '') + '_exported.sql' }),
-        filters: { 'SQL files': ['sql'] },
-        saveLabel: 'Export Legacy SQL'
-      });
-
-      if (uri) {
-        await vscode.workspace.fs.writeFile(uri, new TextEncoder().encode(output));
-        vscode.window.showInformationMessage(`Successfully exported to ${path.basename(uri.fsPath)}`);
-      }
-    })
-  );
-
   // Intercept clipboard image paste before VS Code's default handler can write any file to disk.
   // Equivalent to how Jupyter handles image paste in notebook markdown cells.
   context.subscriptions.push(

@@ -19,8 +19,7 @@ function testConnection(config: any) {
 }
 
 function processFormData(form: HTMLFormElement) {
-  // @ts-ignore: Object.fromEntries
-  const data = Object.fromEntries(new FormData(form));
+  const data = Object.fromEntries(new FormData(form)) as Record<string, FormDataEntryValue | boolean>;
 
   if (data.encrypt) {
     data.encrypt = !!data.encrypt;
