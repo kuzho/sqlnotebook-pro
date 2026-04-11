@@ -264,7 +264,37 @@ const styles = `
   .btn-primary:hover { background: #0063b1; }
   .btn-secondary { background: #3c3c3c; color: white; border: 1px solid transparent; padding: 4px 12px; border-radius: 2px; cursor: pointer; }
   .btn-secondary:hover { background: #454545; }
+
+  .toolbar-badge {
+    font-size: 10px;
+    color: #9cdcfe;
+    background: rgba(0, 120, 212, 0.15);
+    border: 1px solid rgba(0, 120, 212, 0.35);
+    border-radius: 999px;
+    padding: 1px 6px;
+  }
+
+  .dataset-warning {
+    padding: 6px 8px;
+    font-size: 11px;
+    color: #d7ba7d;
+    background: #2d2415;
+    border-bottom: 1px solid var(--grid-border);
+  }
+
+  .virtual-spacer-cell {
+    padding: 0;
+    border: none;
+    height: 0;
+    line-height: 0;
+    background: transparent;
+  }
 `;
+
+const ROW_HEIGHT_PX = 26;
+const VIRTUALIZATION_THRESHOLD = 500;
+const VIRTUAL_OVERSCAN = 12;
+const MAX_FILTER_OPTIONS = 1000;
 
 const FilterMenu = ({
   column,
@@ -281,19 +311,27 @@ const FilterMenu = ({
   const triggerRef = useRef<HTMLDivElement>(null);
   const [coords, setCoords] = useState({ x: 0, y: 0, alignTop: false });
 
-  const uniqueValues = useMemo(() => {
+  const { uniqueValues, totalUniqueValues, isCapped } = useMemo(() => {
     const unique = column.getFacetedUniqueValues?.();
-    if (!unique || typeof unique.keys !== 'function') {return [];}
+    if (!unique || typeof unique.keys !== 'function') {
+      return { uniqueValues: [], totalUniqueValues: 0, isCapped: false };
+    }
 
-    return Array.from(unique.keys()).map(val => {
-      const label =
-        val === null || val === undefined
-          ? '(Empty)'
-          : String(val);
-      return { raw: val, label };
-    }).sort((a, b) => a.label.localeCompare(b.label));
+    const allValues = Array.from(unique.keys());
+    const cappedValues = allValues.slice(0, MAX_FILTER_OPTIONS);
+
+    return {
+      uniqueValues: cappedValues.map(val => {
+        const label =
+          val === null || val === undefined
+            ? '(Empty)'
+            : String(val);
+        return { raw: val, label };
+      }).sort((a, b) => a.label.localeCompare(b.label)),
+      totalUniqueValues: allValues.length,
+      isCapped: allValues.length > MAX_FILTER_OPTIONS
+    };
   }, [column]);
-
 
   const filteredList = uniqueValues.filter(v => v.label.toLowerCase().includes(search.toLowerCase()));
   const currentFilter = (column.getFilterValue() as any[]) || [];
@@ -381,6 +419,11 @@ const FilterMenu = ({
               <div className="popup-item" onClick={clearFilter} style={{fontStyle:'italic', color:'#0078d4'}}>
                 Clear
               </div>
+              {isCapped && (
+                <div style={{ padding: '4px 8px', color: '#d7ba7d', fontSize: 11 }}>
+                  Showing first {MAX_FILTER_OPTIONS.toLocaleString()} of {totalUniqueValues.toLocaleString()} values
+                </div>
+              )}
               {filteredList.map((item, idx) => (
                 <label key={idx} className="popup-item">
                   <input
@@ -488,11 +531,17 @@ const formatExecutionDate = (date: Date) => {
 };
 
 const TableApp = ({ data, postMessage }: { data: any, postMessage?: (msg: any) => void }) => {
+  const tableWrapperRef = useRef<HTMLDivElement>(null);
+  const [scrollTop, setScrollTop] = useState(0);
   const rawRows = Array.isArray(data) ? data : (data.rows || []);
   const columnOrder = !Array.isArray(data) && Array.isArray(data.columns) ? data.columns : null;
   const rows = useMemo(() => normalizeRows(rawRows, columnOrder), [rawRows, columnOrder]);
   const executionTimeFromBackend = !Array.isArray(data) && data.info?.executionTime;
   const executionDateFromBackend = !Array.isArray(data) && data.info?.executionDate;
+  const isTruncated = Boolean(!Array.isArray(data) && data.info?.truncated);
+  const totalRowsFromBackend = !Array.isArray(data) && typeof data.info?.totalRows === 'number'
+    ? data.info.totalRows
+    : rows.length;
   const fallbackTime = useMemo(() => formatExecutionTime(new Date()), []);
   const fallbackDate = useMemo(() => formatExecutionDate(new Date()), []);
   const runTime = executionTimeFromBackend || fallbackTime;
@@ -622,6 +671,26 @@ const TableApp = ({ data, postMessage }: { data: any, postMessage?: (msg: any) =
 
   const tableRows = table.getRowModel().rows;
   const visibleColumns = table.getVisibleFlatColumns();
+  const shouldVirtualize = tableRows.length > VIRTUALIZATION_THRESHOLD;
+  const viewportHeight = tableWrapperRef.current?.clientHeight ?? 390;
+  const visibleRowCount = Math.max(20, Math.ceil(viewportHeight / ROW_HEIGHT_PX) + (VIRTUAL_OVERSCAN * 2));
+  const startIndex = shouldVirtualize
+    ? Math.max(0, Math.floor(scrollTop / ROW_HEIGHT_PX) - VIRTUAL_OVERSCAN)
+    : 0;
+  const endIndex = shouldVirtualize
+    ? Math.min(tableRows.length, startIndex + visibleRowCount)
+    : tableRows.length;
+  const renderedRows = shouldVirtualize ? tableRows.slice(startIndex, endIndex) : tableRows;
+  const topSpacerHeight = shouldVirtualize ? startIndex * ROW_HEIGHT_PX : 0;
+  const bottomSpacerHeight = shouldVirtualize ? Math.max(0, (tableRows.length - endIndex) * ROW_HEIGHT_PX) : 0;
+
+  useEffect(() => {
+    setScrollTop(0);
+    if (tableWrapperRef.current) {
+      tableWrapperRef.current.scrollTop = 0;
+      tableWrapperRef.current.scrollLeft = 0;
+    }
+  }, [sorting, columnFilters, rawRows]);
 
   const handleSortClick = (column: any, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -842,7 +911,12 @@ const TableApp = ({ data, postMessage }: { data: any, postMessage?: (msg: any) =
     >
       <style>{styles}</style>
       <div className="toolbar">
-        <span style={{fontSize:11, fontWeight:'bold'}}>{tableRows.length} rows</span>
+        <span style={{fontSize:11, fontWeight:'bold'}}>
+          {isTruncated
+            ? `${tableRows.length.toLocaleString()} rows shown of ${totalRowsFromBackend.toLocaleString()} total`
+            : `${tableRows.length.toLocaleString()} rows`}
+        </span>
+        {shouldVirtualize && <span className="toolbar-badge">⚡ optimized view</span>}
         <span className="toolbar-time">
            🕒 {runTime}
         </span>
@@ -862,7 +936,23 @@ const TableApp = ({ data, postMessage }: { data: any, postMessage?: (msg: any) =
         )}
       </div>
 
-      <div className="table-wrapper">
+      {(shouldVirtualize || isTruncated) && !isSelectNoRows && (
+        <div className="dataset-warning">
+          {isTruncated
+            ? `This notebook is limited to ${tableRows.length.toLocaleString()} rows by the "SQL Notebook: Max Result Rows" setting. The query returned ${totalRowsFromBackend.toLocaleString()} rows. Increase that setting to view more rows here.`
+            : 'Large result detected. Only the visible rows are rendered while you scroll to avoid UI freezes.'}
+        </div>
+      )}
+
+      <div
+        ref={tableWrapperRef}
+        className="table-wrapper"
+        onScroll={(e) => {
+          if (shouldVirtualize) {
+            setScrollTop(e.currentTarget.scrollTop);
+          }
+        }}
+      >
         <table>
           <thead>
             {table.getHeaderGroups().map(hg => (
@@ -922,21 +1012,42 @@ const TableApp = ({ data, postMessage }: { data: any, postMessage?: (msg: any) =
             ))}
           </thead>
           <tbody>
-            {tableRows.map((row, rIndex) => (
-              <tr key={row.id}>
-                <td className={`row-index ${selection?.type==='row' && selection.ids?.has(rIndex)?'selected-bg':''}`}
-                    onClick={(e)=>handleRowHeaderClick(rIndex, e.ctrlKey || e.metaKey)}>{rIndex + 1}</td>
-                {row.getVisibleCells().map((cell, cIndex) => (
-                  <td key={cell.id}
-                      className={getCellClass(rIndex, cIndex, cell.column.id)}
-                      onMouseDown={(e)=>onMouseDown(rIndex, cIndex, e.ctrlKey || e.metaKey)}
-                      onMouseEnter={()=>onMouseEnter(rIndex, cIndex)}
-                  >
-                    {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                  </td>
-                ))}
+            {shouldVirtualize && topSpacerHeight > 0 && (
+              <tr aria-hidden="true">
+                <td
+                  className="virtual-spacer-cell"
+                  colSpan={visibleColumns.length + 1}
+                  style={{ height: `${topSpacerHeight}px` }}
+                />
               </tr>
-            ))}
+            )}
+            {renderedRows.map((row, localIndex) => {
+              const rIndex = shouldVirtualize ? startIndex + localIndex : localIndex;
+              return (
+                <tr key={row.id}>
+                  <td className={`row-index ${selection?.type==='row' && selection.ids?.has(rIndex)?'selected-bg':''}`}
+                      onClick={(e)=>handleRowHeaderClick(rIndex, e.ctrlKey || e.metaKey)}>{rIndex + 1}</td>
+                  {row.getVisibleCells().map((cell, cIndex) => (
+                    <td key={cell.id}
+                        className={getCellClass(rIndex, cIndex, cell.column.id)}
+                        onMouseDown={(e)=>onMouseDown(rIndex, cIndex, e.ctrlKey || e.metaKey)}
+                        onMouseEnter={()=>onMouseEnter(rIndex, cIndex)}
+                    >
+                      {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                    </td>
+                  ))}
+                </tr>
+              );
+            })}
+            {shouldVirtualize && bottomSpacerHeight > 0 && (
+              <tr aria-hidden="true">
+                <td
+                  className="virtual-spacer-cell"
+                  colSpan={visibleColumns.length + 1}
+                  style={{ height: `${bottomSpacerHeight}px` }}
+                />
+              </tr>
+            )}
           </tbody>
         </table>
       </div>

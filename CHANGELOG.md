@@ -1,5 +1,16 @@
 # Change Log
 
+## [3.0.5] - 2026-04-11
+
+### ⚡ Changed
+- **Large Result Rendering:** Improved table responsiveness for big result sets by reducing expensive full-table rendering work in the notebook output grid.
+- **Filter Menu Scalability:** Limited extremely large unique-value filter lists to keep filter popups responsive on heavy datasets.
+- **Result Limit Messaging:** Clarified output messaging when displayed rows are limited by the `SQL Notebook: Max Result Rows` setting.
+
+### 🐛 Bug Fixes
+- **Renderer Stability:** Fixed regressions where row counts could appear without visible cell values in specific result payload shapes.
+- **MySQL Command Output:** Reverted overly opinionated command-result formatting to preserve predictable raw output behavior.
+
 ## [3.0.4] - 2026-04-03
 
 ### ⚡ Changed

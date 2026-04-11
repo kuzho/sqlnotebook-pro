@@ -414,7 +414,7 @@ function postgresConn(conn: pg.PoolClient): Conn {
           return rowCount !== null ? [{ rowCount: rowCount }] : [];
         }
 
-        const columns = Array.isArray(fields)
+        const columns = Array.isArray(fields) && fields.length > 0
           ? fields.map(f => f?.name ?? '')
           : undefined;
         return { rows, columns } as TableData;
@@ -586,7 +586,7 @@ function mssqlConn(req: mssql.Request): Conn {
         if (res.recordsets && res.recordsets.length > 0) {
           const recordset = res.recordsets[0];
           const columns = getColumnsFromResult(res, recordset);
-          return [{ rows: recordset, columns }];
+          return [{ rows: recordset, columns: columns && columns.length > 0 ? columns : undefined }];
         }
 
         if (res.rowsAffected) {
@@ -726,7 +726,12 @@ function getStatementInfo(statement: string): { type: string; label: string } {
   // Regex mejorado para soportar [], "", `` y #temp tables (Universal)
   const namePat = "([#\\w.\\[\\]\"`]+)";
 
-  const ddlMatch = cleaned.match(new RegExp(`\\b(CREATE|ALTER|DROP|TRUNCATE)\\s+TABLE\\s+${namePat}`, 'i'));
+  const useMatch = cleaned.match(new RegExp(`\\bUSE\\s+${namePat}`, 'i'));
+  if (useMatch) {
+    return { type: 'USE', label: `USE ${useMatch[1]}` };
+  }
+
+  const ddlMatch = cleaned.match(new RegExp(`\\b(CREATE|ALTER|DROP|TRUNCATE)\\s+(?:TEMPORARY\\s+)?TABLE\\s+(?:IF\\s+(?:NOT\\s+)?EXISTS\\s+)?${namePat}`, 'i'));
   if (ddlMatch) {
     const type = `${ddlMatch[1].toUpperCase()} TABLE`;
     const target = ddlMatch[2];
