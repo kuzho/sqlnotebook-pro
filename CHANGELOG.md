@@ -1,5 +1,13 @@
 # Change Log
 
+All notable changes to this project will be documented in this file.
+
+## [3.0.6]
+
+### Added
+- **Mejora en Formateo T-SQL**: Implementación de indentación jerárquica para bloques `BEGIN...END` (estilo Stored Procedure).
+- **Corrección de CASE**: Ajustada la lógica de indentación en sentencias `CASE` para evitar espacios excesivos.
+- **Scope por Driver**: Las reglas avanzadas de T-SQL ahora solo se aplican cuando se usa el driver MSSQL, respetando el formato estándar en otros motores.
 ## [3.0.5] - 2026-04-11
 
 ### ⚡ Changed
