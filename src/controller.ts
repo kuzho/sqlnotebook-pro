@@ -3,6 +3,7 @@ import { ConnData } from './connections';
 import { getPool, Pool, ExecutionResult, PoolConfig, TableSchema } from './driver';
 import { ParameterProvider } from './ParameterProvider';
 import { notebookType } from './main';
+import { splitSqlBatches } from './utils/sqlUtils';
 
 export class KernelManager {
   public controllers = new Map<string, SQLNotebookKernel>();
@@ -128,6 +129,7 @@ export class SQLNotebookKernel {
   }
 
   private updateDescription() {
+    this._controller.label = this.config.group ? `${this.config.group} / ${this.config.name}` : this.config.name;
     this._controller.description = this.config.driver;
     if (this.config.driver === 'sqlite') {
        this._controller.detail = this.config.path;
@@ -188,125 +190,87 @@ export class SQLNotebookKernel {
     const execution = this._controller.createNotebookCellExecution(cell);
     execution.executionOrder = ++this._executionOrder;
     execution.start(Date.now());
+    await execution.clearOutput();
 
     let rawQuery = cell.document.getText();
 
     const PARAMS_REGEX = /\/\*\s*<SQL_PARAMS>\s*([\s\S]*?)\s*<\/SQL_PARAMS>\s*\*\//;
     rawQuery = rawQuery.replace(PARAMS_REGEX, '').trim();
 
-    try {
-      const params = this.parameterProvider.getParameters(cell.notebook.uri.toString());
-      Object.keys(params).forEach(key => {
-        const param = params[key] as StoredParameterValue;
-        const resolved = resolveParameter(param);
-        const finalValue = resolved.raw ? resolved.value : formatParameterValue(resolved.value);
-        const variableRegex = new RegExp(key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g');
-        // Use a replacer function to ensure special characters in `finalValue` are not interpreted.
-        rawQuery = rawQuery.replace(variableRegex, () => finalValue);
-      });
-    } catch (e) {
-      console.error('Failed to replace parameters', e);
-    }
+    const batches = splitSqlBatches(rawQuery);
 
-    if (!rawQuery.trim()) {
-      const now = new Date();
-      const emptyMsg = [{
-        Status: '⚠️ Info',
-        Message: 'Empty cell - No query found'
-      }];
-      const myMimeType = 'application/vnd.code-sql-notebook.table+json';
-      const outputData = {
-          rows: emptyMsg,
-          info: makeExecutionInfo(now)
-      };
-      writeSuccess(execution, [[vscode.NotebookCellOutputItem.json(outputData, myMimeType)]]);
-      return;
-    }
-
-    let conn;
-    try {
-      const pool = await this.getPool();
-      conn = await pool.getConnection();
-    } catch (err: any) {
-      writeErr(execution, `Connection Error: ${err.message || err}`);
-      return;
-    }
-
-    execution.token.onCancellationRequested(() => {
-      conn.release();
-      conn.destroy();
-      writeErr(execution, 'Query cancelled by user');
-    });
-
-    let result: ExecutionResult;
-    try {
-      result = await conn.query(rawQuery);
-      conn.release();
-    } catch (err: any) {
-      writeErr(execution, err.message || String(err));
-      conn.release();
-      return;
-    }
-
-    const finishedAt = new Date();
-    const executionInfo = makeExecutionInfo(finishedAt);
-
-    if (typeof result === 'string') {
-      writeSuccess(execution, [[text(result)]]);
-      return;
-    }
-
-    const first = result[0];
-    const rows = first && 'rows' in first ? (first as any).rows : (first as any[]);
-    if (result.length === 0 || (result.length === 1 && rows?.length === 0)) {
-      const emptyMsg = [{ Status: 'Success', Message: 'Query executed. No rows returned.' }];
-      const myMimeType = 'application/vnd.code-sql-notebook.table+json';
-
-      const outputData = {
-        rows: emptyMsg,
-        info: executionInfo
-      };
-
-      writeSuccess(execution, [[vscode.NotebookCellOutputItem.json(outputData, myMimeType)]]);
-      return;
-    }
-
-    const maxRows = vscode.workspace.getConfiguration('sqlnotebook').get<number>('maxResultRows') || 100;
-
-    const normalizeResult = (item: any) => {
-      if (item && typeof item === 'object' && 'rows' in item) {
-        const rows = Array.isArray(item.rows) ? item.rows : [];
-        const columns = Array.isArray(item.columns) ? item.columns : undefined;
-        return { rows, columns };
+    for (let batch of batches) {
+      if (execution.token.isCancellationRequested) {
+        execution.end(undefined, undefined);
+        return;
       }
-      const rows = Array.isArray(item) ? item : [];
-      return { rows, columns: undefined };
-    };
 
-    writeSuccess(
-      execution,
-      result.map((item) => {
-        const normalized = normalizeResult(item);
-        const isTruncated = normalized.rows.length > maxRows;
-        const displayData = isTruncated ? normalized.rows.slice(0, maxRows) : normalized.rows;
+      try {
+        const params = this.parameterProvider.getParameters(cell.notebook.uri.toString());
+        Object.keys(params).forEach(key => {
+          const param = params[key] as StoredParameterValue;
+          const { value, raw } = resolveParameter(param);
 
-        const outputData = {
-            rows: displayData,
-            columns: normalized.columns,
-            info: {
-              ...executionInfo,
-                truncated: isTruncated,
-                totalRows: normalized.rows.length
-            }
-        };
+          const paramName = key.startsWith('@') ? key : `@${key}`;
+          const searchPattern = new RegExp(`(?<!@)${paramName}\\b`, 'g');
 
-        const outputs: vscode.NotebookCellOutputItem[] = [];
-        const myMimeType = 'application/vnd.code-sql-notebook.table+json';
-        outputs.push(vscode.NotebookCellOutputItem.json(outputData, myMimeType));
+          if (raw) {
+            batch = batch.replace(searchPattern, value);
+          } else {
+            batch = batch.replace(searchPattern, formatParameterValue(value));
+          }
+        });
 
-        return outputs;
-      })
-    );
+        const pool = await this.getPool();
+        const conn = await pool.getConnection();
+
+        let result: ExecutionResult;
+        try {
+          result = await conn.query(batch);
+
+          if (/\b(CREATE|ALTER|DROP|TRUNCATE)\b/i.test(batch)) {
+            this.schemaCache = null;
+          }
+        } finally {
+          conn.release();
+        }
+
+        await this.appendExecutionResult(execution, result || []);
+
+      } catch (err: unknown) {
+        const errorMessage = err instanceof Error ? err.message : String(err);
+        vscode.window.showErrorMessage(`Query Execution Error: ${errorMessage}`);
+        await writeErr(execution, errorMessage);
+        return;
+      }
+    }
+
+    execution.end(true, Date.now());
+  }
+
+  private async appendExecutionResult(execution: vscode.NotebookCellExecution, result: ExecutionResult): Promise<void> {
+    const now = new Date();
+    const newOutputs: vscode.NotebookCellOutput[] = [];
+
+    for (const res of result) {
+      const rows = Array.isArray(res) ? res : res.rows;
+      const columns = Array.isArray(res) ? undefined : res.columns;
+
+      if (rows && rows.length > 0) {
+        newOutputs.push(new vscode.NotebookCellOutput([
+          vscode.NotebookCellOutputItem.json({ rows, columns, info: makeExecutionInfo(now) }, 'application/vnd.code-sql-notebook.table+json'),
+          vscode.NotebookCellOutputItem.json(rows, 'application/json')
+        ]));
+      }
+    }
+
+    if (newOutputs.length === 0) {
+      newOutputs.push(new vscode.NotebookCellOutput([
+        vscode.NotebookCellOutputItem.text('OK')
+      ]));
+    }
+
+    await execution.appendOutput(newOutputs);
   }
 }
 
@@ -354,34 +318,29 @@ function resolveParameter(param: StoredParameterValue): { value: string; raw: bo
   return { value: String(param.value ?? ''), raw };
 }
 
-/**
- * Formats a raw user-provided value into a SQL-safe, comma-separated list of string literals.
- * This approach is the most compatible for drivers that perform implicit type conversion (MSSQL, MySQL, Postgres).
- */
 function formatParameterValue(value: string): string {
   const trimmedValue = value.trim();
 
   const processItem = (item: string): string => {
     const trimmedItem = item.trim();
-    // Clean up any existing surrounding quotes from the user, e.g., "abc" or 'abc' -> abc
     const isQuotedByUser = (trimmedItem.startsWith("'") && trimmedItem.endsWith("'")) || (trimmedItem.startsWith('"') && trimmedItem.endsWith('"'));
     let cleanItem = isQuotedByUser ? trimmedItem.slice(1, -1) : trimmedItem;
 
-    // Version 3.0.2: Fix for cross-driver date compatibility (No 'T' separator)
-    // Replace 'T' with ' ' if the string looks like an ISO date (YYYY-MM-DDTHH:MM)
     if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(cleanItem)) {
       cleanItem = cleanItem.replace('T', ' ');
     }
 
-    // Always quote the final item, escaping internal quotes for safety.
     return `'${cleanItem.replace(/'/g, "''")}'`;
   };
 
-  const items = trimmedValue.split(',').map(processItem);
-  return items.join(',');
+  const matches = trimmedValue.match(/('[^']*'|"[^"]*"|[^,]+)/g);
+  if (!matches || matches.length === 0) {
+    return "''";
+  }
+  return matches.map(processItem).join(',');
 }
 
-function writeErr(execution: vscode.NotebookCellExecution, err: string) {
+async function writeErr(execution: vscode.NotebookCellExecution, err: string) {
   const now = new Date();
   const errorData = [{
       Status: '❌ Error',
@@ -395,20 +354,13 @@ function writeErr(execution: vscode.NotebookCellExecution, err: string) {
       info: makeExecutionInfo(now)
   };
 
-  execution.replaceOutput([
+  await execution.appendOutput([
     new vscode.NotebookCellOutput([
       vscode.NotebookCellOutputItem.json(outputData, myMimeType),
       vscode.NotebookCellOutputItem.text(err)
     ])
   ]);
   execution.end(false, Date.now());
-}
-
-const { text } = vscode.NotebookCellOutputItem;
-
-function writeSuccess(execution: vscode.NotebookCellExecution, outputs: vscode.NotebookCellOutputItem[][]) {
-  execution.replaceOutput(outputs.map((items) => new vscode.NotebookCellOutput(items)));
-  execution.end(true, Date.now());
 }
 
 function makeExecutionInfo(date: Date) {

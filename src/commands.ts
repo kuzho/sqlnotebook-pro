@@ -3,6 +3,7 @@ import {
   ConnData,
   ConnectionListItem,
   SQLNotebookConnections,
+  TableItem
 } from './connections';
 import { globalFormProvider } from './form';
 
@@ -34,5 +35,23 @@ export function editConnectionConfiguration(
     } else {
         vscode.window.showErrorMessage("Form provider not available.");
     }
+  };
+}
+
+export function scriptSelectTop() {
+  return async (item: TableItem) => {
+    const driver = item.config.driver;
+    const schema = item.tableSchema.schema;
+    const table = item.tableSchema.table;
+
+    let fullTableName = schema ? `${schema}.${table}` : table;
+    let query = driver === 'mssql'
+      ? `SELECT TOP 100 * FROM ${fullTableName};`
+      : `SELECT * FROM ${fullTableName} LIMIT 100;`;
+
+    const cellData = new vscode.NotebookCellData(vscode.NotebookCellKind.Code, query, 'sql');
+    const nbData = new vscode.NotebookData([cellData]);
+    const doc = await vscode.workspace.openNotebookDocument('sql-notebook', nbData);
+    await vscode.window.showNotebookDocument(doc);
   };
 }

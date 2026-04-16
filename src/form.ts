@@ -83,7 +83,7 @@ class SQLConfigurationViewProvider implements vscode.WebviewViewProvider {
       switch (message.type) {
 
         case 'test_connection': {
-          const { displayName, password, port, ...rest } = message.data;
+          const { displayName, originalName, password, port, ...rest } = message.data;
 
           const tempConfig = {
             ...rest,
@@ -92,8 +92,9 @@ class SQLConfigurationViewProvider implements vscode.WebviewViewProvider {
             password: password
           };
 
-          if (!tempConfig.password && displayName) {
-             const passwordKey = `sqlnotebook.${displayName}`;
+          if (!tempConfig.password && (displayName || originalName)) {
+             const nameToLookup = originalName || displayName;
+             const passwordKey = `sqlnotebook.${nameToLookup}`;
              try {
                tempConfig.password = await this.context.secrets.get(passwordKey);
              } catch(e) {}
@@ -165,7 +166,7 @@ class SQLConfigurationViewProvider implements vscode.WebviewViewProvider {
         }
 
         case 'create_connection': {
-          const { displayName, password, port, group, ...rest } = message.data;
+          const { displayName, originalName, password, port, group, ...rest } = message.data;
           const passwordKey = `sqlnotebook.${displayName}`;
 
           const newConfig = {
@@ -182,17 +183,36 @@ class SQLConfigurationViewProvider implements vscode.WebviewViewProvider {
 
           const config = vscode.workspace.getConfiguration('sqlnotebook');
           const connections = config.get<ConnData[]>('connections') || [];
-          const exists = connections.find(c => c.name === displayName);
+          const oldName = originalName || displayName;
+          const exists = connections.find(c => c.name === oldName);
 
           if (password && password.trim() !== '') {
             await this.context.secrets.store(passwordKey, password);
-          } else if (!exists) {
+            if (originalName && originalName !== displayName) {
+              await this.context.secrets.delete(`sqlnotebook.${originalName}`);
+            }
+          } else {
+            if (exists && originalName && originalName !== displayName) {
+              try {
+                const oldSecret = await this.context.secrets.get(`sqlnotebook.${originalName}`);
+                if (oldSecret) {
+                  await this.context.secrets.store(passwordKey, oldSecret);
+                } else {
+                  await this.context.secrets.store(passwordKey, '');
+                }
+                await this.context.secrets.delete(`sqlnotebook.${originalName}`);
+              } catch(e) {
+                await this.context.secrets.store(passwordKey, '');
+              }
+            } else if (!exists) {
             await this.context.secrets.store(passwordKey, '');
+            }
           }
 
           delete newConfig.password;
+          delete (newConfig as any).originalName;
 
-          const newConnectionsList = connections.filter(({ name }) => name !== displayName);
+          const newConnectionsList = connections.filter(({ name }) => name !== oldName);
           newConnectionsList.push(newConfig);
           newConnectionsList.sort((a, b) => (a.group || '').localeCompare(b.group || '') || a.name.localeCompare(b.name));
 

@@ -447,7 +447,15 @@ const FilterMenu = ({
   );
 };
 
-const SmartCell = ({ value }: { value: any }) => {
+const BADGE_STYLES: Record<string, React.CSSProperties> = {
+  danger: { backgroundColor: '#4a1818', color: '#ff9999', border: '1px solid #752525' },
+  warning: { backgroundColor: '#4d4100', color: '#ffeb80', border: '1px solid #6e5d00' },
+  success: { backgroundColor: '#103d10', color: '#99ff99', border: '1px solid #1a5e1a' },
+  inactive: { backgroundColor: '#2d2d2d', color: '#cccccc', border: '1px solid #454545' },
+  processing: { backgroundColor: '#003366', color: '#99ccff', border: '1px solid #004488' }
+};
+
+const SmartCell = ({ value }: { value: unknown }) => {
   if (value === null || value === undefined) {
     return <span style={{ opacity: 0.5, fontStyle: 'italic' }}>NULL</span>;
   }
@@ -479,15 +487,15 @@ const SmartCell = ({ value }: { value: any }) => {
   let style: React.CSSProperties | null = null;
 
   if (str.includes('🔴') || lower.includes('atrasada') || lower.includes('failed') || lower.includes('error') || lower.includes('critical')) {
-    style = { backgroundColor: '#4a1818', color: '#ff9999', border: '1px solid #752525' };
+    style = BADGE_STYLES.danger;
   } else if (str.includes('🟡') || lower.includes('urgente') || lower.includes('warning') || lower.includes('pending')) {
-    style = { backgroundColor: '#4d4100', color: '#ffeb80', border: '1px solid #6e5d00' };
+    style = BADGE_STYLES.warning;
   } else if (str.includes('🟢') || lower.includes('a tiempo') || lower.includes('success') || lower.includes('ready') || lower.includes('ok') || lower.includes('completed')) {
-    style = { backgroundColor: '#103d10', color: '#99ff99', border: '1px solid #1a5e1a' };
+    style = BADGE_STYLES.success;
   } else if (str.includes('⚪') || lower.includes('sin fecha') || lower.includes('inactive') || lower.includes('null') || lower.includes('none')) {
-    style = { backgroundColor: '#2d2d2d', color: '#cccccc', border: '1px solid #454545' };
+    style = BADGE_STYLES.inactive;
   } else if (str.includes('🔵') || lower.includes('processing') || lower.includes('running')) {
-    style = { backgroundColor: '#003366', color: '#99ccff', border: '1px solid #004488' };
+    style = BADGE_STYLES.processing;
   }
 
   if (style) {
@@ -497,21 +505,21 @@ const SmartCell = ({ value }: { value: any }) => {
   return <span>{str}</span>;
 };
 
-const normalizeRows = (rows: any[], columnOrder: string[] | null) => {
+const normalizeRows = (rows: unknown[], columnOrder: string[] | null) => {
   if (!columnOrder || !Array.isArray(rows)) {return rows;}
   return rows.map(row => {
     if (Array.isArray(row)) {
-      const obj: Record<string, any> = {};
+      const obj: Record<string, unknown> = {};
       columnOrder.forEach((_, idx) => {
-        obj[`col_${idx}`] = row[idx];
+        obj[`col_${idx}`] = (row as unknown[])[idx];
       });
       return obj;
     }
 
     if (row && typeof row === 'object') {
-      const obj: Record<string, any> = {};
+      const obj: Record<string, unknown> = {};
       columnOrder.forEach((col, idx) => {
-        obj[`col_${idx}`] = (row as any)[col];
+        obj[`col_${idx}`] = (row as Record<string, unknown>)[col];
       });
       return obj;
     }
@@ -530,7 +538,18 @@ const formatExecutionDate = (date: Date) => {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
 };
 
-const TableApp = ({ data, postMessage }: { data: any, postMessage?: (msg: any) => void }) => {
+interface OutputPayload {
+  rows?: any[];
+  columns?: string[];
+  info?: {
+    executionTime?: string;
+    executionDate?: string;
+    truncated?: boolean;
+    totalRows?: number;
+  };
+}
+
+const TableApp = ({ data, postMessage }: { data: OutputPayload | any[], postMessage?: (msg: any) => void }) => {
   const tableWrapperRef = useRef<HTMLDivElement>(null);
   const [scrollTop, setScrollTop] = useState(0);
   const rawRows = Array.isArray(data) ? data : (data.rows || []);
@@ -593,7 +612,7 @@ const TableApp = ({ data, postMessage }: { data: any, postMessage?: (msg: any) =
       }
       if (!rows || !Array.isArray(rows) || rows.length === 0) {return [];}
 
-      const firstRow = rows.find(row => row && typeof row === 'object');
+      const firstRow = rows.find(row => row && typeof row === 'object') as Record<string, any>;
       if (!firstRow) {return [];}
 
       if (columnOrder && Array.isArray(columnOrder)) {

@@ -1,6 +1,14 @@
 # Change Log
+## [3.0.7]
+### ✨ New Features & Polish
+- **Schema Explorer Data Types:** Hovering over columns in the connections panel now displays their native SQL data type (e.g., `VARCHAR`, `INT`). The data type is also subtly displayed next to the column name for quick reference.
+- **Universal SQL Formatter:** Re-engineered the SQL formatter to generate clean, highly-compact, and professional queries across all drivers. It now smartly handles `AS` aliases, compacts nested parentheses, correctly formats `CASE WHEN`, and preserves `WITH (NOLOCK)` positioning.
+- **Connection Explorer Scripting:** Right-clicking a table in the connections panel now provides a "Select Top 100 Rows" option that automatically scaffolds a new query in a notebook.
+- **Kernel Grouping:** Connections in the Kernel Selector are now neatly labeled with their assigned folder/group (e.g., `Prod / DB_Name`), enabling instant filtering by typing the group name.
+- **Bug Fixes:** Resolved an issue where modifying a connection's display name resulted in duplicated entries and lost passwords.
 
-All notable changes to this project will be documented in this file.
+### 🔧 Maintenance
+- **Dependency Updates:** Updated several key dependencies (`@vscode/vsce`, `glob`, `prettier`, `eslint`, `pg`, `trino-client`, etc.) to their latest versions to resolve deprecation warnings, improve security, and ensure compatibility with the latest VS Code APIs.
 
 ## [3.0.6]
 

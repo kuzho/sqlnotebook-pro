@@ -82,6 +82,7 @@ const Form: React.FC<{
                }
             };
 
+          setField('originalName', config.name);
             setField('displayName', config.name);
             setField('group', config.group);
             if (config.driver !== 'sqlite') {
@@ -111,6 +112,7 @@ const Form: React.FC<{
 
   return (
     <form ref={formRef} style={{ display: 'grid', gridRowGap: '15px' }}>
+      <input type="hidden" name="originalName" />
       <TextOption label="Display Name" objectKey="displayName" />
       <TextOption label="Group / Folder (Optional)" objectKey="group" />
 

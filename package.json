@@ -7,7 +7,7 @@
   "repository": {
     "url": "https://github.com/kuzho/sqlnotebook-pro.git"
   },
-  "version": "3.0.6",
+  "version": "3.0.7",
   "preview": false,
   "engines": {
     "vscode": "^1.94.0",
@@ -108,6 +108,11 @@
           "command": "sqlnotebook.deleteConnectionConfiguration",
           "when": "view == sqlnotebook-connections && viewItem == database",
           "group": "1_modification"
+        },
+        {
+          "command": "sqlnotebook.scriptSelectTop",
+          "when": "view == sqlnotebook-connections && viewItem == table",
+          "group": "1_modification"
         }
       ],
       "view/title": [
@@ -127,6 +132,10 @@
       {
         "command": "sqlnotebook.deleteConnectionConfiguration",
         "title": "Delete SQL Connection Configuration"
+        },
+        {
+          "command": "sqlnotebook.scriptSelectTop",
+          "title": "Select Top 100 Rows"
       },
       {
         "command": "sqlnotebook.refreshConnectionPanel",
@@ -269,45 +278,44 @@
     "fmt": "prettier --write --ignore-path .gitignore ."
   },
   "devDependencies": {
-    "@types/escape-html": "^1.0.1",
-    "@types/glob": "^7.1.3",
-    "@types/mocha": "^8.2.2",
-    "@types/mssql": "^7.1.3",
+    "@types/escape-html": "^1.0.4",
+    "@types/mocha": "^10.0.7",
     "@types/node": "^18.0.0",
     "@types/pg": "^8.6.1",
+    "@types/mssql": "^9.1.5",
     "@types/react": "^17.0.37",
     "@types/react-dom": "^17.0.11",
     "@types/sql.js": "^1.4.3",
-    "@types/vscode": "^1.75.0",
+    "@types/vscode": "^1.94.0",
     "@types/vscode-notebook-renderer": "^1.57.8",
     "@types/vscode-webview": "^1.57.0",
-    "@typescript-eslint/eslint-plugin": "^5.30.7",
-    "@typescript-eslint/parser": "^5.30.7",
+    "@typescript-eslint/eslint-plugin": "^7.16.0",
+    "@typescript-eslint/parser": "^7.16.0",
     "@vscode/codicons": "^0.0.35",
-    "@vscode/vsce": "^3.2.0",
+    "@vscode/vsce": "^3.9.0",
     "esbuild": "^0.27.2",
-    "eslint": "^8.20.0",
-    "glob": "^7.1.7",
-    "ovsx": "^0.8.0",
-    "prettier": "^2.6.0",
+    "eslint": "^8.57.0",
+    "glob": "^10.4.2",
+    "ovsx": "^0.8.3",
+    "prettier": "^3.3.2",
     "shx": "^0.3.4",
     "typescript": "^5.0.4",
-    "vscode-languageclient": "^7.0.0",
+    "vscode-languageclient": "^9.0.1",
     "vscode-notebook-error-overlay": "^1.0.1",
     "vscode-test": "^1.4.1"
   },
   "dependencies": {
     "@tanstack/react-table": "^8.21.3",
-    "@vscode/webview-ui-toolkit": "^0.9.3",
+    "@vscode/webview-ui-toolkit": "^1.4.0",
     "flatpickr": "^4.6.13",
     "icons-react": "^3.7.1",
     "mssql": "^12.2.0",
     "mysql2": "^3.16.0",
-    "pg": "^8.7.1",
+    "pg": "^8.12.0",
     "react": "^17.0.2",
     "react-dom": "^17.0.2",
     "sql-formatter": "^15.4.0",
-    "sql.js": "^1.7.0",
+    "sql.js": "^1.10.3",
     "trino-client": "^0.2.9",
     "xlsx": "https://cdn.sheetjs.com/xlsx-latest/xlsx-latest.tgz"
   },

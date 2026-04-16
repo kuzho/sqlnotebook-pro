@@ -1,4 +1,3 @@
- 
 import * as React from 'react';
 import flatpickr from 'flatpickr';
 import 'flatpickr/dist/themes/dark.css';
@@ -42,24 +41,19 @@ type IncomingStoredParameter = string | {
 const unformatSqlValue = (sqlValue: string): string => {
   const trimmed = String(sqlValue || '').trim();
 
-  // For backward compatibility, handle the old format ('val1','val2')
   let processableString = trimmed;
   if (trimmed.startsWith('(') && trimmed.endsWith(')')) {
     processableString = trimmed.slice(1, -1);
   }
 
-  // This handles the new format "'val1','val2'" -> "val1,val2"
-  // and also single values "'my_value'" -> "my_value"
   const items = processableString.split(',')
     .map(item => {
         const trimmedItem = item.trim();
-        // remove surrounding quotes 'val1' -> val1
         if (trimmedItem.startsWith("'") && trimmedItem.endsWith("'")) {
           const dequoted = trimmedItem.slice(1, -1);
-          // un-escape quotes O''Malley -> O'Malley
           return dequoted.replace(/''/g, "'");
         }
-        return trimmedItem; // Fallback for malformed items
+        return trimmedItem;
     });
     return items.join(',');
 };
@@ -168,7 +162,6 @@ const Parameters: React.FC = () => {
             type: 'date'
           };
         } else {
-          // Keep text parameters in legacy string format for backward compatibility.
           acc[key] = p.value;
         }
       }
@@ -323,7 +316,6 @@ const Parameters: React.FC = () => {
       }
 
       if (nextType === 'date') {
-        // Default to current date/time if empty
         let value = p.value;
         if (!value) {
           const now = new Date();

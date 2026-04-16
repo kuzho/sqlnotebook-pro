@@ -15,6 +15,7 @@ export type DriverKey = typeof supportedDrivers[number];
 export type TableSchema = {
   table: string;
   columns: string[];
+  columnTypes?: Record<string, string>;
   schema?: string;
   foreignKeys?: ForeignKey[];
 };
@@ -130,10 +131,15 @@ function sqlitePool(pool: SqliteDatabase, dbFile?: string): Pool {
           for (const row of resTables[0].values) {
             const tableName = row[0] as string;
             const resCols = pool.exec(`PRAGMA table_info("${tableName}")`);
-            const columns = resCols.length && resCols[0].values 
-                ? resCols[0].values.map(c => c[1] as string) 
-                : [];
-            tables.push({ table: tableName, columns });
+            const columns: string[] = [];
+            const columnTypes: Record<string, string> = {};
+            if (resCols.length && resCols[0].values) {
+              for (const c of resCols[0].values) {
+                columns.push(c[1] as string);
+                columnTypes[c[1] as string] = c[2] as string;
+              }
+            }
+            tables.push({ table: tableName, columns, columnTypes });
           }
         }
       } catch (e) {
@@ -222,25 +228,28 @@ function mysqlPool(pool: mysql.Pool, queryTimeout: number): Pool {
     async getSchema(): Promise<TableSchema[]> {
       try {
         const [rows] = await pool.query(`
-          SELECT TABLE_NAME, COLUMN_NAME, TABLE_SCHEMA
+          SELECT TABLE_NAME, COLUMN_NAME, DATA_TYPE, COLUMN_TYPE, TABLE_SCHEMA
           FROM INFORMATION_SCHEMA.COLUMNS
           WHERE TABLE_SCHEMA = DATABASE()
-        `) as any;
+        `) as unknown as [any[], any];
 
         const [fkRows] = await pool.query(`
           SELECT TABLE_NAME, COLUMN_NAME, REFERENCED_TABLE_NAME, REFERENCED_COLUMN_NAME, TABLE_SCHEMA, REFERENCED_TABLE_SCHEMA
           FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE
           WHERE TABLE_SCHEMA = DATABASE() AND REFERENCED_TABLE_NAME IS NOT NULL
-        `) as any;
+        `) as unknown as [any[], any];
 
         const map = new Map<string, string[]>();
+        const typeMap = new Map<string, Record<string, string>>();
         const schemaMap = new Map<string, string>();
         const fkMap = new Map<string, ForeignKey[]>();
         rows.forEach((r: any) => {
           if (!map.has(r.TABLE_NAME)) {
             map.set(r.TABLE_NAME, []);
+            typeMap.set(r.TABLE_NAME, {});
           }
           map.get(r.TABLE_NAME)?.push(r.COLUMN_NAME);
+          typeMap.get(r.TABLE_NAME)![r.COLUMN_NAME] = r.COLUMN_TYPE || r.DATA_TYPE;
           if (!schemaMap.has(r.TABLE_NAME)) {
             schemaMap.set(r.TABLE_NAME, r.TABLE_SCHEMA);
           }
@@ -264,6 +273,7 @@ function mysqlPool(pool: mysql.Pool, queryTimeout: number): Pool {
         return Array.from(map.entries()).map(([table, columns]) => ({
           table,
           columns,
+          columnTypes: typeMap.get(table),
           schema: schemaMap.get(table),
           foreignKeys: fkMap.get(table) || []
         }));
@@ -285,11 +295,11 @@ function mysqlConn(conn: mysql.PoolConnection, queryTimeout: number): Conn {
         sql: q,
         timeout: queryTimeout,
         rowsAsArray: true,
-      })) as any;
+      })) as unknown as [unknown[], any];
 
-      const normalizeRows = (rows: any, fields: any) => {
+      const normalizeRows = (rows: unknown, fields: any): TabularResult => {
         if (!Array.isArray(rows)) {
-          return rows;
+          return [rows as Row];
         }
         const columns = Array.isArray(fields)
           ? fields.map((f: any) => f?.name ?? '')
@@ -298,7 +308,7 @@ function mysqlConn(conn: mysql.PoolConnection, queryTimeout: number): Conn {
       };
 
       if (!Array.isArray(result)) {
-        return [[result]];
+        return [[result as Row]];
       }
 
       if (!result.length) {
@@ -310,8 +320,8 @@ function mysqlConn(conn: mysql.PoolConnection, queryTimeout: number): Conn {
       if (hasMultipleResults) {
         return result.map((res: any, idx: number) => {
           const fields = Array.isArray(ok) ? ok[idx] : ok;
-          return res.length !== undefined ? normalizeRows(res, fields) : [res];
-        });
+          return res.length !== undefined ? normalizeRows(res, fields) : [res as Row];
+        }) as ExecutionResult;
       }
 
       return [normalizeRows(result, ok)];
@@ -374,7 +384,7 @@ function postgresPool(pool: pg.Pool): Pool {
     async getSchema(): Promise<TableSchema[]> {
       try {
         const res = await pool.query(`
-          SELECT table_schema, table_name, column_name
+          SELECT table_schema, table_name, column_name, data_type
           FROM information_schema.columns
           WHERE table_schema NOT IN ('pg_catalog', 'information_schema')
         `);
@@ -386,10 +396,13 @@ function postgresPool(pool: pg.Pool): Pool {
             map.set(key, {
               table: r.table_name,
               schema: r.table_schema,
-              columns: []
+              columns: [],
+              columnTypes: {}
             });
           }
-          map.get(key)?.columns.push(r.column_name);
+          const schemaObj = map.get(key)!;
+          schemaObj.columns.push(r.column_name);
+          schemaObj.columnTypes![r.column_name] = r.data_type;
         });
         return Array.from(map.values());
       } catch (e) {
@@ -403,11 +416,11 @@ function postgresPool(pool: pg.Pool): Pool {
 function postgresConn(conn: pg.PoolClient): Conn {
   return {
     async query(q: string): Promise<ExecutionResult> {
-      const response = (await conn.query({ text: q, rowMode: 'array' })) as any as pg.QueryResult<any>[];
+      const response = (await conn.query({ text: q, rowMode: 'array' })) as unknown as pg.QueryResult<any>[];
 
-      const maybeResponses = !!response.length
+      const maybeResponses = response.length
         ? response
-        : ([response] as any as pg.QueryResult<any>[]);
+        : ([response] as unknown as pg.QueryResult<any>[]);
 
       return maybeResponses.map(({ rows, rowCount, fields }) => {
         if (!rows.length) {
@@ -473,7 +486,7 @@ function mssqlPool(pool: mssql.ConnectionPool): Pool {
     async getSchema(): Promise<TableSchema[]> {
       try {
         const res = await pool.query(`
-          SELECT TABLE_NAME, COLUMN_NAME, TABLE_SCHEMA
+          SELECT TABLE_NAME, COLUMN_NAME, DATA_TYPE, TABLE_SCHEMA
           FROM INFORMATION_SCHEMA.COLUMNS
         `);
 
@@ -495,13 +508,16 @@ function mssqlPool(pool: mssql.ConnectionPool): Pool {
         `);
 
         const map = new Map<string, string[]>();
+        const typeMap = new Map<string, Record<string, string>>();
         const schemaMap = new Map<string, string>();
         const fkMap = new Map<string, ForeignKey[]>();
         res.recordset.forEach((r: any) => {
           if (!map.has(r.TABLE_NAME)) {
             map.set(r.TABLE_NAME, []);
+            typeMap.set(r.TABLE_NAME, {});
           }
           map.get(r.TABLE_NAME)?.push(r.COLUMN_NAME);
+          typeMap.get(r.TABLE_NAME)![r.COLUMN_NAME] = r.DATA_TYPE;
           if (!schemaMap.has(r.TABLE_NAME)) {
             schemaMap.set(r.TABLE_NAME, r.TABLE_SCHEMA);
           }
@@ -525,6 +541,7 @@ function mssqlPool(pool: mssql.ConnectionPool): Pool {
         return Array.from(map.entries()).map(([table, columns]) => ({
           table,
           columns,
+          columnTypes: typeMap.get(table),
           schema: schemaMap.get(table),
           foreignKeys: fkMap.get(table) || []
         }));
@@ -580,8 +597,8 @@ function mssqlConn(req: mssql.Request): Conn {
         return undefined;
       };
 
-      (req as any).arrayRowMode = true;
-      const res: any = await req.query(q);
+      (req as unknown as { arrayRowMode: boolean }).arrayRowMode = true;
+      const res = await req.query(q) as any;
 
         if (res.recordsets && res.recordsets.length > 0) {
           const recordset = res.recordsets[0];
@@ -850,7 +867,7 @@ function trinoPool(config: TrinoConfig): Pool {
 
         const map = new Map<string, TableSchema>();
         for (const catalog of catalogsToScan) {
-          const query = `SELECT table_schema, table_name, column_name
+          const query = `SELECT table_schema, table_name, column_name, data_type
                         FROM ${quoteTrinoIdentifier(catalog)}.information_schema.columns
                         WHERE table_schema NOT IN ('information_schema', 'sys')`;
 
@@ -866,11 +883,14 @@ function trinoPool(config: TrinoConfig): Pool {
               const schemaName = String(r[0]);
               const tableName = String(r[1]);
               const columnName = String(r[2]);
+              const dataType = String(r[3]);
               const key = `${catalog}.${schemaName}.${tableName}`;
               if (!map.has(key)) {
-                map.set(key, { table: tableName, schema: `${catalog}.${schemaName}`, columns: [] });
+                map.set(key, { table: tableName, schema: `${catalog}.${schemaName}`, columns: [], columnTypes: {} });
               }
-              map.get(key)?.columns.push(columnName);
+              const schemaObj = map.get(key)!;
+              schemaObj.columns.push(columnName);
+              schemaObj.columnTypes![columnName] = dataType;
             });
           } catch (catalogError) {
             console.warn(`Skipping Trino catalog '${catalog}' during schema load`, catalogError);

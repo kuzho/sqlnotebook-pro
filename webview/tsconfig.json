@@ -1,11 +1,11 @@
 {
   "compilerOptions": {
     "jsx": "react",
-    "module": "Node16",
+    "module": "ESNext",
     "target": "ES2021",
     "lib": ["ES2021", "dom"],
     "outDir": "../dist/webview",
-    "moduleResolution": "node16",
+    "moduleResolution": "bundler",
     "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,

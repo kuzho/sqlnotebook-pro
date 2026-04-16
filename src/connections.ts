@@ -1,11 +1,11 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
-import { DriverKey } from './driver';
+import { DriverKey, getPool, PoolConfig, TableSchema } from './driver';
 
 export class SQLNotebookConnections
-  implements vscode.TreeDataProvider<ConnectionListItem | GroupItem | vscode.TreeItem>
+  implements vscode.TreeDataProvider<vscode.TreeItem>
 {
-  private _onDidChangeTreeData = new vscode.EventEmitter<ConnectionListItem | GroupItem | undefined | void>();
+  private _onDidChangeTreeData = new vscode.EventEmitter<vscode.TreeItem | undefined | void>();
   readonly onDidChangeTreeData = this._onDidChangeTreeData.event;
 
   constructor(public readonly context: vscode.ExtensionContext) {
@@ -20,32 +20,84 @@ export class SQLNotebookConnections
     this._onDidChangeTreeData.fire();
   }
 
-  getTreeItem(element: ConnectionListItem | GroupItem): vscode.TreeItem {
+  getTreeItem(element: vscode.TreeItem): vscode.TreeItem {
     return element;
   }
 
-  getChildren(element?: ConnectionListItem | GroupItem): Thenable<vscode.TreeItem[]> {
+  async getChildren(element?: vscode.TreeItem): Promise<vscode.TreeItem[]> {
     if (element instanceof ConnectionListItem) {
-      if (element.config.driver === 'sqlite') {
-        return Promise.resolve([
-          new vscode.TreeItem(`filename: ${element.config.path}`, vscode.TreeItemCollapsibleState.None),
-          new vscode.TreeItem(`driver: ${element.config.driver}`, vscode.TreeItemCollapsibleState.None),
-        ]);
+      try {
+        let password = (element.config as any).password;
+        if (!password && element.config.driver !== 'sqlite') {
+          try {
+            password = await this.context.secrets.get(element.config.passwordKey);
+          } catch (e) {}
+        }
+
+        const poolConfig = {
+          ...element.config,
+          password,
+          queryTimeout: 15000
+        } as PoolConfig;
+
+        const pool = await getPool(poolConfig);
+        const schema = await pool.getSchema();
+        pool.end();
+
+        const schemaGroups = new Map<string, TableSchema[]>();
+        const orphans: TableSchema[] = [];
+
+        schema.forEach(t => {
+          if (t.schema) {
+            if (!schemaGroups.has(t.schema)) {schemaGroups.set(t.schema, []);}
+            schemaGroups.get(t.schema)!.push(t);
+          } else {
+            orphans.push(t);
+          }
+        });
+
+        const items: vscode.TreeItem[] = [];
+
+        const sortedSchemas = Array.from(schemaGroups.keys()).sort();
+        for (const schemaName of sortedSchemas) {
+          const tables = schemaGroups.get(schemaName)!.sort((a, b) => a.table.localeCompare(b.table));
+          items.push(new SchemaItem(schemaName, tables, element.config));
+        }
+
+        orphans.sort((a, b) => a.table.localeCompare(b.table)).forEach(table => {
+          items.push(new TableItem(table, element.config));
+        });
+
+        if (items.length === 0) {
+          return [new vscode.TreeItem("No tables found", vscode.TreeItemCollapsibleState.None)];
+        }
+        return items;
+      } catch (e: any) {
+        const errorItem = new vscode.TreeItem(`Error: ${e.message}`, vscode.TreeItemCollapsibleState.None);
+        errorItem.iconPath = new vscode.ThemeIcon('error');
+        return [errorItem];
       }
-      return Promise.resolve([
-        new vscode.TreeItem(`host: ${element.config.host}`, vscode.TreeItemCollapsibleState.None),
-        new vscode.TreeItem(`user: ${element.config.user}`, vscode.TreeItemCollapsibleState.None),
-        new vscode.TreeItem(`database: ${element.config.database}`, vscode.TreeItemCollapsibleState.None),
-      ]);
+    }
+
+    if (element instanceof SchemaItem) {
+      return element.tables.map(t => new TableItem(t, element.config));
+    }
+
+    if (element instanceof TableItem) {
+      if (!element.tableSchema.columns || element.tableSchema.columns.length === 0) {
+        return [new vscode.TreeItem("No columns", vscode.TreeItemCollapsibleState.None)];
+      }
+      return element.tableSchema.columns.map(c => {
+        const type = element.tableSchema.columnTypes ? element.tableSchema.columnTypes[c] : undefined;
+        return new ColumnItem(c, type);
+      });
     }
 
     const connections = vscode.workspace.getConfiguration('sqlnotebook').get<ConnData[]>('connections') || [];
 
     if (element instanceof GroupItem) {
       const children = connections.filter(c => (c.group || 'No Group') === element.label);
-      return Promise.resolve(
-        children.map(config => new ConnectionListItem(config, vscode.TreeItemCollapsibleState.Collapsed))
-      );
+      return children.map(config => new ConnectionListItem(config, vscode.TreeItemCollapsibleState.Collapsed));
     }
 
     if (!element) {
@@ -61,12 +113,12 @@ export class SQLNotebookConnections
       });
 
       const items: vscode.TreeItem[] = [];
-      groups.forEach(groupName => items.push(new GroupItem(groupName)));
-      orphans.forEach(config => items.push(new ConnectionListItem(config, vscode.TreeItemCollapsibleState.Collapsed)));
+      Array.from(groups).sort().forEach(groupName => items.push(new GroupItem(groupName)));
+      orphans.sort((a, b) => a.name.localeCompare(b.name)).forEach(config => items.push(new ConnectionListItem(config, vscode.TreeItemCollapsibleState.Collapsed)));
 
-      return Promise.resolve(items);
+      return items;
     }
-    return Promise.resolve([]);
+    return [];
   }
 }
 
@@ -89,6 +141,35 @@ export class ConnectionListItem extends vscode.TreeItem {
     };
     this.description = config.driver;
     this.contextValue = 'database';
+  }
+}
+
+export class SchemaItem extends vscode.TreeItem {
+  constructor(public readonly schemaName: string, public readonly tables: TableSchema[], public readonly config: ConnData) {
+    super(schemaName, vscode.TreeItemCollapsibleState.Collapsed);
+    this.contextValue = 'schema';
+    this.iconPath = new vscode.ThemeIcon('symbol-namespace');
+  }
+}
+
+export class TableItem extends vscode.TreeItem {
+  constructor(public readonly tableSchema: TableSchema, public readonly config: ConnData) {
+    super(tableSchema.table, vscode.TreeItemCollapsibleState.Collapsed);
+    this.contextValue = 'table';
+    this.iconPath = new vscode.ThemeIcon('table');
+    this.description = tableSchema.schema ? undefined : ''; 
+  }
+}
+
+export class ColumnItem extends vscode.TreeItem {
+  constructor(public readonly columnName: string, public readonly dataType?: string) {
+    super(columnName, vscode.TreeItemCollapsibleState.None);
+    this.contextValue = 'column';
+    this.iconPath = new vscode.ThemeIcon('symbol-field');
+    if (dataType) {
+      this.tooltip = `${columnName} (${dataType})`;
+      this.description = dataType;
+    }
   }
 }
 export const mediaDir = path.join(__filename, '..', '..', 'media');

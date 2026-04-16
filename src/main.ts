@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import { SQLNotebookConnections } from './connections';
-import { deleteConnectionConfiguration, editConnectionConfiguration } from './commands';
+import { deleteConnectionConfiguration, editConnectionConfiguration, scriptSelectTop } from './commands';
 import { ParameterProvider } from './ParameterProvider';
 import { activateFormProvider } from './form';
 import { SQLSerializer } from './serializer';
@@ -13,6 +13,7 @@ import * as os from 'os';
 import { format as formatSql } from 'sql-formatter';
 import { embedImagesAsBase64 } from './embed-base64';
 import { extractAttachmentsFromMarkdown } from './attachments-util';
+import { splitSqlBatches, compactFormattedSql } from './utils/sqlUtils';
 
 export const notebookType = 'sql-notebook';
 export const storageKey = 'sqlnotebook-connections';
@@ -186,222 +187,6 @@ const formatterLanguageByDriver: Record<string, string> = {
   sqlite: 'sqlite',
   trino: 'trino'
 };
-
-function compactFormattedSql(sql: string, language: string): string {
-  // Pre-pass: join WITH\n(NOLOCK) into one token
-  sql = sql.replace(/\bWITH\s*\n\s*\(NOLOCK\)/gi, 'WITH (NOLOCK)');
-
-  const lines = sql.split('\n');
-  const output: string[] = [];
-
-  const isSimpleAtom = (value: string): boolean => {
-    return /^[@\w$.:-]+$/.test(value) ||
-           /^-?\d+(?:\.\d+)?$/.test(value) ||
-           /^'.*'$/.test(value);
-  };
-
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i];
-    const trimmed = line.trim();
-
-    if (!trimmed) { continue; }
-
-    if (/^WITH\s*\(NOLOCK\)/i.test(trimmed) && output.length > 0) {
-      output[output.length - 1] += ` ${trimmed}`;
-      continue;
-    }
-
-    if (trimmed === '(' && output.length > 0) {
-      output[output.length - 1] += ' (';
-      continue;
-    }
-
-    if (/^SELECT(\s+DISTINCT)?$/i.test(trimmed) && i + 1 < lines.length) {
-      const next = lines[i + 1].trim();
-      if (isSimpleAtom(next)) {
-        const indent = line.match(/^\s*/)?.[0] ?? '';
-        output.push(`${indent}${trimmed.toUpperCase()} ${next}`);
-        i++;
-        continue;
-      }
-    }
-
-    if (/^UNION(\s+ALL)?$/i.test(trimmed) && i + 1 < lines.length) {
-      const next = lines[i + 1].trim();
-      if (/^SELECT\s+.+$/i.test(next) && next.length <= 60) {
-        const indent = line.match(/^\s*/)?.[0] ?? '';
-        output.push(`${indent}${trimmed.toUpperCase()} ${next}`);
-        i++;
-        continue;
-      }
-      if (/^SELECT$/i.test(next) && i + 2 < lines.length) {
-        const next2 = lines[i + 2].trim();
-        if (isSimpleAtom(next2)) {
-          const indent = line.match(/^\s*/)?.[0] ?? '';
-          output.push(`${indent}${trimmed.toUpperCase()} SELECT ${next2}`);
-          i += 2;
-          continue;
-        }
-      }
-    }
-
-    output.push(line);
-  }
-
-  let result = output.join('\n')
-    .replace(/\n{2,}/g, '\n')
-    .replace(/\bSET\s*\n\s*/gi, 'SET ')
-    .replace(/\bFROM\s*\n\s*/gi, 'FROM ')
-    .replace(/\b(INNER JOIN|LEFT JOIN|RIGHT JOIN|FULL OUTER JOIN|CROSS JOIN)\s*\n\s*/gi, '$1 ')
-    .replace(/\bORDER BY\s*\n\s*/gi, 'ORDER BY ')
-    .replace(/\bGROUP BY\s*\n\s*/gi, 'GROUP BY ')
-    .replace(/\bHAVING\s*\n\s*/gi, 'HAVING ')
-    .replace(/\bOPTION\s*\n?\s*\(([^)]+)\)/gi, (_m, inner: string) =>
-      `OPTION (${inner.replace(/\s+/g, ' ').trim()})`)
-    .replace(/\bIN\s*\(\s*\n([\s\S]*?)\s*\)/gi, (_m, inner: string) => {
-      const items = inner.split('\n').map((s: string) => s.trim().replace(/,+$/, '')).filter(Boolean).join(', ');
-      return `IN (${items})`;
-    })
-    .trim();
-
-  result = groupSelectColumns(result, 4);
-
-  if (language === 'tsql') {
-    result = styleTsqlControlFlow(result);
-    result = reindentTsqlByContext(result);
-  }
-
-  return result;
-}
-
-function styleTsqlControlFlow(sql: string): string {
-  const lines = sql.split('\n');
-  const output: string[] = [];
-
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i];
-    const trimmed = line.trim();
-    const next = i + 1 < lines.length ? lines[i + 1].trim() : '';
-    const next2 = i + 2 < lines.length ? lines[i + 2].trim() : '';
-
-    if (!trimmed) {
-      if (output.length > 0 && output[output.length - 1] !== '') {
-        output.push('');
-      }
-      continue;
-    }
-
-    if (/^IF\b/i.test(trimmed) && /^BEGIN$/i.test(next)) {
-      output.push(`${line.replace(/\s+$/, '')} BEGIN`);
-      i += 1;
-      continue;
-    }
-
-    if (/^ELSE$/i.test(trimmed) && /^BEGIN$/i.test(next)) {
-      const indent = line.match(/^\s*/)?.[0] ?? '';
-      output.push(`${indent}ELSE BEGIN`);
-      i += 1;
-      continue;
-    }
-
-    if (/^END$/i.test(trimmed) && /^ELSE$/i.test(next) && /^BEGIN$/i.test(next2)) {
-      const indent = line.match(/^\s*/)?.[0] ?? '';
-      output.push(`${indent}END ELSE BEGIN`);
-      i += 2;
-      continue;
-    }
-
-    if (/^END$/i.test(trimmed) && /^ELSE\s+BEGIN$/i.test(next)) {
-      const indent = line.match(/^\s*/)?.[0] ?? '';
-      output.push(`${indent}END ELSE BEGIN`);
-      i += 1;
-      continue;
-    }
-
-    output.push(line);
-  }
-
-  return output.join('\n').replace(/\n{3,}/g, '\n\n').trim();
-}
-
-function reindentTsqlByContext(sql: string): string {
-	const lines = sql.split('\n');
-	const output: string[] = [];
-	const stack: Array<'BEGIN' | 'CASE'> = [];
-
-	const makeIndent = (level: number): string => '\t'.repeat(Math.max(level, 0));
-
-	for (const rawLine of lines) {
-		const trimmed = rawLine.trim();
-		if (!trimmed) {
-			if (output.length > 0 && output[output.length - 1] !== '') {
-				output.push('');
-			}
-			continue;
-		}
-
-		const leading = rawLine.match(/^\s*/)?.[0] || '';
-		const existingLevel = (leading.match(/\t/g) || []).length + Math.floor((leading.match(/ /g) || []).length / 2);
-
-		const contextLevel = stack.filter(x => x === 'BEGIN').length;
-
-		if (/^END\b/i.test(trimmed)) {
-			if (stack.length > 0) {
-				stack.pop();
-			}
-			const levelAfterPop = stack.filter(x => x === 'BEGIN').length;
-			output.push(`${makeIndent(levelAfterPop + existingLevel)}${trimmed}`);
-			if (/^END\s+ELSE\s+BEGIN$/i.test(trimmed)) {
-				stack.push('BEGIN');
-			}
-			continue;
-		}
-
-		output.push(`${makeIndent(contextLevel + existingLevel)}${trimmed}`);
-
-		if (/^IF\b[\s\S]*\bBEGIN$/i.test(trimmed) || /^BEGIN$/i.test(trimmed) || /^ELSE\s+BEGIN$/i.test(trimmed)) {
-			stack.push('BEGIN');
-		} else if (/^CASE\b/i.test(trimmed)) {
-			stack.push('CASE');
-		}
-	}
-
-	return output.join('\n').replace(/\n{3,}/g, '\n\n').trim();
-}
-
-function groupSelectColumns(sql: string, groupSize = 4): string {
-  return sql.replace(
-    /SELECT\s+([\s\S]*?)\s+FROM/gi,
-    (match, selectBody) => {
-      const columns = selectBody
-        .split(',')
-        .map((c: string) => c.trim())
-        .filter(Boolean);
-
-      if (
-        columns.length <= groupSize ||
-        columns.length <= 2 ||
-        /\bSELECT\b/i.test(selectBody)
-      ) {
-        return match;
-      }
-
-      const lines: string[] = [];
-
-      for (let i = 0; i < columns.length; i += groupSize) {
-        const chunk = columns.slice(i, i + groupSize);
-
-        lines.push(
-          '\t' +
-          chunk.join(', ') +
-          (i + groupSize < columns.length ? ',' : '')
-        );
-      }
-
-      return `SELECT\n${lines.join('\n')}\nFROM`;
-    }
-  );
-}
 
 export function activate(context: vscode.ExtensionContext) {
   context.subscriptions.push(
@@ -712,6 +497,13 @@ export function activate(context: vscode.ExtensionContext) {
   );
 
   context.subscriptions.push(
+    vscode.commands.registerCommand(
+      'sqlnotebook.scriptSelectTop',
+      scriptSelectTop()
+    )
+  );
+
+  context.subscriptions.push(
     vscode.commands.registerCommand('sqlnotebook.formatCell', async (cell: vscode.NotebookCell) => {
       if (!cell || cell.kind !== vscode.NotebookCellKind.Code) {
         return;
@@ -728,19 +520,28 @@ export function activate(context: vscode.ExtensionContext) {
 
       let formatted = source;
       try {
+        const config = vscode.workspace.getConfiguration('sqlnotebook.format');
+        const keywordCase = config.get<'upper' | 'lower' | 'preserve'>('keywordCase') ?? 'upper';
+        const indentStyle = config.get<'standard' | 'tabularLeft' | 'tabularRight'>('indentStyle') ?? 'standard';
+        const tabWidth = config.get<number>('tabWidth') ?? 2;
+        const useTabs = config.get<boolean>('useTabs') ?? true;
+        const logicalOperatorNewline = config.get<'before' | 'after'>('logicalOperatorNewline') ?? 'before';
+        const expressionWidth = config.get<number>('expressionWidth') ?? 200;
+
         formatted = formatSql(source, {
           language: language as any,
-          keywordCase: 'upper',
-          indentStyle: 'standard',
-          logicalOperatorNewline: 'before',
-          expressionWidth: 200,
-          tabWidth: 2,
-          useTabs: true,
+          keywordCase,
+          indentStyle,
+          logicalOperatorNewline,
+          expressionWidth,
+          tabWidth,
+          useTabs,
           linesBetweenQueries: 0
         });
         formatted = compactFormattedSql(formatted, language);
-      } catch (e: any) {
-        vscode.window.showErrorMessage(`SQL format failed: ${e?.message || e}`);
+      } catch (e: unknown) {
+        const errorMessage = e instanceof Error ? e.message : String(e);
+        vscode.window.showErrorMessage(`SQL format failed: ${errorMessage}`);
         return;
       }
 
