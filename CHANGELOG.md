@@ -1,5 +1,10 @@
 # Change Log
 
+## [3.1.0]
+### 🐛 Bug Fixes
+- **Result Row Limiter:** Fixed an issue where the `sqlnotebook.maxResultRows` configuration was being ignored. The extension now correctly truncates large datasets at the backend level, vastly improving performance and preventing UI freezes on massive queries.
+- **Truncation Warnings:** Fixed a variable mismatch in the interactive grid so it now correctly displays a warning message when results are truncated, showing exactly how many rows are visible versus the total number of rows returned by the engine.
+
 ## [3.0.9]
 ### ✨ New Features & Polish
 - **Multi-Table Results:** Upgraded the MSSQL and SQLite drivers to fully support returning multiple result sets (tables) from a single query execution block. Executing multiple `SELECT` statements separated by semicolons now seamlessly renders a separate interactive grid for each table, matching the behavior of MySQL and Postgres.

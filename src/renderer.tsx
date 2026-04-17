@@ -545,7 +545,7 @@ interface OutputPayload {
     executionTime?: string;
     executionDate?: string;
     truncated?: boolean;
-    totalRows?: number;
+    originalLength?: number;
   };
 }
 
@@ -558,8 +558,8 @@ const TableApp = ({ data, postMessage }: { data: OutputPayload | any[], postMess
   const executionTimeFromBackend = !Array.isArray(data) && data.info?.executionTime;
   const executionDateFromBackend = !Array.isArray(data) && data.info?.executionDate;
   const isTruncated = Boolean(!Array.isArray(data) && data.info?.truncated);
-  const totalRowsFromBackend = !Array.isArray(data) && typeof data.info?.totalRows === 'number'
-    ? data.info.totalRows
+  const totalRowsFromBackend = !Array.isArray(data) && typeof data.info?.originalLength === 'number'
+    ? data.info.originalLength
     : rows.length;
   const fallbackTime = useMemo(() => formatExecutionTime(new Date()), []);
   const fallbackDate = useMemo(() => formatExecutionDate(new Date()), []);

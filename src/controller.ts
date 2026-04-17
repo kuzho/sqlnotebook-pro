@@ -281,14 +281,24 @@ export class SQLNotebookKernel {
   private async appendExecutionResult(execution: vscode.NotebookCellExecution, result: ExecutionResult, query: string): Promise<void> {
     const now = new Date();
     const newOutputs: vscode.NotebookCellOutput[] = [];
+    const maxRows = vscode.workspace.getConfiguration('sqlnotebook').get<number>('maxResultRows') ?? 100;
 
     for (const res of result) {
-      const rows = Array.isArray(res) ? res : res.rows;
+      let rows = Array.isArray(res) ? res : res.rows;
       const columns = Array.isArray(res) ? undefined : res.columns;
+      let truncated = false;
+      const originalLength = rows?.length || 0;
+
+      if (rows && rows.length > maxRows) {
+        rows = rows.slice(0, maxRows);
+        truncated = true;
+      }
 
       if (rows && rows.length > 0) {
+        const info = makeExecutionInfo(now) as any;
+        if (truncated) { info.truncated = true; info.originalLength = originalLength; }
         newOutputs.push(new vscode.NotebookCellOutput([
-          vscode.NotebookCellOutputItem.json({ rows, columns, info: makeExecutionInfo(now) }, 'application/vnd.code-sql-notebook.table+json'),
+          vscode.NotebookCellOutputItem.json({ rows, columns, info }, 'application/vnd.code-sql-notebook.table+json'),
           vscode.NotebookCellOutputItem.json(rows, 'application/json')
         ]));
       }
