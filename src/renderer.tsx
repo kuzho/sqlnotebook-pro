@@ -610,6 +610,7 @@ const TableApp = ({ data, postMessage }: { data: OutputPayload | any[], postMess
           { header: 'message', accessorKey: 'message' }
         ];
       }
+
       if (!rows || !Array.isArray(rows) || rows.length === 0) {return [];}
 
       const firstRow = rows.find(row => row && typeof row === 'object') as Record<string, any>;

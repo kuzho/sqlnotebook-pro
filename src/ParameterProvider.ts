@@ -298,6 +298,7 @@ type StoredParameter = string | {
   checked?: boolean;
   checkedValue?: string;
   uncheckedValue?: string;
+  required?: boolean;
 };
 
 function normalizeParam(param: StoredParameter): {
@@ -308,6 +309,7 @@ function normalizeParam(param: StoredParameter): {
   checked: boolean;
   checkedValue: string;
   uncheckedValue: string;
+  required: boolean;
 } {
   if (typeof param === 'string') {
     return {
@@ -317,7 +319,8 @@ function normalizeParam(param: StoredParameter): {
       options: [],
       checked: false,
       checkedValue: 'true',
-      uncheckedValue: 'false'
+      uncheckedValue: 'false',
+      required: false
     };
   }
   if (param && typeof param === 'object') {
@@ -329,7 +332,8 @@ function normalizeParam(param: StoredParameter): {
       options: Array.isArray(param.options) ? param.options.map(v => String(v)) : [],
       checked: !!param.checked,
       checkedValue: String(param.checkedValue ?? 'true'),
-      uncheckedValue: String(param.uncheckedValue ?? 'false')
+      uncheckedValue: String(param.uncheckedValue ?? 'false'),
+      required: !!param.required
     };
   }
   return {
@@ -339,6 +343,7 @@ function normalizeParam(param: StoredParameter): {
     options: [],
     checked: false,
     checkedValue: 'true',
-    uncheckedValue: 'false'
+    uncheckedValue: 'false',
+    required: false
   };
 }

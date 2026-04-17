@@ -7,7 +7,7 @@
   "repository": {
     "url": "https://github.com/kuzho/sqlnotebook-pro.git"
   },
-  "version": "3.0.7",
+  "version": "3.0.8",
   "preview": false,
   "engines": {
     "vscode": "^1.94.0",
@@ -220,6 +220,11 @@
           "type": "boolean",
           "default": true,
           "description": "Automatically open Excel/CSV files after exporting."
+        },
+        "sqlnotebook.safeDelete": {
+          "type": "boolean",
+          "default": true,
+          "description": "Prevent execution of DELETE and UPDATE statements without a WHERE clause."
         }
       }
     },

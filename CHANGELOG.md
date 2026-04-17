@@ -1,4 +1,11 @@
 # Change Log
+
+## [3.0.8]
+### ✨ New Features & Polish
+- **Required Parameters Validation:** Added a "Required" checkbox to the parameters panel. The extension will now automatically block execution and show an error if a required parameter is used in the query but left empty.
+- **Safe Execution Protection:** Introduced a new setting `sqlnotebook.safeDelete` (enabled by default) that blocks the execution of `DELETE` and `UPDATE` statements without a `WHERE` clause, preventing accidental mass data modification or wipes.
+- **Enhanced Result Feedback:** Execution messages for `INSERT`, `UPDATE`, `DELETE`, and `SELECT` queries with zero rows are now beautifully rendered inside the interactive results grid with success badges instead of plain text.
+
 ## [3.0.7]
 ### ✨ New Features & Polish
 - **Schema Explorer Data Types:** Hovering over columns in the connections panel now displays their native SQL data type (e.g., `VARCHAR`, `INT`). The data type is also subtly displayed next to the column name for quick reference.

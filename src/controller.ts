@@ -197,7 +197,25 @@ export class SQLNotebookKernel {
     const PARAMS_REGEX = /\/\*\s*<SQL_PARAMS>\s*([\s\S]*?)\s*<\/SQL_PARAMS>\s*\*\//;
     rawQuery = rawQuery.replace(PARAMS_REGEX, '').trim();
 
+    const params = this.parameterProvider.getParameters(cell.notebook.uri.toString());
+
+    for (const [key, param] of Object.entries(params)) {
+      if (param && typeof param === 'object' && param.required) {
+        const { value } = resolveParameter(param as StoredParameterValue);
+        if (!value || value.trim() === '') {
+          const paramName = key.startsWith('@') ? key : `@${key}`;
+          const searchPattern = new RegExp(`(?<!@)${paramName}\\b`, 'i');
+          if (searchPattern.test(rawQuery)) {
+             const errMsg = `Validation Error: Parameter '${paramName}' is required but was left empty.`;
+             await writeErr(execution, errMsg);
+             return;
+          }
+        }
+      }
+    }
+
     const batches = splitSqlBatches(rawQuery);
+    const safeDelete = vscode.workspace.getConfiguration('sqlnotebook').get('safeDelete') ?? true;
 
     for (let batch of batches) {
       if (execution.token.isCancellationRequested) {
@@ -206,7 +224,6 @@ export class SQLNotebookKernel {
       }
 
       try {
-        const params = this.parameterProvider.getParameters(cell.notebook.uri.toString());
         Object.keys(params).forEach(key => {
           const param = params[key] as StoredParameterValue;
           const { value, raw } = resolveParameter(param);
@@ -220,6 +237,19 @@ export class SQLNotebookKernel {
             batch = batch.replace(searchPattern, formatParameterValue(value));
           }
         });
+
+        if (safeDelete) {
+           const strippedBatch = batch.replace(/--.*/g, '').replace(/\/\*[\s\S]*?\*\//g, '').replace(/'[^']*'/g, '').replace(/"[^"]*"/g, '');
+           const isDelete = /\bDELETE\b/i.test(strippedBatch);
+           const isUpdate = /\bUPDATE\b/i.test(strippedBatch);
+           if ((isDelete || isUpdate) && !/\bWHERE\b/i.test(strippedBatch)) {
+              const cmd = isDelete ? 'DELETE' : 'UPDATE';
+              const errMsg = `Safety Alert: ${cmd} statement without WHERE clause detected. Execution blocked.\nYou can disable this protection in Settings: 'SQL Notebook: Safe Delete'.`;
+              vscode.window.showErrorMessage(`Safety Alert: ${cmd} without WHERE blocked.`);
+              await writeErr(execution, errMsg);
+              return;
+           }
+        }
 
         const pool = await this.getPool();
         const conn = await pool.getConnection();
@@ -235,7 +265,7 @@ export class SQLNotebookKernel {
           conn.release();
         }
 
-        await this.appendExecutionResult(execution, result || []);
+        await this.appendExecutionResult(execution, result || [], batch);
 
       } catch (err: unknown) {
         const errorMessage = err instanceof Error ? err.message : String(err);
@@ -248,7 +278,7 @@ export class SQLNotebookKernel {
     execution.end(true, Date.now());
   }
 
-  private async appendExecutionResult(execution: vscode.NotebookCellExecution, result: ExecutionResult): Promise<void> {
+  private async appendExecutionResult(execution: vscode.NotebookCellExecution, result: ExecutionResult, query: string): Promise<void> {
     const now = new Date();
     const newOutputs: vscode.NotebookCellOutput[] = [];
 
@@ -265,8 +295,14 @@ export class SQLNotebookKernel {
     }
 
     if (newOutputs.length === 0) {
+      const isSelect = /^\s*select/i.test(query);
+      const msg = isSelect ? 'Query executed successfully, 0 rows returned.' : 'Command(s) completed successfully.';
       newOutputs.push(new vscode.NotebookCellOutput([
-        vscode.NotebookCellOutputItem.text('OK')
+        vscode.NotebookCellOutputItem.json({
+          rows: [{ Status: 'Success', Message: msg }],
+          info: makeExecutionInfo(now)
+        }, 'application/vnd.code-sql-notebook.table+json'),
+        vscode.NotebookCellOutputItem.text(msg)
       ]));
     }
 
@@ -284,6 +320,7 @@ type StoredParameterValue = string | {
   checked?: boolean;
   checkedValue?: string;
   uncheckedValue?: string;
+  required?: boolean;
 };
 
 function resolveParameter(param: StoredParameterValue): { value: string; raw: boolean } {

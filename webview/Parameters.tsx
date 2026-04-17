@@ -27,6 +27,7 @@ interface Parameter {
   checkedValue: string;
   uncheckedValue: string;
   optionsText: string;
+  required: boolean;
 }
 
 type IncomingStoredParameter = string | {
@@ -36,6 +37,7 @@ type IncomingStoredParameter = string | {
   checked?: boolean;
   checkedValue?: string;
   uncheckedValue?: string;
+  required?: boolean;
 };
 
 const unformatSqlValue = (sqlValue: string): string => {
@@ -67,7 +69,8 @@ const Parameters: React.FC = () => {
     checked: false,
     checkedValue: 'true',
     uncheckedValue: 'false',
-    optionsText: ''
+    optionsText: '',
+    required: false
   }]);
 
   const [hasActiveFile, setHasActiveFile] = React.useState(false);
@@ -88,7 +91,8 @@ const Parameters: React.FC = () => {
       checked: false,
       checkedValue: 'true',
       uncheckedValue: 'false',
-      optionsText: ''
+      optionsText: '',
+      required: false
     };
   }, []);
 
@@ -102,7 +106,8 @@ const Parameters: React.FC = () => {
         checked: false,
         checkedValue: 'true',
         uncheckedValue: 'false',
-        optionsText: ''
+        optionsText: '',
+        required: false
       };
     }
 
@@ -126,7 +131,8 @@ const Parameters: React.FC = () => {
       checked,
       checkedValue,
       uncheckedValue,
-      optionsText: options
+      optionsText: options,
+      required: !!rawParam?.required
     };
   }, []);
 
@@ -143,7 +149,8 @@ const Parameters: React.FC = () => {
             type: 'checkbox',
             checked: p.checked,
             checkedValue: p.checkedValue,
-            uncheckedValue: p.uncheckedValue
+            uncheckedValue: p.uncheckedValue,
+            required: p.required
           };
         } else if (p.type === 'select') {
           const options = p.optionsText
@@ -154,15 +161,21 @@ const Parameters: React.FC = () => {
           acc[key] = {
             value: selected,
             type: 'select',
-            options
+            options,
+            required: p.required
           };
         } else if (p.type === 'date') {
           acc[key] = {
             value: p.value,
-            type: 'date'
+            type: 'date',
+            required: p.required
           };
         } else {
-          acc[key] = p.value;
+          acc[key] = {
+            value: p.value,
+            type: 'text',
+            required: p.required
+          };
         }
       }
       return acc;
@@ -468,6 +481,9 @@ const Parameters: React.FC = () => {
             >
               <span>{param.name ? `@${param.name}` : '@'}</span>
               <span style={{ opacity: 0.8 }}>{param.type}</span>
+              {param.required && (
+                <span style={{ color: '#ff5f56', border: '1px solid #ff5f56', padding: '0px 4px', borderRadius: '4px', marginLeft: '4px', fontSize: '9px', fontWeight: 'bold' }}>REQ</span>
+              )}
             </div>
             <div style={{ display: 'flex', gap: '4px', alignSelf: 'start' }}>
               {!editingIds.includes(param.id) && (
@@ -590,6 +606,18 @@ const Parameters: React.FC = () => {
               >
                 <span slot="start">@</span>
               </VSCodeTextField>
+
+                <div style={{ display: 'flex', alignItems: 'center' }}>
+                  <VSCodeCheckbox
+                    checked={param.required}
+                    onChange={(e: any) => {
+                      const checked = e?.target?.checked ?? e?.detail?.checked;
+                      handleParameterChange(param.id, 'required', !!checked);
+                    }}
+                  >
+                    Required
+                  </VSCodeCheckbox>
+                </div>
 
               {param.type === 'text' && (
                 <VSCodeTextField
