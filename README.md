@@ -28,22 +28,24 @@ Define reusable variables and run parameterized queries with a dedicated side pa
 </div>
 <br>
 
-#### 💡 Pro Tip: Universal Parameter Logic
+#### 💡 Pro Tip: Universal Parameter Logic & Validation
 * **Save (💾):** By default, saves your notebook as plain `.sql` with `-- %%` separators and embedded metadata blocks so it stays readable in text editors and Git views.
 
 Define your parameters in the **Parameters Panel** (sidebar). List values like `Active, Pending` are automatically formatted as `'Active','Pending'` when substituted into the query.
 
-To create filters that are **optional** (ignored when the parameter is empty), use this pattern in your `WHERE` clause:
+**Required vs Optional Parameters:**
+* **Required (REQ):** Edit any parameter (✏️) and check the **Required** box. If this parameter is used in your query but left empty, the extension will automatically block execution and show a validation error. This keeps your queries clean:
 
 ```sql
 SELECT * FROM users
-WHERE 1 = 1
-  -- @Status = 'Active, Pending' → AND status_column IN ('Active','Pending')
-  -- @Status = ''               → condition is skipped (always true)
-  AND ('' IN (@Status) OR status_column IN (@Status))
+WHERE status_column IN (@Status) -- Safe: Extension blocks execution if @Status is empty!
+```
 
-  -- @Country = '' → skipped
-  AND ('' IN (@Country) OR country_code IN (@Country))
+* **Optional:** For parameters that aren't required, they resolve to `''` (an empty string) when left blank. You can handle this gracefully to skip the filter:
+
+```sql
+SELECT * FROM users
+WHERE (@Country = '' OR country_code = @Country)
 ```
 
 ### 3. Interactive Data Grid (Excel-Style)
@@ -122,12 +124,13 @@ For the best visual experience (matching the look & feel of Azure Data Studio), 
 
 ## 🚀 What's in the Box
 - **🧠 Intellisense:** Schema-aware autocomplete for tables, columns, and SQL keywords across all your connections.
-- **🎛️ Parameters Panel:** Define `@Name` variables (text, dropdown, or checkbox) from the sidebar. Values are substituted at run time and can be saved per file.
+- **🎛️ Parameters Panel:** Define `@Name` variables (text, dropdown, date, or checkbox) from the sidebar. Mark them as **Required** for automatic pre-execution validation. Values are substituted at run time and can be saved per file.
 - **📊 Interactive Grid:** Filter, sort, and multi-select (Ctrl+Click) columns, rows, and cell ranges. Export to Excel/XLSX or CSV with one click.
 - **🖼️ Embedded Images:** Images pasted into markdown cells are stored as notebook attachments and rendered inline — no external files needed.
 - **📋 JSON Formatting:** Query results containing JSON strings are automatically pretty-printed.
 - **🔌 Connection Groups:** Organize connections by environment or project. Edit host/user/port without re-entering passwords. Auto-fills default ports per driver.
 - **🔒 Secure Credentials:** Passwords stored in the OS keychain via VS Code Secret Storage, never in plain text.
+- **🛡️ Safe Execution:** Built-in protection automatically blocks `DELETE` and `UPDATE` statements missing a `WHERE` clause, preventing accidental data wipes.
 - **☁️ Portable Settings:** Connection details live in `settings.json` — sync them across machines with VS Code Settings Sync.
 
 ## Parameter Casting Recommendations (MySQL, MSSQL, SQLite, Postgres, Trino)
@@ -222,6 +225,7 @@ You can customize the extension in VS Code Settings:
 
 * **SQL Notebook: Max Result Rows:** (Default: 100) Limits the initial rows rendered for performance.
 * **SQL Notebook: Open After Export:** (Default: true) Automatically opens the Excel/CSV file after exporting.
+* **SQL Notebook: Safe Delete:** (Default: true) Prevent execution of DELETE and UPDATE statements without a WHERE clause.
 * **SQL Notebook: Query Timeout:** (Default: 30000ms) Cancels queries that take too long.
 
 ## FAQ
