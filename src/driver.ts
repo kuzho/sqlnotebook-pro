@@ -153,19 +153,9 @@ function sqlitePool(pool: SqliteDatabase, dbFile?: string): Pool {
 function sqliteConn(conn: SqliteDatabase, dbFile?: string): Conn {
   return {
         async query(q: string): Promise<ExecutionResult> {
-          const stm = conn.prepare(q);
-          const columns = stm.getColumnNames();
-          const result: any[][] = [];
-
-          let isSelect = /^\s*select/i.test(q);
+          const execResults = conn.exec(q);
           let affectedRows = 0;
-
-          while (stm.step()) {
-            result.push(stm.get());
-            if (!isSelect) {affectedRows++;}
-          }
-
-          stm.free();
+          try { affectedRows = conn.getRowsModified(); } catch (e) {}
 
           if (dbFile) {
             const data = conn.export();
@@ -173,7 +163,14 @@ function sqliteConn(conn: SqliteDatabase, dbFile?: string): Conn {
             await fs.writeFile(dbFile, buffer);
           }
 
-          return [{ rows: result, columns }];
+          if (execResults.length === 0) {
+            return [[{ Status: 'Success', RowsAffected: affectedRows, Message: 'Command executed successfully.' }]];
+          }
+
+          return execResults.map(res => ({
+            columns: res.columns,
+            rows: res.values
+          }));
         },
     destroy: () => {},
     release: () => {},
@@ -601,9 +598,10 @@ function mssqlConn(req: mssql.Request): Conn {
       const res = await req.query(q) as any;
 
         if (res.recordsets && res.recordsets.length > 0) {
-          const recordset = res.recordsets[0];
-          const columns = getColumnsFromResult(res, recordset);
-          return [{ rows: recordset, columns: columns && columns.length > 0 ? columns : undefined }];
+          return res.recordsets.map((rs: any) => {
+            const columns = getColumnsFromResult(res, rs);
+            return { rows: rs, columns: columns && columns.length > 0 ? columns : undefined };
+          });
         }
 
         if (res.rowsAffected) {
@@ -636,10 +634,6 @@ function mssqlConn(req: mssql.Request): Conn {
             Target: statementInfos[0]?.label || 'Operation',
             Message: 'Query executed successfully.'
           }]];
-      }
-
-      if (res.recordsets && res.recordsets.length > 0) {
-          return [res.recordsets[0]];
       }
 
       return [[{

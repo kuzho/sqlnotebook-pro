@@ -1,5 +1,9 @@
 # Change Log
 
+## [3.0.9]
+### ✨ New Features & Polish
+- **Multi-Table Results:** Upgraded the MSSQL and SQLite drivers to fully support returning multiple result sets (tables) from a single query execution block. Executing multiple `SELECT` statements separated by semicolons now seamlessly renders a separate interactive grid for each table, matching the behavior of MySQL and Postgres.
+
 ## [3.0.8]
 ### ✨ New Features & Polish
 - **Required Parameters Validation:** Added a "Required" checkbox to the parameters panel. The extension will now automatically block execution and show an error if a required parameter is used in the query but left empty.
