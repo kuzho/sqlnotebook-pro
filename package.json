@@ -7,7 +7,7 @@
   "repository": {
     "url": "https://github.com/kuzho/sqlnotebook-pro.git"
   },
-  "version": "3.1.0",
+  "version": "3.3.0",
   "preview": false,
   "engines": {
     "vscode": "^1.94.0",
@@ -113,6 +113,11 @@
           "command": "sqlnotebook.scriptSelectTop",
           "when": "view == sqlnotebook-connections && viewItem == table",
           "group": "1_modification"
+        },
+        {
+          "command": "sqlnotebook.showERDiagram",
+          "when": "view == sqlnotebook-connections && (viewItem == database || viewItem == schema)",
+          "group": "1_modification"
         }
       ],
       "view/title": [
@@ -136,6 +141,11 @@
         {
           "command": "sqlnotebook.scriptSelectTop",
           "title": "Select Top 100 Rows"
+      },
+      {
+        "command": "sqlnotebook.showERDiagram",
+        "title": "Show ER Diagram",
+        "icon": "$(type-hierarchy)"
       },
       {
         "command": "sqlnotebook.refreshConnectionPanel",
@@ -208,8 +218,8 @@
         },
         "sqlnotebook.queryTimeout": {
           "type": "number",
-          "default": 30000,
-          "description": "Query timeout in milliseconds for cell query execution."
+          "default": 30,
+          "description": "Query timeout in seconds for cell query execution."
         },
         "sqlnotebook.maxResultRows": {
           "type": "number",
@@ -297,7 +307,7 @@
     "@typescript-eslint/eslint-plugin": "^7.16.0",
     "@typescript-eslint/parser": "^7.16.0",
     "@vscode/codicons": "^0.0.35",
-    "@vscode/vsce": "^3.9.0",
+    "@vscode/vsce": "^3.9.1",
     "esbuild": "^0.27.2",
     "eslint": "^8.57.0",
     "glob": "^10.4.2",

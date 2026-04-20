@@ -166,7 +166,7 @@ class SQLConfigurationViewProvider implements vscode.WebviewViewProvider {
         }
 
         case 'create_connection': {
-          const { displayName, originalName, password, port, group, ...rest } = message.data;
+          const { displayName, originalName, password, port, group, isSaveAsNew, ...rest } = message.data;
           const passwordKey = `sqlnotebook.${displayName}`;
 
           const newConfig = {
@@ -183,36 +183,38 @@ class SQLConfigurationViewProvider implements vscode.WebviewViewProvider {
 
           const config = vscode.workspace.getConfiguration('sqlnotebook');
           const connections = config.get<ConnData[]>('connections') || [];
-          const oldName = originalName || displayName;
-          const exists = connections.find(c => c.name === oldName);
+
+          if (isSaveAsNew && connections.some(c => c.name === displayName)) {
+              vscode.window.showErrorMessage(`A connection named '${displayName}' already exists. Please choose a different name for the new connection.`);
+              return;
+          }
 
           if (password && password.trim() !== '') {
             await this.context.secrets.store(passwordKey, password);
-            if (originalName && originalName !== displayName) {
+            if (!isSaveAsNew && originalName && originalName !== displayName) {
               await this.context.secrets.delete(`sqlnotebook.${originalName}`);
             }
           } else {
-            if (exists && originalName && originalName !== displayName) {
+            if (originalName) {
               try {
                 const oldSecret = await this.context.secrets.get(`sqlnotebook.${originalName}`);
-                if (oldSecret) {
-                  await this.context.secrets.store(passwordKey, oldSecret);
-                } else {
-                  await this.context.secrets.store(passwordKey, '');
+                await this.context.secrets.store(passwordKey, oldSecret || '');
+                if (!isSaveAsNew && originalName !== displayName) {
+                  await this.context.secrets.delete(`sqlnotebook.${originalName}`);
                 }
-                await this.context.secrets.delete(`sqlnotebook.${originalName}`);
               } catch(e) {
                 await this.context.secrets.store(passwordKey, '');
               }
-            } else if (!exists) {
-            await this.context.secrets.store(passwordKey, '');
+            } else {
+              await this.context.secrets.store(passwordKey, '');
             }
           }
 
-          delete newConfig.password;
-          delete (newConfig as any).originalName;
-
-          const newConnectionsList = connections.filter(({ name }) => name !== oldName);
+          let newConnectionsList = connections.filter(c => c.name !== displayName);
+          if (!isSaveAsNew && originalName) {
+             newConnectionsList = newConnectionsList.filter(c => c.name !== originalName);
+          }
+          
           newConnectionsList.push(newConfig);
           newConnectionsList.sort((a, b) => (a.group || '').localeCompare(b.group || '') || a.name.localeCompare(b.name));
 

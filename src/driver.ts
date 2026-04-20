@@ -431,7 +431,8 @@ function postgresConn(conn: pg.PoolClient): Conn {
       });
     },
     destroy() {
-      conn.release();
+      // Para cancelar en Postgres se requiere pg_cancel_backend desde otra conexión.
+      // Dejamos esto vacío para evitar un error de "double-release" en el bloque finally.
     },
     release() {
       conn.release();

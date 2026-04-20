@@ -24,6 +24,7 @@ import {
   flexRender,
   SortingState,
   ColumnFiltersState,
+  ColumnSizingState,
 } from '@tanstack/react-table';
 
 const Portal = ({ children }: { children: React.ReactNode }) =>
@@ -230,6 +231,22 @@ const styles = `
   .corner-header:hover { background: #444; color: white; }
   .row-index { cursor: pointer; }
   .row-index:hover { color: white; background: #333; }
+
+  .resizer {
+    position: absolute;
+    right: 0;
+    top: 0;
+    height: 100%;
+    width: 5px;
+    background: transparent;
+    cursor: col-resize;
+    user-select: none;
+    touch-action: none;
+    z-index: 10;
+  }
+  .resizer:hover, .resizer.isResizing {
+    background: #0078d4;
+  }
 
   .selected-bg { background-color: var(--selection-bg-dim) !important; color: white !important; }
   .bt { box-shadow: inset 0 1px 0 0 var(--selection-border) !important; }
@@ -505,6 +522,60 @@ const SmartCell = ({ value }: { value: unknown }) => {
   return <span>{str}</span>;
 };
 
+const EditableCell = ({ initialValue, row, column, updateData, isEdited }: any) => {
+  const [value, setValue] = useState(initialValue);
+  const [isEditing, setIsEditing] = useState(false);
+
+  useEffect(() => { setValue(initialValue); }, [initialValue]);
+
+  const onBlur = () => {
+    setIsEditing(false);
+    if (value !== initialValue) {
+      updateData(row.index, column.id, value);
+    }
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      onBlur();
+    } else if (e.key === 'Escape') {
+      setValue(initialValue);
+      setIsEditing(false);
+    }
+  };
+
+  if (isEditing) {
+    return (
+      <input
+        autoFocus
+        value={value ?? ''}
+        onChange={e => setValue(e.target.value)}
+        onBlur={onBlur}
+        onKeyDown={handleKeyDown}
+        style={{
+          width: '100%', height: '100%', boxSizing: 'border-box',
+          background: '#1e1e1e', color: 'white', border: '1px solid #0078d4', outline: 'none', padding: '0 4px'
+        }}
+      />
+    );
+  }
+
+  return (
+    <div
+      onDoubleClick={() => setIsEditing(true)}
+      title="Double click to edit"
+      style={{
+        width: '100%', height: '100%',
+        backgroundColor: isEdited ? 'rgba(215, 186, 125, 0.2)' : 'transparent',
+        cursor: 'text',
+        display: 'flex', alignItems: 'center'
+      }}
+    >
+      <SmartCell value={value} />
+    </div>
+  );
+};
+
 const normalizeRows = (rows: unknown[], columnOrder: string[] | null) => {
   if (!columnOrder || !Array.isArray(rows)) {return rows;}
   return rows.map(row => {
@@ -546,6 +617,8 @@ interface OutputPayload {
     executionDate?: string;
     truncated?: boolean;
     originalLength?: number;
+    tableName?: string;
+    executionId?: string;
   };
 }
 
@@ -554,7 +627,12 @@ const TableApp = ({ data, postMessage }: { data: OutputPayload | any[], postMess
   const [scrollTop, setScrollTop] = useState(0);
   const rawRows = Array.isArray(data) ? data : (data.rows || []);
   const columnOrder = !Array.isArray(data) && Array.isArray(data.columns) ? data.columns : null;
-  const rows = useMemo(() => normalizeRows(rawRows, columnOrder), [rawRows, columnOrder]);
+  const normalizedRows = useMemo(() => normalizeRows(rawRows, columnOrder), [rawRows, columnOrder]);
+  const [rows, setRows] = useState(normalizedRows);
+
+  useEffect(() => {
+    setRows(normalizedRows);
+  }, [normalizedRows]);
   const executionTimeFromBackend = !Array.isArray(data) && data.info?.executionTime;
   const executionDateFromBackend = !Array.isArray(data) && data.info?.executionDate;
   const isTruncated = Boolean(!Array.isArray(data) && data.info?.truncated);
@@ -565,9 +643,26 @@ const TableApp = ({ data, postMessage }: { data: OutputPayload | any[], postMess
   const fallbackDate = useMemo(() => formatExecutionDate(new Date()), []);
   const runTime = executionTimeFromBackend || fallbackTime;
   const runDate = executionDateFromBackend || fallbackDate;
+  const tableNameFromBackend = !Array.isArray(data) && data.info?.tableName ? data.info.tableName : 'TargetTable';
+  const executionId = !Array.isArray(data) && data.info?.executionId ? data.info.executionId : 'fallback';
   const [sorting, setSorting] = useState<SortingState>([]);
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
+  const [columnSizing, setColumnSizing] = useState<ColumnSizingState>({});
   const [activeMenuId, setActiveMenuId] = useState<string | null>(null);
+  const [exportSqlText, setExportSqlText] = useState('📝 INSERTs');
+
+  const [editedRows, setEditedRows] = useState<Record<number, Record<string, any>>>({});
+  const [saveBtnText, setSaveBtnText] = useState('💾 Save Changes');
+
+  const updateData = useCallback((rowIndex: number, columnId: string, value: any) => {
+     setEditedRows(old => ({
+        ...old,
+        [rowIndex]: {
+           ...(old[rowIndex] || {}),
+           [columnId]: value
+        }
+     }));
+  }, []);
 
   const [selection, setSelection] = useState<{
     type: 'all' | 'row' | 'col' | 'range' | 'multi',
@@ -628,7 +723,14 @@ const TableApp = ({ data, postMessage }: { data: OutputPayload | any[], postMess
             filterFn: (row: any, id: string, filterValue: any[]) => {
               return filterValue.includes(row.original[colId]);
             },
-            cell: (info: any) => <SmartCell value={info.getValue()} />
+            cell: (info: any) => {
+              const meta = info.table.options.meta as any;
+              const rowIndex = info.row.index;
+              const cId = info.column.id;
+              const isEdited = meta?.editedRows?.[rowIndex]?.[cId] !== undefined;
+              const val = isEdited ? meta.editedRows[rowIndex][cId] : info.getValue();
+              return <EditableCell initialValue={val} row={info.row} column={info.column} updateData={meta?.updateData} isEdited={isEdited} />;
+            }
           };
         });
       }
@@ -652,7 +754,14 @@ const TableApp = ({ data, postMessage }: { data: OutputPayload | any[], postMess
               const val = Array.isArray(arr) ? arr[subIndex] : arr;
               return filterValue.includes(val);
             },
-            cell: (info: any) => <SmartCell value={info.getValue()} />
+            cell: (info: any) => {
+              const meta = info.table.options.meta as any;
+              const rowIndex = info.row.index;
+              const cId = info.column.id;
+              const isEdited = meta?.editedRows?.[rowIndex]?.[cId] !== undefined;
+              const val = isEdited ? meta.editedRows[rowIndex][cId] : info.getValue();
+              return <EditableCell initialValue={val} row={info.row} column={info.column} updateData={meta?.updateData} isEdited={isEdited} />;
+            }
           }));
         }
 
@@ -667,7 +776,14 @@ const TableApp = ({ data, postMessage }: { data: OutputPayload | any[], postMess
           filterFn: (row: any, id: string, filterValue: any[]) => {
             return filterValue.includes(row.original[key]);
           },
-          cell: (info: any) => <SmartCell value={info.getValue()} />
+          cell: (info: any) => {
+            const meta = info.table.options.meta as any;
+            const rowIndex = info.row.index;
+            const cId = info.column.id;
+            const isEdited = meta?.editedRows?.[rowIndex]?.[cId] !== undefined;
+            const val = isEdited ? meta.editedRows[rowIndex][cId] : info.getValue();
+            return <EditableCell initialValue={val} row={info.row} column={info.column} updateData={meta?.updateData} isEdited={isEdited} />;
+          }
         }];
       });
     } catch (error) {
@@ -679,9 +795,12 @@ const TableApp = ({ data, postMessage }: { data: OutputPayload | any[], postMess
   const table = useReactTable({
     data: statusData,
     columns: columns,
-    state: { sorting, columnFilters },
+    state: { sorting, columnFilters, columnSizing },
+    columnResizeMode: 'onChange',
+    meta: { editedRows, updateData },
     onSortingChange: setSorting,
     onColumnFiltersChange: setColumnFilters,
+    onColumnSizingChange: setColumnSizing,
     getCoreRowModel: getCoreRowModel(),
     getSortedRowModel: getSortedRowModel(),
     getFilteredRowModel: getFilteredRowModel(),
@@ -710,7 +829,17 @@ const TableApp = ({ data, postMessage }: { data: OutputPayload | any[], postMess
       tableWrapperRef.current.scrollTop = 0;
       tableWrapperRef.current.scrollLeft = 0;
     }
-  }, [sorting, columnFilters, rawRows]);
+      setEditedRows({});
+      setSelection(null);
+      setSorting([]);
+      setColumnFilters([]);
+      setColumnSizing({});
+      setActiveMenuId(null);
+      setIsDragging(false);
+      setDragStart(null);
+      setExportSqlText('📝 INSERTs');
+      setSaveBtnText('💾 Save Changes');
+    }, [executionId]);
 
   const handleSortClick = (column: any, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -800,7 +929,7 @@ const TableApp = ({ data, postMessage }: { data: OutputPayload | any[], postMess
     window.addEventListener('keydown', k); return ()=>window.removeEventListener('keydown', k);
   }, [handleCopy]);
 
-  const onMouseDown = (r:number, c:number, isCtrl: boolean) => { 
+  const onMouseDown = (r:number, c:number, isCtrl: boolean) => {
     if (isCtrl && selection?.type === 'range' && selection.range) {
       setSelection(prev => ({
         type: 'multi',
@@ -920,6 +1049,93 @@ const TableApp = ({ data, postMessage }: { data: OutputPayload | any[], postMess
     }
   };
 
+  const exportSQL = () => {
+    const tableName = tableNameFromBackend;
+
+    const exportColumns = visibleColumns.map(c => {
+       const header = String(c.columnDef.header ?? c.id);
+       return header.match(/^[a-zA-Z0-9_]+$/) ? header : `[${header}]`;
+    });
+
+    const sqlRows = tableRows.map(r => {
+      const vals = visibleColumns.map(c => {
+        const val = r.getVisibleCells().find(cell => cell.column.id === c.id)?.getValue();
+        if (val === null || val === undefined) {return 'NULL';}
+        if (typeof val === 'number') {return val;}
+        if (typeof val === 'boolean') {return val ? 1 : 0;}
+        if (typeof val === 'object') {return `'${JSON.stringify(val).replace(/'/g, "''")}'`;}
+        return `'${String(val).replace(/'/g, "''")}'`;
+      });
+      return `  (${vals.join(', ')})`;
+    });
+
+    const sql = `-- Exported from SQL Notebook Pro\nINSERT INTO ${tableName} (${exportColumns.join(', ')})\nVALUES\n${sqlRows.join(',\n')};`;
+
+    if (postMessage) {
+      postMessage({ type: 'export_sql', payload: { sql } });
+      setExportSqlText('⏳ Exporting...');
+      setTimeout(() => setExportSqlText('📝 INSERTs'), 2000);
+    }
+  };
+
+  const generateUpdates = () => {
+     const tableName = tableNameFromBackend;
+
+     let pkColDef = columns.find((c: any) => String(c.header).toLowerCase() === 'id') as any;
+     if (!pkColDef && columns.length > 0) {
+         pkColDef = columns[0] as any;
+     }
+     if (!pkColDef) { return; }
+
+     const pkCol = String(pkColDef.header ?? pkColDef.id);
+
+     const updates: string[] = [];
+     Object.keys(editedRows).forEach(rIndexStr => {
+        const rIndex = parseInt(rIndexStr, 10);
+        const changes = editedRows[rIndex];
+        const originalRow = rows[rIndex] as Record<string, any>;
+
+        let pkValue = originalRow[pkColDef.id];
+        if (pkValue === undefined) { return; }
+
+        const setClauses = Object.entries(changes).map(([colId, val]) => {
+            const safeVal = val === null || val === '' ? 'NULL' : `'${String(val).replace(/'/g, "''")}'`;
+            const colDef = columns.find((c: any) => c.id === colId) as any;
+            const colName = String(colDef ? (colDef.header ?? colId) : colId);
+            const safeCol = colName.match(/^[a-zA-Z0-9_]+$/) ? colName : `[${colName}]`;
+            return `${safeCol} = ${safeVal}`;
+        });
+
+        if (setClauses.length === 0) {return;}
+
+        const safePkVal = typeof pkValue === 'number' ? pkValue : `'${String(pkValue).replace(/'/g, "''")}'`;
+        const safePkCol = pkCol.match(/^[a-zA-Z0-9_]+$/) ? pkCol : `[${pkCol}]`;
+
+        updates.push(`UPDATE ${tableName} SET ${setClauses.join(', ')} WHERE ${safePkCol} = ${safePkVal};`);
+     });
+
+     if (updates.length > 0) {
+         const finalSql = updates.join('\n');
+         if (postMessage) {
+            postMessage({ type: 'apply_updates', payload: { sql: finalSql } });
+            setSaveBtnText('✅ Saved!');
+
+            // Refrescar la vista local al instante con los nuevos datos
+            const updatedRows = [...rows];
+            Object.keys(editedRows).forEach(rIndexStr => {
+                const rIndex = parseInt(rIndexStr, 10);
+                updatedRows[rIndex] = {
+                    ...(updatedRows[rIndex] as Record<string, any>),
+                    ...editedRows[rIndex]
+                };
+            });
+            setRows(updatedRows);
+
+            setTimeout(() => { setSaveBtnText('💾 Save Changes'); setEditedRows({}); }, 2000);
+         }
+     }
+  };
+
   const containerMinHeight = activeMenuId ? 360 : 'auto';
 
   return (
@@ -946,6 +1162,14 @@ const TableApp = ({ data, postMessage }: { data: OutputPayload | any[], postMess
         <div style={{flex:1}}/>
         {!isSelectNoRows && (
           <>
+            {Object.keys(editedRows).length > 0 && (
+              <button className="btn-action" onClick={generateUpdates} title="Generate UPDATE script" style={{color: '#d7ba7d', borderColor: '#d7ba7d'}}>
+                {saveBtnText}
+              </button>
+            )}
+            <button className="btn-action" onClick={exportSQL} title="Export as SQL INSERTs to File">
+              {exportSqlText}
+            </button>
             <button className="btn-action" onClick={exportExcel}>
               📊 Excel
             </button>
@@ -978,10 +1202,15 @@ const TableApp = ({ data, postMessage }: { data: OutputPayload | any[], postMess
             {table.getHeaderGroups().map(hg => (
               <tr key={hg.id}>
                 <th className="corner-header" onClick={handleCornerClick}>◢</th>
-                {hg.headers.map(header => (
-                  <th key={header.id}
+                {hg.headers.map(header => {
+                  const isResized = table.getState().columnSizing[header.id] !== undefined;
+                  const customWidth = isResized ? header.column.getSize() : undefined;
+
+                  return (
+                    <th key={header.id}
                       className={selection?.type==='col' && selection.ids?.has(header.id) ? 'selected-bg' : ''}
-                  >
+                      style={isResized ? { width: customWidth, minWidth: customWidth, maxWidth: customWidth, position: 'relative' } : { position: 'relative' }}
+                    >
 
                     <div
                         className="th-content"
@@ -1025,9 +1254,26 @@ const TableApp = ({ data, postMessage }: { data: OutputPayload | any[], postMess
                         }}
                         onClose={() => setActiveMenuId(null)}
                       />
+
+                      <div
+                        onMouseDown={header.getResizeHandler()}
+                        onTouchStart={header.getResizeHandler()}
+                        onDoubleClick={(e) => {
+                          e.stopPropagation();
+                          setColumnSizing(old => {
+                            const newState = { ...old };
+                            delete newState[header.id];
+                            return newState;
+                          });
+                        }}
+                        className={`resizer ${header.column.getIsResizing() ? 'isResizing' : ''}`}
+                        onClick={e => e.stopPropagation()}
+                        title="Drag to resize, Double-click to auto-fit"
+                      />
                     </div>
                   </th>
-                ))}
+                  );
+                })}
               </tr>
             ))}
           </thead>
@@ -1047,15 +1293,21 @@ const TableApp = ({ data, postMessage }: { data: OutputPayload | any[], postMess
                 <tr key={row.id}>
                   <td className={`row-index ${selection?.type==='row' && selection.ids?.has(rIndex)?'selected-bg':''}`}
                       onClick={(e)=>handleRowHeaderClick(rIndex, e.ctrlKey || e.metaKey)}>{rIndex + 1}</td>
-                  {row.getVisibleCells().map((cell, cIndex) => (
-                    <td key={cell.id}
-                        className={getCellClass(rIndex, cIndex, cell.column.id)}
-                        onMouseDown={(e)=>onMouseDown(rIndex, cIndex, e.ctrlKey || e.metaKey)}
-                        onMouseEnter={()=>onMouseEnter(rIndex, cIndex)}
-                    >
-                      {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                    </td>
-                  ))}
+                  {row.getVisibleCells().map((cell, cIndex) => {
+                    const isResized = table.getState().columnSizing[cell.column.id] !== undefined;
+                    const customWidth = isResized ? cell.column.getSize() : undefined;
+
+                    return (
+                      <td key={cell.id}
+                          className={getCellClass(rIndex, cIndex, cell.column.id)}
+                          onMouseDown={(e)=>onMouseDown(rIndex, cIndex, e.ctrlKey || e.metaKey)}
+                          onMouseEnter={()=>onMouseEnter(rIndex, cIndex)}
+                          style={isResized ? { width: customWidth, minWidth: customWidth, maxWidth: customWidth } : undefined}
+                      >
+                        {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                      </td>
+                    );
+                  })}
                 </tr>
               );
             })}
@@ -1083,8 +1335,6 @@ export const activate: ActivationFunction = (context) => {
       if (json && json.kind === 1 && json.attachments) {
         json.value = injectAttachmentsIntoMarkdown(json.value, json.attachments);
       }
-      try { ReactDOM.unmountComponentAtNode(element); } catch(e){}
-      element.innerHTML = '';
       ReactDOM.render(<TableApp data={json} postMessage={context.postMessage} />, element);
     }
   };

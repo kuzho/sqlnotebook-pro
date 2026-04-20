@@ -16,13 +16,14 @@ const DEFAULT_PORTS: { [key: string]: string } = {
 };
 
 const Form: React.FC<{
-  handleSubmit: (form: HTMLFormElement) => void,
+  handleSubmit: (form: HTMLFormElement, isSaveAsNew: boolean) => void,
   handleTest: (form: HTMLFormElement) => void
 }> = ({
   handleSubmit,
   handleTest,
 }) => {
   const formRef = React.useRef<HTMLFormElement>(null);
+  const [isEditing, setIsEditing] = React.useState(false);
 
   const {
     ref: dropdownRef,
@@ -38,6 +39,13 @@ const Form: React.FC<{
   const handleSmartReset = () => {
     const currentDriver = driver;
     formRef.current?.reset();
+    setIsEditing(false);
+
+    // Forzar limpieza del campo oculto porque form.reset() no lo hace
+    const origNameField = formRef.current?.elements.namedItem('originalName') as HTMLInputElement;
+    if (origNameField) {
+      origNameField.value = '';
+    }
 
     if (dropdownRef.current) {
         dropdownRef.current.value = currentDriver;
@@ -62,6 +70,7 @@ const Form: React.FC<{
 
         case 'edit_connection': {
           const config = data.data;
+          setIsEditing(true);
           setDriver(config.driver);
 
           setTimeout(() => {
@@ -164,9 +173,20 @@ const Form: React.FC<{
           Test Connection
         </VSCodeButton>
 
+        {isEditing && (
+          <VSCodeButton
+            appearance="secondary"
+            style={{flex: 1}}
+            onClick={() => formRef.current && handleSubmit(formRef.current, true)}
+            title="Save as a new connection (duplicates this one)"
+          >
+            Save as New
+          </VSCodeButton>
+        )}
+
         <VSCodeButton
-          style={{flex: 2}}
-          onClick={() => formRef.current && handleSubmit(formRef.current)}
+          style={{flex: isEditing ? 1 : 2}}
+          onClick={() => formRef.current && handleSubmit(formRef.current, false)}
         >
           Save Connection
         </VSCodeButton>

@@ -14,6 +14,7 @@ import { format as formatSql } from 'sql-formatter';
 import { embedImagesAsBase64 } from './embed-base64';
 import { extractAttachmentsFromMarkdown } from './attachments-util';
 import { splitSqlBatches, compactFormattedSql } from './utils/sqlUtils';
+import { getPool } from './driver';
 
 export const notebookType = 'sql-notebook';
 export const storageKey = 'sqlnotebook-connections';
@@ -214,15 +215,6 @@ export function activate(context: vscode.ExtensionContext) {
     })
   );
 
-  const messaging = vscode.notebooks.createRendererMessaging('sqlnotebook-pro-interactive-renderer');
-  context.subscriptions.push(
-    messaging.onDidReceiveMessage(async ({ message }) => {
-      if (message.type === 'export_data') {
-        await handleExport(message.payload);
-      }
-    })
-  );
-
   const parameterProvider = new ParameterProvider(context.extensionUri, context);
   context.subscriptions.push(
     vscode.window.registerWebviewViewProvider(ParameterProvider.viewType, parameterProvider)
@@ -260,6 +252,65 @@ export function activate(context: vscode.ExtensionContext) {
 
   const kernelManager = new KernelManager(context, parameterProvider);
   context.subscriptions.push({ dispose: () => kernelManager.dispose() });
+
+  const messaging = vscode.notebooks.createRendererMessaging('sqlnotebook-pro-interactive-renderer');
+  context.subscriptions.push(
+    messaging.onDidReceiveMessage(async ({ message }) => {
+      if (message.type === 'export_data') {
+        await handleExport(message.payload);
+      } else if (message.type === 'export_sql') {
+        const now = new Date();
+        const dateStr = now.toISOString().slice(0, 19).replace('T', '_').replace(/:/g, '-');
+        const defaultFilename = `Results_${dateStr}.sql`;
+        let defaultUri: vscode.Uri;
+        if (vscode.workspace.workspaceFolders && vscode.workspace.workspaceFolders.length > 0) {
+            defaultUri = vscode.Uri.joinPath(vscode.workspace.workspaceFolders[0].uri, defaultFilename);
+        } else {
+            defaultUri = vscode.Uri.file(path.join(os.homedir(), 'Downloads', defaultFilename));
+        }
+        const uri = await vscode.window.showSaveDialog({
+          saveLabel: 'Export SQL',
+          filters: { 'SQL files': ['sql'] },
+          defaultUri
+        });
+        if (uri) {
+          try {
+            fs.writeFileSync(uri.fsPath, message.payload.sql, 'utf8');
+            const openAfterExport = vscode.workspace.getConfiguration('sqlnotebook').get('openAfterExport');
+            if (openAfterExport) {
+              await vscode.env.openExternal(vscode.Uri.file(uri.fsPath));
+            } else {
+              const openBtn = 'Open File';
+              vscode.window.showInformationMessage(`Successfully exported to ${path.basename(uri.fsPath)}`, openBtn)
+                .then(selection => {
+                  if (selection === openBtn) {
+                    vscode.env.openExternal(vscode.Uri.file(uri.fsPath));
+                  }
+                });
+            }
+          } catch (err: any) {
+            vscode.window.showErrorMessage(`Export failed: ${err.message}`);
+          }
+        }
+      } else if (message.type === 'apply_updates') {
+        const editor = vscode.window.activeNotebookEditor;
+        if (editor) {
+          const sql = message.payload.sql;
+          vscode.window.withProgress({
+            location: vscode.ProgressLocation.Notification,
+            title: 'Applying updates...',
+            cancellable: false
+          }, async () => {
+            try {
+              await kernelManager.runBackgroundQuery(editor.notebook.uri.toString(), sql);
+            } catch (err) {
+              // Error handled silently or by kernel manager
+            }
+          });
+        }
+      }
+    })
+  );
 
   const completionProvider = new SqlCompletionItemProvider(kernelManager, parameterProvider);
   context.subscriptions.push(
@@ -493,6 +544,109 @@ export function activate(context: vscode.ExtensionContext) {
         }
       }
       await vscode.commands.executeCommand('notebook.cell.moveDown');
+    })
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand('sqlnotebook.showERDiagram', async (item: any) => {
+      if (!item || !item.config) {return;}
+
+      vscode.window.withProgress({
+        location: vscode.ProgressLocation.Notification,
+        title: 'Generating ER Diagram...',
+        cancellable: false
+      }, async () => {
+        try {
+          let password = item.config.password;
+          if (!password && item.config.driver !== 'sqlite') {
+            try { password = await context.secrets.get(item.config.passwordKey); } catch (e) {}
+          }
+
+          const poolConfig = { ...item.config, password, queryTimeout: 15000 };
+          const pool = await getPool(poolConfig as any);
+          let schema = await pool.getSchema();
+          pool.end();
+
+          if (item.contextValue === 'schema' && item.schemaName) {
+            schema = schema.filter((t: any) => t.schema === item.schemaName);
+          }
+
+          if (schema.length === 0) {
+            vscode.window.showInformationMessage('No tables found to generate diagram.');
+            return;
+          }
+
+          let mermaidCode = 'erDiagram\n';
+          const rels = new Set();
+          for (const t of schema) {
+            mermaidCode += `  "${t.table}" {\n`;
+            for (const col of t.columns) {
+              const type = t.columnTypes?.[col] || 'string';
+              const safeType = type.replace(/[^a-zA-Z0-9_]/g, '_');
+              const safeCol = col.replace(/[^a-zA-Z0-9_]/g, '_');
+              mermaidCode += `    ${safeType} ${safeCol}\n`;
+            }
+            mermaidCode += `  }\n`;
+            if (t.foreignKeys) {
+              for (const fk of t.foreignKeys) {
+                if (schema.some((st: any) => st.table === fk.referencedTable)) {
+                   const key = `${fk.referencedTable}-${t.table}`;
+                   if (!rels.has(key)) {
+                     mermaidCode += `  "${fk.referencedTable}" ||--o{ "${t.table}" : "references"\n`;
+                     rels.add(key);
+                   }
+                }
+              }
+            }
+          }
+
+          const panel = vscode.window.createWebviewPanel(
+            'erDiagram',
+            `ER Diagram: ${item.schemaName || item.config.name}`,
+            vscode.ViewColumn.One,
+            { enableScripts: true, retainContextWhenHidden: true }
+          );
+
+          panel.webview.html = `<!DOCTYPE html>
+            <html lang="en">
+            <head>
+              <meta charset="UTF-8">
+              <meta name="viewport" content="width=device-width, initial-scale=1.0">
+              <title>ER Diagram</title>
+              <style>
+                body { background-color: var(--vscode-editor-background); color: var(--vscode-editor-foreground); margin: 0; padding: 0; width: 100vw; height: 100vh; overflow: hidden; display: flex; justify-content: center; align-items: center; }
+                .mermaid { font-family: var(--vscode-editor-font-family); width: 100%; height: 100%; }
+              </style>
+              <script src="https://cdn.jsdelivr.net/npm/svg-pan-zoom@3.6.1/dist/svg-pan-zoom.min.js"></script>
+              <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+            </head>
+            <body>
+              <div class="mermaid">
+                ${mermaidCode}
+              </div>
+              <script>
+                mermaid.initialize({ startOnLoad: false, theme: document.body.classList.contains('vscode-dark') ? 'dark' : 'default' });
+
+                mermaid.run({ querySelector: '.mermaid' }).then(() => {
+                  setTimeout(() => {
+                    const svg = document.querySelector('.mermaid svg');
+                    if (svg) {
+                      svg.removeAttribute('style');
+                      svg.removeAttribute('width');
+                      svg.removeAttribute('height');
+                      svg.style.width = '100%';
+                      svg.style.height = '100%';
+                      svgPanZoom(svg, { controlIconsEnabled: true, zoomEnabled: true, panEnabled: true, minZoom: 0.01, maxZoom: 50, fit: true, center: true });
+                    }
+                  }, 150);
+                }).catch(err => console.error(err));
+              </script>
+            </body>
+            </html>`;
+        } catch (err: any) {
+          vscode.window.showErrorMessage('Error generating ER Diagram: ' + err.message);
+        }
+      });
     })
   );
 

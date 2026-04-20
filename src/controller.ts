@@ -79,6 +79,17 @@ export class KernelManager {
     }
     return undefined;
   }
+
+  public async runBackgroundQuery(notebookUri: string, sql: string): Promise<void> {
+    const kernel = this.selectedKernelByNotebook.get(notebookUri);
+    if (kernel) {
+      await kernel.runBackground(sql);
+    } else if (this.controllers.size === 1) {
+      await [...this.controllers.values()][0].runBackground(sql);
+    } else {
+      throw new Error("No active database connection selected.");
+    }
+  }
 }
 
 export class SQLNotebookKernel {
@@ -156,6 +167,20 @@ export class SQLNotebookKernel {
     return this._controller.onDidChangeSelectedNotebooks(listener);
   }
 
+  public async runBackground(sql: string): Promise<void> {
+    const pool = await this.getPool();
+    const conn = await pool.getConnection();
+    try {
+      await conn.query(sql);
+      vscode.window.showInformationMessage('✅ Changes saved successfully to the database!');
+    } catch (err: any) {
+      vscode.window.showErrorMessage(`❌ Error saving changes: ${err.message}`);
+      throw err;
+    } finally {
+      conn.release();
+    }
+  }
+
   private async _execute(cells: vscode.NotebookCell[], _notebook: vscode.NotebookDocument, _controller: vscode.NotebookController): Promise<void> {
     this.parameterProvider.notifyQueryExecutionStart();
     for (let cell of cells) {
@@ -176,10 +201,16 @@ export class SQLNotebookKernel {
       } catch (e) {}
     }
 
+    let timeoutSeconds = vscode.workspace.getConfiguration('sqlnotebook').get<number>('queryTimeout') ?? 30;
+    // Backward compatibility for users who still have milliseconds saved
+    if (timeoutSeconds >= 1000) {
+      timeoutSeconds = Math.floor(timeoutSeconds / 1000);
+    }
+
     const poolConfig = {
       ...this.config,
       password,
-      queryTimeout: vscode.workspace.getConfiguration('sqlnotebook').get('queryTimeout') ?? 30000
+      queryTimeout: timeoutSeconds * 1000
     } as PoolConfig;
 
     this.pool = await getPool(poolConfig);
@@ -254,6 +285,10 @@ export class SQLNotebookKernel {
         const pool = await this.getPool();
         const conn = await pool.getConnection();
 
+        const cancelListener = execution.token.onCancellationRequested(() => {
+          try { conn.destroy(); } catch (e) {}
+        });
+
         let result: ExecutionResult;
         try {
           result = await conn.query(batch);
@@ -262,6 +297,7 @@ export class SQLNotebookKernel {
             this.schemaCache = null;
           }
         } finally {
+          cancelListener.dispose();
           conn.release();
         }
 
@@ -283,6 +319,9 @@ export class SQLNotebookKernel {
     const newOutputs: vscode.NotebookCellOutput[] = [];
     const maxRows = vscode.workspace.getConfiguration('sqlnotebook').get<number>('maxResultRows') ?? 100;
 
+    const tableMatch = query.match(/\bFROM\s+([#\w.\[\]"`]+)/i) || query.match(/\bUPDATE\s+([#\w.\[\]"`]+)/i) || query.match(/\bINSERT\s+INTO\s+([#\w.\[\]"`]+)/i);
+    const tableName = tableMatch ? tableMatch[1] : undefined;
+
     for (const res of result) {
       let rows = Array.isArray(res) ? res : res.rows;
       const columns = Array.isArray(res) ? undefined : res.columns;
@@ -297,6 +336,7 @@ export class SQLNotebookKernel {
       if (rows && rows.length > 0) {
         const info = makeExecutionInfo(now) as any;
         if (truncated) { info.truncated = true; info.originalLength = originalLength; }
+        if (tableName) { info.tableName = tableName; }
         newOutputs.push(new vscode.NotebookCellOutput([
           vscode.NotebookCellOutputItem.json({ rows, columns, info }, 'application/vnd.code-sql-notebook.table+json'),
           vscode.NotebookCellOutputItem.json(rows, 'application/json')
@@ -417,6 +457,7 @@ function makeExecutionInfo(date: Date) {
 
   return {
     executionTime,
-    executionDate
+    executionDate,
+    executionId: Date.now().toString() + '_' + Math.random().toString(36).substring(2, 9)
   };
 }

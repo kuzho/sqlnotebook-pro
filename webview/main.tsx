@@ -33,8 +33,12 @@ function processFormData(form: HTMLFormElement) {
   return data;
 }
 
-function handleSubmit(form: HTMLFormElement) {
-  createConnection(processFormData(form));
+function handleSubmit(form: HTMLFormElement, isSaveAsNew: boolean = false) {
+  const data = processFormData(form) as any;
+  if (isSaveAsNew) {
+    data.isSaveAsNew = true;
+  }
+  createConnection(data);
 }
 
 function handleTest(form: HTMLFormElement) {

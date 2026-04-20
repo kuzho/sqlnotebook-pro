@@ -1,5 +1,21 @@
 # Change Log
 
+## [3.3.0]
+### ✨ IDE-Level Features
+- **Inline Data Editing:** Double-click any cell in the results grid to edit its value! Clicking the new `💾 Save Changes` button safely generates the exact `UPDATE` statement, runs it in the background, and instantly refreshes your local grid in real-time.
+- **ER Diagram Generator:** Right-click any database or schema in the connections panel and select `Show ER Diagram` to instantly render a beautiful Entity-Relationship diagram. Fully interactive: use your mouse wheel to Zoom in/out and drag to pan around!
+- **Export as INSERTs:** Added a new `📝 INSERTs` button to the grid toolbar. It instantly converts your visible/filtered result set into a ready-to-run SQL script and saves it directly to a `.sql` file.
+- **Column Resizing & Auto-fit:** You can now manually resize result grid columns by dragging the right edge of any column header. **Double-click** the edge to instantly auto-fit the column to its content!
+
+## [3.2.0]
+### ✨ New Features & Polish
+- **Query Cancellation:** The "Stop" button in the notebook cell now instantly sends a kill/cancel signal to the database server (fully supported in MSSQL and MySQL), stopping heavy queries immediately and freeing up locked tables.
+- **Save as New Connection:** Added a new "Save as New" button when editing an existing connection. This allows you to quickly duplicate connections (e.g., creating a Dev and Prod version) while automatically safely migrating the password.
+- **Intuitive Timeouts:** The `sqlnotebook.queryTimeout` setting now uses **seconds** instead of milliseconds for a much better user experience. Existing configurations are automatically migrated.
+
+### 🐛 Bug Fixes
+- **Clear Form Logic:** Fixed an issue where clicking "Clear Form" while editing a connection would accidentally overwrite the original connection instead of starting a blank one.
+
 ## [3.1.0]
 ### 🐛 Bug Fixes
 - **Result Row Limiter:** Fixed an issue where the `sqlnotebook.maxResultRows` configuration was being ignored. The extension now correctly truncates large datasets at the backend level, vastly improving performance and preventing UI freezes on massive queries.
