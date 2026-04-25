@@ -431,8 +431,6 @@ function postgresConn(conn: pg.PoolClient): Conn {
       });
     },
     destroy() {
-      // Para cancelar en Postgres se requiere pg_cancel_backend desde otra conexión.
-      // Dejamos esto vacío para evitar un error de "double-release" en el bloque finally.
     },
     release() {
       conn.release();
@@ -735,7 +733,6 @@ function getStatementInfo(statement: string): { type: string; label: string } {
     return { type: 'Statement', label: 'Operation' };
   }
 
-  // Regex mejorado para soportar [], "", `` y #temp tables (Universal)
   const namePat = "([#\\w.\\[\\]\"`]+)";
 
   const useMatch = cleaned.match(new RegExp(`\\bUSE\\s+${namePat}`, 'i'));
@@ -902,7 +899,6 @@ function trinoPool(config: TrinoConfig): Pool {
 }
 
 function trinoConn(config: TrinoConfig): Conn {
-  // 'client' vive en el closure de esta función
   const client = resolveTrinoClient(config);
 
   return {
@@ -951,7 +947,6 @@ async function runTrinoQuery(client: any, q: string): Promise<ExecutionResult> {
       if (!result) { continue; }
       if (result.error) {
         console.error('[Trino][ERROR]', result.error);
-        // Devuelve el error como resultado para mostrarlo en el notebook
         return [[{
           Status: '❌ Error',
           Message: result.error.message || 'Unknown Trino error',

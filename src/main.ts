@@ -325,7 +325,7 @@ export function activate(context: vscode.ExtensionContext) {
 
   context.subscriptions.push(
     vscode.workspace.onDidChangeConfiguration(e => {
-      if (e.affectsConfiguration('sqlnotebook.connections')) {
+      if (e.affectsConfiguration('sqlnotebook.connections') || e.affectsConfiguration('sqlnotebook.queryTimeout')) {
           kernelManager.refresh();
       }
     })

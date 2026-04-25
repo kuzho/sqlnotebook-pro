@@ -202,10 +202,6 @@ export class SQLNotebookKernel {
     }
 
     let timeoutSeconds = vscode.workspace.getConfiguration('sqlnotebook').get<number>('queryTimeout') ?? 30;
-    // Backward compatibility for users who still have milliseconds saved
-    if (timeoutSeconds >= 1000) {
-      timeoutSeconds = Math.floor(timeoutSeconds / 1000);
-    }
 
     const poolConfig = {
       ...this.config,

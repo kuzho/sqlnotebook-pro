@@ -41,7 +41,6 @@ const Form: React.FC<{
     formRef.current?.reset();
     setIsEditing(false);
 
-    // Forzar limpieza del campo oculto porque form.reset() no lo hace
     const origNameField = formRef.current?.elements.namedItem('originalName') as HTMLInputElement;
     if (origNameField) {
       origNameField.value = '';
@@ -141,7 +140,6 @@ const Form: React.FC<{
       {driver !== 'sqlite' && (
         <>
           <TextOption label="Database Host" objectKey="host" />
-          {/* <TextOption label="Database Port" objectKey="port" defaultValue={driver === 'mssql' ? '1433' : ''} /> */}
           <TextOption
             label="Database Port"
             objectKey="port"

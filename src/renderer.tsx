@@ -1,7 +1,6 @@
 /// <reference lib="dom" />
 
-import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
-// Utilidad para reemplazar attachment: links por base64
+import React, { useState, useMemo, useEffect, useLayoutEffect, useRef, useCallback } from 'react';
 function injectAttachmentsIntoMarkdown(markdown: string, attachments: Record<string, Record<string, string>>) {
   if (!attachments) {return markdown;}
   return markdown.replace(/!\[([^\]]*)\]\(attachment:([^\)]+)\)/g, (full: string, alt: string, filename: string) => {
@@ -58,7 +57,6 @@ const styles = `
     border: 1px solid var(--grid-border);
     box-sizing: border-box;
     overflow: hidden;
-    transition: min-height 0.2s ease;
   }
 
   .toolbar {
@@ -112,9 +110,7 @@ const styles = `
 
   table {
     border-collapse: separate;
-    min-width: 100%;
-    width: auto;
-    table-layout: auto;
+    table-layout: fixed;
     margin: 0;
     border-spacing: 0;
     border-style: hidden;
@@ -217,11 +213,13 @@ const styles = `
     font-size: 11px;
     white-space: nowrap;
     z-index: 10;
-    width: 1%;
-    min-width: 30px;
-    text-align: right;
-    padding-right: 4px;
+    width: var(--index-width, 45px) !important;
+    min-width: var(--index-width, 45px) !important;
+    max-width: var(--index-width, 45px) !important;
+    text-align: right !important;
+    padding-right: 8px !important;
     padding-left: 4px;
+    box-sizing: border-box;
   }
 
   th:last-child, td:last-child {
@@ -249,14 +247,6 @@ const styles = `
   }
 
   .selected-bg { background-color: var(--selection-bg-dim) !important; color: white !important; }
-  .bt { box-shadow: inset 0 1px 0 0 var(--selection-border) !important; }
-  .bb { box-shadow: inset 0 -1px 0 0 var(--selection-border) !important; }
-  .bl { box-shadow: inset 1px 0 0 0 var(--selection-border) !important; }
-  .br { box-shadow: inset -1px 0 0 0 var(--selection-border) !important; }
-  .bt.bl { box-shadow: inset 1px 1px 0 0 var(--selection-border) !important; }
-  .bt.br { box-shadow: inset -1px 1px 0 0 var(--selection-border) !important; }
-  .bb.bl { box-shadow: inset 1px -1px 0 0 var(--selection-border) !important; }
-  .bb.br { box-shadow: inset -1px -1px 0 0 var(--selection-border) !important; }
 
   .filter-menu-floating {
     position: fixed;
@@ -299,18 +289,44 @@ const styles = `
     border-bottom: 1px solid var(--grid-border);
   }
 
+
+  /* Bloqueo agresivo para anular estilos inyectados por VS Code y evitar el parpadeo */
+  .table-wrapper,
+  .sql-grid-container table,
+  .sql-grid-container tbody,
+  .table-wrapper,
+  .sql-grid-container table,
+  .sql-grid-container tbody,
+  .sql-grid-container tr {
+    background-color: var(--grid-bg) !important;
+  }
+
   .virtual-spacer-cell {
-    padding: 0;
-    border: none;
+    padding: 0 !important;
+    border: none !important;
     height: 0;
     line-height: 0;
-    background: transparent;
+    background-color: var(--grid-bg) !important;
+  }
+
+
+  /* Si VS Code intenta hacer filas cebra (una clara, una oscura), esto lo anula */
+  .sql-grid-container tr:nth-child(even) td,
+  .sql-grid-container tr:nth-child(even) td,
+  .sql-grid-container tr:nth-child(odd) td {
+    background-color: transparent;
+  }
+
+  /* Recuperar el fondo oscuro de la columna ID (sobreescribe el fondo base) */
+  .sql-grid-container .row-index,
+  .sql-grid-container .corner-header {
+    background-color: var(--grid-header-bg) !important;
   }
 `;
 
 const ROW_HEIGHT_PX = 26;
 const VIRTUALIZATION_THRESHOLD = 500;
-const VIRTUAL_OVERSCAN = 12;
+const VIRTUAL_OVERSCAN = 50;
 const MAX_FILTER_OPTIONS = 1000;
 
 const FilterMenu = ({
@@ -483,7 +499,6 @@ const SmartCell = ({ value }: { value: unknown }) => {
 
   const str = String(value);
 
-  // 1. URL Detection
   if (str.startsWith('http://') || str.startsWith('https://')) {
     return (
       <a
@@ -624,13 +639,28 @@ interface OutputPayload {
 
 const TableApp = ({ data, postMessage }: { data: OutputPayload | any[], postMessage?: (msg: any) => void }) => {
   const tableWrapperRef = useRef<HTMLDivElement>(null);
+  const scrollRafRef = useRef<number | null>(null);
   const [scrollTop, setScrollTop] = useState(0);
+
+  const [containerWidth, setContainerWidth] = useState(0);
+  useLayoutEffect(() => {
+    if (!tableWrapperRef.current) {return;}
+    setContainerWidth(tableWrapperRef.current.clientWidth);
+    const observer = new ResizeObserver(entries => {
+      for (const entry of entries) {
+        setContainerWidth(entry.contentRect.width);
+      }
+    });
+    observer.observe(tableWrapperRef.current);
+    return () => observer.disconnect();
+  }, []);
+
   const rawRows = Array.isArray(data) ? data : (data.rows || []);
   const columnOrder = !Array.isArray(data) && Array.isArray(data.columns) ? data.columns : null;
   const normalizedRows = useMemo(() => normalizeRows(rawRows, columnOrder), [rawRows, columnOrder]);
   const [rows, setRows] = useState(normalizedRows);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     setRows(normalizedRows);
   }, [normalizedRows]);
   const executionTimeFromBackend = !Array.isArray(data) && data.info?.executionTime;
@@ -697,27 +727,52 @@ const TableApp = ({ data, postMessage }: { data: OutputPayload | any[], postMess
   : rows;
 
   const columns = useMemo(() => {
-    try {
-      if (isSelectNoRows) {
-        return [
-          { header: 'rowsReturned', accessorKey: 'rowsReturned' },
-          { header: 'columnCount', accessorKey: 'columnCount' },
-          { header: 'message', accessorKey: 'message' }
-        ];
+    const getColSize = (headerText: string, colKey?: string, subIndex?: number) => {
+      const headerLen = headerText ? String(headerText).length : 0;
+      let dataLen = 0;
+
+      if (colKey) {
+        const scanLimit = Math.min(rows.length, 50);
+        for (let i = 0; i < scanLimit; i++) {
+          const r = rows[i] as Record<string, any>;
+          if (!r) {continue;}
+          let val = r[colKey];
+          if (subIndex !== undefined && Array.isArray(val)) {
+            val = val[subIndex];
+          }
+          if (val !== null && val !== undefined) {
+            const strVal = typeof val === 'object' ? JSON.stringify(val) : String(val);
+            if (strVal.length > dataLen) {dataLen = strVal.length;}
+          }
+        }
       }
+      const charCount = Math.max(headerLen, Math.min(dataLen, 100));
+      return Math.max(30, Math.min(500, charCount * 8 + 28));
+    };
 
-      if (!rows || !Array.isArray(rows) || rows.length === 0) {return [];}
+    try {
+      let rawCols: any[] = [];
 
-      const firstRow = rows.find(row => row && typeof row === 'object') as Record<string, any>;
-      if (!firstRow) {return [];}
+      if (isSelectNoRows) {
+        rawCols = [
+          { header: 'rowsReturned', accessorKey: 'rowsReturned', size: getColSize('rowsReturned') },
+          { header: 'columnCount', accessorKey: 'columnCount', size: getColSize('columnCount') },
+          { header: 'message', accessorKey: 'message', size: getColSize('message') + 100 }
+        ];
+      } else if (!rows || !Array.isArray(rows) || rows.length === 0) {
+        return [];
+      } else {
+        const firstRow = rows.find(row => row && typeof row === 'object') as Record<string, any>;
+        if (!firstRow) {return [];}
 
-      if (columnOrder && Array.isArray(columnOrder)) {
-        return columnOrder.map((header, index) => {
+        if (columnOrder && Array.isArray(columnOrder)) {
+          rawCols = columnOrder.map((header, index) => {
           const safeHeader = header && String(header).trim().length > 0 ? String(header) : '(No column name)';
           const colId = `col_${index}`;
           return {
             id: colId,
             header: safeHeader,
+            size: getColSize(safeHeader, colId),
             accessorFn: (row: any) => row[colId],
             enableColumnFilter: true,
             filterFn: (row: any, id: string, filterValue: any[]) => {
@@ -733,9 +788,8 @@ const TableApp = ({ data, postMessage }: { data: OutputPayload | any[], postMess
             }
           };
         });
-      }
-
-      return Object.keys(firstRow).flatMap((key, index) => {
+        } else {
+          rawCols = Object.keys(firstRow).flatMap((key, index) => {
         const isUnnamed = !key || key.trim() === '';
         const sampleValue = firstRow[key];
 
@@ -744,6 +798,7 @@ const TableApp = ({ data, postMessage }: { data: OutputPayload | any[], postMess
           return sampleValue.map((_, subIndex) => ({
             id: isUnnamed ? `col_unnamed_${index}_${subIndex}` : `${key}__dup_${subIndex}`,
             header: headerLabel,
+            size: getColSize(headerLabel, key, subIndex),
             accessorFn: (row: any) => {
               const val = row[key];
               return Array.isArray(val) ? val[subIndex] : val;
@@ -771,6 +826,7 @@ const TableApp = ({ data, postMessage }: { data: OutputPayload | any[], postMess
         return [{
           id: safeId,
           header: safeHeader,
+          size: getColSize(safeHeader, key),
           accessorFn: (row: any) => row[key],
           enableColumnFilter: true,
           filterFn: (row: any, id: string, filterValue: any[]) => {
@@ -786,11 +842,33 @@ const TableApp = ({ data, postMessage }: { data: OutputPayload | any[], postMess
           }
         }];
       });
+        }
+      }
+
+      let totalBaseSize = 0;
+      rawCols.forEach(c => { totalBaseSize += c.size; });
+
+      const idxW = String(totalRowsFromBackend).length * 8 + 8;
+      const realIndexW = Math.max(28, idxW);
+
+      let extraPerCol = 0;
+      if (containerWidth > 0) {
+        const available = containerWidth - realIndexW - 2;
+        if (available > totalBaseSize && rawCols.length > 0) {
+          extraPerCol = (available - totalBaseSize) / rawCols.length;
+        }
+      }
+
+      if (extraPerCol > 0) {
+        rawCols.forEach(c => { c.size += extraPerCol; });
+      }
+
+      return rawCols;
     } catch (error) {
         console.error("Error generating columns:", error);
         return [];
       }
-  }, [rows, isSelectNoRows, columnOrder]);
+  }, [rows, isSelectNoRows, columnOrder, containerWidth, totalRowsFromBackend]);
 
   const table = useReactTable({
     data: statusData,
@@ -985,40 +1063,57 @@ const TableApp = ({ data, postMessage }: { data: OutputPayload | any[], postMess
     }
   };
 
-  const getCellClass = (r:number, c:number, colId: string) => {
-    if (!selection) {return '';}
+  const getCellSelectionStyle = (r: number, c: number, colId: string): React.CSSProperties => {
+    if (!selection) { return {}; }
+
     let isSel = false;
-    let rangeForBorders = null;
+    let minR = -1, maxR = -1, minC = -1, maxC = -1;
 
-    if (selection.type==='all') {isSel=true;}
-    if (selection.type==='row' && selection.ids?.has(r)) {isSel=true;}
-    if (selection.type==='col' && selection.ids?.has(colId)) {isSel=true;}
-
-    if (selection.type==='range' && selection.range) {
-      const {r1,c1,r2,c2}=selection.range;
-      if (r>=Math.min(r1,r2) && r<=Math.max(r1,r2) && c>=Math.min(c1,c2) && c<=Math.max(c1,c2)) {
-        isSel=true;
-        rangeForBorders = selection.range;
+    if (selection.type === 'all') {
+      isSel = true;
+      minR = 0; maxR = tableRows.length - 1;
+      minC = 0; maxC = visibleColumns.length - 1;
+    } else if (selection.type === 'row' && selection.ids?.has(r)) {
+      isSel = true;
+      minR = r; maxR = r;
+      minC = 0; maxC = visibleColumns.length - 1;
+    } else if (selection.type === 'col' && selection.ids?.has(colId)) {
+      isSel = true;
+      minR = 0; maxR = tableRows.length - 1;
+      minC = visibleColumns.findIndex(col => col.id === colId);
+      maxC = minC;
+    } else if (selection.type === 'range' && selection.range) {
+      const { r1, c1, r2, c2 } = selection.range;
+      if (r >= Math.min(r1, r2) && r <= Math.max(r1, r2) && c >= Math.min(c1, c2) && c <= Math.max(c1, c2)) {
+        isSel = true;
+        minR = Math.min(r1, r2); maxR = Math.max(r1, r2);
+        minC = Math.min(c1, c2); maxC = Math.max(c1, c2);
       }
-    }
-
-    if (selection.type==='multi' && selection.ranges) {
+    } else if (selection.type === 'multi' && selection.ranges) {
       for (const range of selection.ranges) {
-        const {r1,c1,r2,c2}=range;
-        if (r>=Math.min(r1,r2) && r<=Math.max(r1,r2) && c>=Math.min(c1,c2) && c<=Math.max(c1,c2)) {
-          isSel=true;
-          rangeForBorders = range;
+        const { r1, c1, r2, c2 } = range;
+        if (r >= Math.min(r1, r2) && r <= Math.max(r1, r2) && c >= Math.min(c1, c2) && c <= Math.max(c1, c2)) {
+          isSel = true;
+          minR = Math.min(r1, r2); maxR = Math.max(r1, r2);
+          minC = Math.min(c1, c2); maxC = Math.max(c1, c2);
+          break;
         }
       }
     }
 
-    let borders = '';
-    if(isSel && rangeForBorders) {
-       const {r1,c1,r2,c2}=rangeForBorders;
-       const minR=Math.min(r1,r2), maxR=Math.max(r1,r2), minC=Math.min(c1,c2), maxC=Math.max(c1,c2);
-       if(r===minR) {borders+='bt ';} if(r===maxR) {borders+='bb ';} if(c===minC) {borders+='bl ';} if(c===maxC) {borders+='br ';}
-    }
-    return isSel ? `selected-bg ${borders}` : '';
+    if (!isSel) { return {}; }
+
+    let shadows = [];
+    const color = 'var(--selection-border)';
+    if (r === minR) { shadows.push(`inset 0 1px 0 0 ${color}`); }
+    if (r === maxR) { shadows.push(`inset 0 -1px 0 0 ${color}`); }
+    if (c === minC) { shadows.push(`inset 1px 0 0 0 ${color}`); }
+    if (c === maxC) { shadows.push(`inset -1px 0 0 0 ${color}`); }
+
+    return {
+      backgroundColor: 'var(--selection-bg-dim)',
+      boxShadow: shadows.length > 0 ? shadows.join(', ') : undefined
+    };
   };
 
   const exportCSV = () => {
@@ -1120,7 +1215,6 @@ const TableApp = ({ data, postMessage }: { data: OutputPayload | any[], postMess
             postMessage({ type: 'apply_updates', payload: { sql: finalSql } });
             setSaveBtnText('✅ Saved!');
 
-            // Refrescar la vista local al instante con los nuevos datos
             const updatedRows = [...rows];
             Object.keys(editedRows).forEach(rIndexStr => {
                 const rIndex = parseInt(rIndexStr, 10);
@@ -1138,10 +1232,15 @@ const TableApp = ({ data, postMessage }: { data: OutputPayload | any[], postMess
 
   const containerMinHeight = activeMenuId ? 360 : 'auto';
 
+  const indexWidth = useMemo(() => {
+    const digits = String(totalRowsFromBackend).length;
+    return Math.max(28, digits * 8 + 8);
+  }, [totalRowsFromBackend]);
+
   return (
     <div
       className="sql-grid-container"
-      style={{ minHeight: containerMinHeight }}
+      style={{ minHeight: containerMinHeight, '--index-width': `${indexWidth}px` } as React.CSSProperties}
       onMouseUp={onMouseUp}
       onMouseLeave={onMouseUp}
     >
@@ -1193,23 +1292,39 @@ const TableApp = ({ data, postMessage }: { data: OutputPayload | any[], postMess
         className="table-wrapper"
         onScroll={(e) => {
           if (shouldVirtualize) {
-            setScrollTop(e.currentTarget.scrollTop);
+            const currentScrollTop = e.currentTarget.scrollTop;
+            if (scrollRafRef.current) {
+              cancelAnimationFrame(scrollRafRef.current);
+            }
+
+            scrollRafRef.current = requestAnimationFrame(() => {
+              setScrollTop(currentScrollTop);
+            });
           }
         }}
       >
-        <table>
+      <table style={{ width: `calc(${table.getTotalSize()}px + var(--index-width, 45px))` }}>
+          <colgroup>
+            <col style={{ width: 'var(--index-width, 45px)' }} />
+            {visibleColumns.map(c => (
+              <col key={c.id} style={{ width: c.getSize() }} />
+            ))}
+          </colgroup>
           <thead>
             {table.getHeaderGroups().map(hg => (
               <tr key={hg.id}>
                 <th className="corner-header" onClick={handleCornerClick}>◢</th>
-                {hg.headers.map(header => {
-                  const isResized = table.getState().columnSizing[header.id] !== undefined;
-                  const customWidth = isResized ? header.column.getSize() : undefined;
+                {hg.headers.map((header, colIndex) => {
+                  const customWidth = header.column.getSize();
 
                   return (
                     <th key={header.id}
                       className={selection?.type==='col' && selection.ids?.has(header.id) ? 'selected-bg' : ''}
-                      style={isResized ? { width: customWidth, minWidth: customWidth, maxWidth: customWidth, position: 'relative' } : { position: 'relative' }}
+                      style={{
+                        width: customWidth,
+                        minWidth: customWidth,
+                        position: 'relative'
+                      }}
                     >
 
                     <div
@@ -1260,11 +1375,37 @@ const TableApp = ({ data, postMessage }: { data: OutputPayload | any[], postMess
                         onTouchStart={header.getResizeHandler()}
                         onDoubleClick={(e) => {
                           e.stopPropagation();
-                          setColumnSizing(old => {
-                            const newState = { ...old };
-                            delete newState[header.id];
-                            return newState;
-                          });
+                          const colId = header.column.id;
+
+                          const resizerDiv = e.currentTarget as HTMLDivElement;
+                          const thContent = resizerDiv.parentElement;
+                          const titleSpan = thContent?.querySelector('.th-title') as HTMLSpanElement | null;
+
+                          const canvas = document.createElement('canvas');
+                          const ctx = canvas.getContext('2d');
+                          if (!ctx) {return;}
+
+                          const headerText = titleSpan?.textContent || String(header.column.id);
+                          ctx.font = '600 13px "Segoe UI", sans-serif';
+                          const headerTextWidth = ctx.measureText(headerText).width;
+                          const finalHeaderWidth = headerTextWidth + 70;
+                          ctx.font = '13px "Segoe UI", sans-serif';
+                          let textWidthData = 0;
+
+                          const rowsToScan = tableRows.slice(0, 500);
+                          for (const r of rowsToScan) {
+                            const val = r.getValue(colId);
+                            if (val !== null && val !== undefined) {
+                              const strVal = typeof val === 'object' ? JSON.stringify(val) : String(val);
+                              const w = ctx.measureText(strVal).width;
+                              if (w > textWidthData) { textWidthData = w; }
+                            }
+                          }
+
+                          const finalDataWidth = textWidthData + 25;
+                          const newWidth = Math.min(800, Math.max(60, finalHeaderWidth, finalDataWidth));
+
+                          setColumnSizing(old => ({ ...old, [header.id]: newWidth }));
                         }}
                         className={`resizer ${header.column.getIsResizing() ? 'isResizing' : ''}`}
                         onClick={e => e.stopPropagation()}
@@ -1294,15 +1435,17 @@ const TableApp = ({ data, postMessage }: { data: OutputPayload | any[], postMess
                   <td className={`row-index ${selection?.type==='row' && selection.ids?.has(rIndex)?'selected-bg':''}`}
                       onClick={(e)=>handleRowHeaderClick(rIndex, e.ctrlKey || e.metaKey)}>{rIndex + 1}</td>
                   {row.getVisibleCells().map((cell, cIndex) => {
-                    const isResized = table.getState().columnSizing[cell.column.id] !== undefined;
-                    const customWidth = isResized ? cell.column.getSize() : undefined;
+                    const customWidth = cell.column.getSize();
 
                     return (
                       <td key={cell.id}
-                          className={getCellClass(rIndex, cIndex, cell.column.id)}
                           onMouseDown={(e)=>onMouseDown(rIndex, cIndex, e.ctrlKey || e.metaKey)}
                           onMouseEnter={()=>onMouseEnter(rIndex, cIndex)}
-                          style={isResized ? { width: customWidth, minWidth: customWidth, maxWidth: customWidth } : undefined}
+                          style={{
+                             ...getCellSelectionStyle(rIndex, cIndex, cell.column.id),
+                             width: customWidth,
+                             minWidth: customWidth,
+                          }}
                       >
                         {flexRender(cell.column.columnDef.cell, cell.getContext())}
                       </td>
@@ -1331,7 +1474,6 @@ export const activate: ActivationFunction = (context) => {
   return {
     renderOutputItem(data, element) {
       const json = data.json();
-      // Si es una celda markdown con attachments, reemplazar attachment: links
       if (json && json.kind === 1 && json.attachments) {
         json.value = injectAttachmentsIntoMarkdown(json.value, json.attachments);
       }
