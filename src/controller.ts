@@ -201,7 +201,7 @@ export class SQLNotebookKernel {
       } catch (e) {}
     }
 
-    let timeoutSeconds = vscode.workspace.getConfiguration('sqlnotebook').get<number>('queryTimeout') ?? 30;
+    let timeoutSeconds = vscode.workspace.getConfiguration('sqlnotebook').get<number>('queryTimeout') ?? 60;
 
     const poolConfig = {
       ...this.config,
@@ -313,7 +313,7 @@ export class SQLNotebookKernel {
   private async appendExecutionResult(execution: vscode.NotebookCellExecution, result: ExecutionResult, query: string): Promise<void> {
     const now = new Date();
     const newOutputs: vscode.NotebookCellOutput[] = [];
-    const maxRows = vscode.workspace.getConfiguration('sqlnotebook').get<number>('maxResultRows') ?? 100;
+    const maxRows = vscode.workspace.getConfiguration('sqlnotebook').get<number>('maxResultRows') ?? 10000;
 
     const tableMatch = query.match(/\bFROM\s+([#\w.\[\]"`]+)/i) || query.match(/\bUPDATE\s+([#\w.\[\]"`]+)/i) || query.match(/\bINSERT\s+INTO\s+([#\w.\[\]"`]+)/i);
     const tableName = tableMatch ? tableMatch[1] : undefined;
@@ -451,9 +451,19 @@ function makeExecutionInfo(date: Date) {
   const executionTime = `${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
   const executionDate = `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
 
+  const config = vscode.workspace.getConfiguration('sqlnotebook');
+  const badgeKeywords = {
+    danger: config.get<string>('badgeKeywordsDanger', '🔴, atrasada, failed, fail, error, critical, cancelado, cancelled, rechazado, rejected, timeout').split(',').map(s => s.trim()).filter(Boolean),
+    warning: config.get<string>('badgeKeywordsWarning', '🟡, urgente, warning, pending, en pausa, paused, en espera, waiting, delayed, demorado').split(',').map(s => s.trim()).filter(Boolean),
+    success: config.get<string>('badgeKeywordsSuccess', '🟢, a tiempo, success, ready, ok, completed, done, activo, active, terminado, finished, aprobado, approved, entregado').split(',').map(s => s.trim()).filter(Boolean),
+    inactive: config.get<string>('badgeKeywordsInactive', '⚪, sin fecha, inactive, null, none, cerrado, closed, disabled, desactivado, archived, archivado, n/a, empty').split(',').map(s => s.trim()).filter(Boolean),
+    processing: config.get<string>('badgeKeywordsProcessing', '🔵, processing, running, en progreso, in progress, en proceso, started, iniciado, cargando, loading').split(',').map(s => s.trim()).filter(Boolean)
+  };
+
   return {
     executionTime,
     executionDate,
-    executionId: Date.now().toString() + '_' + Math.random().toString(36).substring(2, 9)
+    executionId: Date.now().toString() + '_' + Math.random().toString(36).substring(2, 9),
+    badgeKeywords
   };
 }

@@ -1,5 +1,19 @@
 # Change Log
 
+## [3.3.2]
+### ✨ UI/UX Enhancements
+- **Dynamic Theming:** The interactive results grid now automatically adapts to your active VS Code theme (Light, Dark, High Contrast), ensuring text and backgrounds are always perfectly legible.
+- **Custom Selection Color:** Added a color picker directly to the results toolbar. You can now choose your preferred highlight color for selected cells, and it will automatically calculate the perfect background transparency. Your choice is saved securely across all workspaces!
+- **Perfect Column Distribution:** Overhauled the initial table rendering mathematics. Columns now evenly fill the available screen space without distorting the fixed ID column. Header titles (and the filter icon) will never be cut off, even if the column only contains `NULL` values.
+- **Seamless Headers:** The header row now shares the same elegant background color as the sticky ID column, creating a unified and professional frame around your data.
+
+### ⚙️ Settings & Customization
+- **Customizable Status Badges:** You can now fully customize the keywords that trigger the automatic cell highlighting badges (🔴 Danger, 🟡 Warning, 🟢 Success, ⚪ Inactive, 🔵 Processing). Added 5 new settings (`SQL Notebook: Badge Keywords`) where you can easily define your own comma-separated lists of trigger words.
+- **Updated Defaults:** Increased the default `Max Result Rows` to 10,000 and the `Query Timeout` to 60 seconds for a better out-of-the-box experience.
+
+### 🐛 Bug Fixes
+- **Edge Gap Removed:** Fixed a visual bug that left an unnecessary 15-pixel gap on the far right edge of the table.
+
 ## [3.3.0]
 ### ✨ IDE-Level Features
 - **Inline Data Editing:** Double-click any cell in the results grid to edit its value! Clicking the new `💾 Save Changes` button safely generates the exact `UPDATE` statement, runs it in the background, and instantly refreshes your local grid in real-time.

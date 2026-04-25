@@ -7,7 +7,7 @@
   "repository": {
     "url": "https://github.com/kuzho/sqlnotebook-pro.git"
   },
-  "version": "3.3.1",
+  "version": "3.3.2",
   "preview": false,
   "engines": {
     "vscode": "^1.94.0",
@@ -218,12 +218,12 @@
         },
         "sqlnotebook.queryTimeout": {
           "type": "number",
-          "default": 30,
+          "default": 60,
           "description": "Query timeout in seconds for cell query execution."
         },
         "sqlnotebook.maxResultRows": {
           "type": "number",
-          "default": 100,
+          "default": 10000,
           "description": "Maximum number of result rows to display before truncating result table."
         },
         "sqlnotebook.openAfterExport": {
@@ -235,6 +235,31 @@
           "type": "boolean",
           "default": true,
           "description": "Prevent execution of DELETE and UPDATE statements without a WHERE clause."
+        },
+        "sqlnotebook.badgeKeywordsDanger": {
+          "type": "string",
+          "default": "🔴, atrasada, failed, fail, error, critical, cancelado, cancelled, rechazado, rejected, timeout",
+          "description": "Comma-separated keywords to automatically highlight a cell in Red (Danger)."
+        },
+        "sqlnotebook.badgeKeywordsWarning": {
+          "type": "string",
+          "default": "🟡, urgente, warning, pending, en pausa, paused, en espera, waiting, delayed, demorado",
+          "description": "Comma-separated keywords to automatically highlight a cell in Yellow (Warning)."
+        },
+        "sqlnotebook.badgeKeywordsSuccess": {
+          "type": "string",
+          "default": "🟢, a tiempo, success, ready, ok, completed, done, activo, active, terminado, finished, aprobado, approved, entregado",
+          "description": "Comma-separated keywords to automatically highlight a cell in Green (Success)."
+        },
+        "sqlnotebook.badgeKeywordsInactive": {
+          "type": "string",
+          "default": "⚪, sin fecha, inactive, null, none, cerrado, closed, disabled, desactivado, archived, archivado, n/a, empty",
+          "description": "Comma-separated keywords to automatically highlight a cell in Gray (Inactive)."
+        },
+        "sqlnotebook.badgeKeywordsProcessing": {
+          "type": "string",
+          "default": "🔵, processing, running, en progreso, in progress, en proceso, started, iniciado, cargando, loading",
+          "description": "Comma-separated keywords to automatically highlight a cell in Blue (Processing)."
         }
       }
     },

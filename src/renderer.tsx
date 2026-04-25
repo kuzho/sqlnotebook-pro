@@ -31,13 +31,14 @@ const Portal = ({ children }: { children: React.ReactNode }) =>
 
 const styles = `
   :root {
-    --grid-border: #2d2d2d;
-    --grid-header-bg: #252526;
-    --grid-bg: #1e1e1e;
-    --grid-hover: #2a2d2e;
-    --selection-bg: #0078d4;
-    --selection-bg-dim: #0078d440;
-    --selection-border: #0078d4;
+    --grid-border: var(--vscode-panel-border, #454545);
+    --grid-header-bg: var(--vscode-editorWidget-background, #252526);
+    --grid-bg: var(--vscode-editor-background, #1e1e1e);
+    --grid-hover: var(--vscode-list-hoverBackground, #2a2d2e);
+
+    --selection-border: #005a9e;
+    --selection-bg-dim: rgba(0, 120, 212, 0.25);
+
     --font-family: 'Segoe UI', 'Segoe UI Emoji', 'Apple Color Emoji', 'SF Mono', Consolas, 'Courier New', monospace;
     --font-size: 13px;
     --row-height: 26px;
@@ -45,7 +46,7 @@ const styles = `
   .sql-grid-container {
     font-family: var(--font-family);
     font-size: var(--font-size);
-    color: #cccccc;
+    color: var(--vscode-editor-foreground, #cccccc);
     background: var(--grid-bg);
     width: 100%;
     padding: 0;
@@ -63,7 +64,7 @@ const styles = `
     height: var(--row-height);
     padding: 0 8px;
     box-sizing: border-box;
-    background: #333333;
+    background: var(--grid-header-bg);
     border-bottom: 1px solid var(--grid-border);
     display: flex;
     gap: 8px;
@@ -84,7 +85,7 @@ const styles = `
 
   .btn-action {
     background: transparent;
-    color: #cccccc;
+    color: var(--vscode-editor-foreground, #cccccc);
     border: 1px solid transparent;
     padding: 2px 8px;
     cursor: pointer;
@@ -148,7 +149,7 @@ const styles = `
     text-align: left;
     user-select: none;
     overflow: hidden;
-    cursor: url('data:image/svg+xml;utf8,<svg width="16" height="16" viewBox="0 0 24 24" fill="white" xmlns="http://www.w3.org/2000/svg"><path d="M12 2L12 22M12 22L7 17M12 22L17 17" stroke="white" stroke-width="2"/></svg>') 8 8, pointer;
+    cursor: url('data:image/svg+xml;utf8,<svg width="16" height="16" viewBox="0 0 24 24" fill="%23858585" xmlns="http://www.w3.org/2000/svg"><path d="M12 2L12 22M12 22L7 17M12 22L17 17" stroke="%23858585" stroke-width="2"/></svg>') 8 8, pointer;
     min-width: 80px;
   }
 
@@ -171,7 +172,7 @@ const styles = `
     margin-right: auto;
     padding-right: 8px;
   }
-  .th-text-group:hover { color: white; }
+  .th-text-group:hover { color: var(--vscode-editor-foreground, white); }
 
   .th-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .th-sort-icon { font-size: 10px; color: #0078d4; flex-shrink: 0; }
@@ -208,7 +209,7 @@ const styles = `
     left: 0;
     background: var(--grid-header-bg);
     border-left: none;
-    color: #858585;
+    color: var(--vscode-editor-foreground, #858585);
     border-right: 1px solid var(--grid-border);
     font-size: 11px;
     white-space: nowrap;
@@ -226,9 +227,9 @@ const styles = `
     border-right: none;
   }
   .corner-header { z-index: 30; cursor: pointer; }
-  .corner-header:hover { background: #444; color: white; }
+  .corner-header:hover { background: var(--grid-hover); color: var(--vscode-editor-foreground, white); }
   .row-index { cursor: pointer; }
-  .row-index:hover { color: white; background: #333; }
+  .row-index:hover { background: var(--grid-hover); color: var(--vscode-editor-foreground, white); }
 
   .resizer {
     position: absolute;
@@ -251,9 +252,9 @@ const styles = `
   .filter-menu-floating {
     position: fixed;
     z-index: 10000;
-    background: #252526;
-    color: #cccccc;
-    border: 1px solid #454545;
+    background: var(--vscode-editorWidget-background, #252526);
+    color: var(--vscode-editorWidget-foreground, #cccccc);
+    border: 1px solid var(--vscode-editorWidget-border, #454545);
     box-shadow: 0 4px 10px rgba(0,0,0,0.5);
     width: 240px;
     display: flex;
@@ -262,11 +263,11 @@ const styles = `
     border-radius: 2px;
   }
   .popup-search { padding: 6px; border-bottom: 1px solid #3d3d3d; flex-shrink: 0; }
-  .popup-search input { width: 100%; background: #3c3c3c; color: white; border: 1px solid #333; padding: 4px 6px; outline: none; box-sizing: border-box; }
+  .popup-search input { width: 100%; background: var(--vscode-input-background, #3c3c3c); color: var(--vscode-input-foreground, white); border: 1px solid var(--vscode-input-border, #333); padding: 4px 6px; outline: none; box-sizing: border-box; }
   .popup-list { overflow-y: auto; max-height: 200px; padding: 4px 0; flex: 1; }
   .popup-item { padding: 4px 8px; display: flex; gap: 8px; align-items: center; cursor: pointer; user-select: none; }
-  .popup-item:hover { background: #383838; }
-  .popup-actions { display: flex; justify-content: flex-end; gap: 8px; padding: 8px; border-top: 1px solid #3d3d3d; background: #252526; flex-shrink: 0; }
+  .popup-item:hover { background: var(--grid-hover, #383838); }
+  .popup-actions { display: flex; justify-content: flex-end; gap: 8px; padding: 8px; border-top: 1px solid var(--vscode-editorWidget-border, #3d3d3d); background: var(--vscode-editorWidget-background, #252526); flex-shrink: 0; }
   .btn-primary { background: #0078d4; color: white; border: none; padding: 4px 12px; border-radius: 2px; cursor: pointer; }
   .btn-primary:hover { background: #0063b1; }
   .btn-secondary { background: #3c3c3c; color: white; border: 1px solid transparent; padding: 4px 12px; border-radius: 2px; cursor: pointer; }
@@ -294,11 +295,13 @@ const styles = `
   .table-wrapper,
   .sql-grid-container table,
   .sql-grid-container tbody,
-  .table-wrapper,
-  .sql-grid-container table,
-  .sql-grid-container tbody,
-  .sql-grid-container tr {
+  .sql-grid-container tbody tr {
     background-color: var(--grid-bg) !important;
+  }
+
+  .sql-grid-container thead tr,
+  .sql-grid-container thead th {
+    background-color: var(--grid-header-bg) !important;
   }
 
   .virtual-spacer-cell {
@@ -488,7 +491,7 @@ const BADGE_STYLES: Record<string, React.CSSProperties> = {
   processing: { backgroundColor: '#003366', color: '#99ccff', border: '1px solid #004488' }
 };
 
-const SmartCell = ({ value }: { value: unknown }) => {
+const SmartCell = ({ value, badgeKeywords }: { value: unknown, badgeKeywords?: any }) => {
   if (value === null || value === undefined) {
     return <span style={{ opacity: 0.5, fontStyle: 'italic' }}>NULL</span>;
   }
@@ -518,15 +521,23 @@ const SmartCell = ({ value }: { value: unknown }) => {
   const lower = str.toLowerCase();
   let style: React.CSSProperties | null = null;
 
-  if (str.includes('🔴') || lower.includes('atrasada') || lower.includes('failed') || lower.includes('error') || lower.includes('critical')) {
+  const kw = badgeKeywords || {
+    danger: ['🔴', 'atrasada', 'failed', 'fail', 'error', 'critical', 'cancelado', 'cancelled', 'rechazado', 'rejected', 'timeout'],
+    warning: ['🟡', 'urgente', 'warning', 'pending', 'en pausa', 'paused', 'en espera', 'waiting', 'delayed', 'demorado'],
+    success: ['🟢', 'a tiempo', 'success', 'ready', 'ok', 'completed', 'done', 'activo', 'active', 'terminado', 'finished', 'aprobado', 'approved', 'entregado'],
+    inactive: ['⚪', 'sin fecha', 'inactive', 'null', 'none', 'cerrado', 'closed', 'disabled', 'desactivado', 'archived', 'archivado', 'n/a', 'empty'],
+    processing: ['🔵', 'processing', 'running', 'en progreso', 'in progress', 'en proceso', 'started', 'iniciado', 'cargando', 'loading']
+  };
+
+  if (kw.danger.some((w: string) => lower.includes(w.toLowerCase()))) {
     style = BADGE_STYLES.danger;
-  } else if (str.includes('🟡') || lower.includes('urgente') || lower.includes('warning') || lower.includes('pending')) {
+  } else if (kw.warning.some((w: string) => lower.includes(w.toLowerCase()))) {
     style = BADGE_STYLES.warning;
-  } else if (str.includes('🟢') || lower.includes('a tiempo') || lower.includes('success') || lower.includes('ready') || lower.includes('ok') || lower.includes('completed')) {
+  } else if (kw.success.some((w: string) => lower.includes(w.toLowerCase()))) {
     style = BADGE_STYLES.success;
-  } else if (str.includes('⚪') || lower.includes('sin fecha') || lower.includes('inactive') || lower.includes('null') || lower.includes('none')) {
+  } else if (kw.inactive.some((w: string) => lower.includes(w.toLowerCase()))) {
     style = BADGE_STYLES.inactive;
-  } else if (str.includes('🔵') || lower.includes('processing') || lower.includes('running')) {
+  } else if (kw.processing.some((w: string) => lower.includes(w.toLowerCase()))) {
     style = BADGE_STYLES.processing;
   }
 
@@ -537,7 +548,7 @@ const SmartCell = ({ value }: { value: unknown }) => {
   return <span>{str}</span>;
 };
 
-const EditableCell = ({ initialValue, row, column, updateData, isEdited }: any) => {
+const EditableCell = ({ initialValue, row, column, updateData, isEdited, badgeKeywords }: any) => {
   const [value, setValue] = useState(initialValue);
   const [isEditing, setIsEditing] = useState(false);
 
@@ -569,7 +580,7 @@ const EditableCell = ({ initialValue, row, column, updateData, isEdited }: any) 
         onKeyDown={handleKeyDown}
         style={{
           width: '100%', height: '100%', boxSizing: 'border-box',
-          background: '#1e1e1e', color: 'white', border: '1px solid #0078d4', outline: 'none', padding: '0 4px'
+          background: 'var(--vscode-input-background, #1e1e1e)', color: 'var(--vscode-input-foreground, white)', border: '1px solid var(--selection-border, #0078d4)', outline: 'none', padding: '0 4px'
         }}
       />
     );
@@ -586,7 +597,7 @@ const EditableCell = ({ initialValue, row, column, updateData, isEdited }: any) 
         display: 'flex', alignItems: 'center'
       }}
     >
-      <SmartCell value={value} />
+      <SmartCell value={value} badgeKeywords={badgeKeywords} />
     </div>
   );
 };
@@ -634,6 +645,13 @@ interface OutputPayload {
     originalLength?: number;
     tableName?: string;
     executionId?: string;
+    badgeKeywords?: {
+      danger: string[];
+      warning: string[];
+      success: string[];
+      inactive: string[];
+      processing: string[];
+    };
   };
 }
 
@@ -675,14 +693,38 @@ const TableApp = ({ data, postMessage }: { data: OutputPayload | any[], postMess
   const runDate = executionDateFromBackend || fallbackDate;
   const tableNameFromBackend = !Array.isArray(data) && data.info?.tableName ? data.info.tableName : 'TargetTable';
   const executionId = !Array.isArray(data) && data.info?.executionId ? data.info.executionId : 'fallback';
+  const badgeKeywords = !Array.isArray(data) && data.info?.badgeKeywords ? data.info.badgeKeywords : {
+    danger: ['🔴', 'atrasada', 'failed', 'fail', 'error', 'critical', 'cancelado', 'cancelled', 'rechazado', 'rejected', 'timeout'],
+    warning: ['🟡', 'urgente', 'warning', 'pending', 'en pausa', 'paused', 'en espera', 'waiting', 'delayed', 'demorado'],
+    success: ['🟢', 'a tiempo', 'success', 'ready', 'ok', 'completed', 'done', 'activo', 'active', 'terminado', 'finished', 'aprobado', 'approved', 'entregado'],
+    inactive: ['⚪', 'sin fecha', 'inactive', 'null', 'none', 'cerrado', 'closed', 'disabled', 'desactivado', 'archived', 'archivado', 'n/a', 'empty'],
+    processing: ['🔵', 'processing', 'running', 'en progreso', 'in progress', 'en proceso', 'started', 'iniciado', 'cargando', 'loading']
+  };
   const [sorting, setSorting] = useState<SortingState>([]);
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
   const [columnSizing, setColumnSizing] = useState<ColumnSizingState>({});
   const [activeMenuId, setActiveMenuId] = useState<string | null>(null);
-  const [exportSqlText, setExportSqlText] = useState('📝 INSERTs');
+  const [exportSqlText, setExportSqlText] = useState('📝 To Insert');
 
   const [editedRows, setEditedRows] = useState<Record<number, Record<string, any>>>({});
   const [saveBtnText, setSaveBtnText] = useState('💾 Save Changes');
+
+  const [themeColor, setThemeColor] = useState(() => {
+    return localStorage.getItem('sqlnotebook-selection-color') || '#005a9e';
+  });
+
+  const handleColorChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const newColor = e.target.value;
+    setThemeColor(newColor);
+    localStorage.setItem('sqlnotebook-selection-color', newColor);
+  };
+
+  const themeBgDim = useMemo(() => {
+    let hex = themeColor.replace(/^#/, '');
+    if (hex.length === 3) { hex = hex.split('').map(c => c + c).join(''); }
+    const num = parseInt(hex, 16);
+    return `rgba(${(num >> 16) & 255}, ${(num >> 8) & 255}, ${num & 255}, 0.25)`;
+  }, [themeColor]);
 
   const updateData = useCallback((rowIndex: number, columnId: string, value: any) => {
      setEditedRows(old => ({
@@ -729,6 +771,7 @@ const TableApp = ({ data, postMessage }: { data: OutputPayload | any[], postMess
   const columns = useMemo(() => {
     const getColSize = (headerText: string, colKey?: string, subIndex?: number) => {
       const headerLen = headerText ? String(headerText).length : 0;
+      const headerWidth = (headerLen * 8) + 60;
       let dataLen = 0;
 
       if (colKey) {
@@ -746,8 +789,8 @@ const TableApp = ({ data, postMessage }: { data: OutputPayload | any[], postMess
           }
         }
       }
-      const charCount = Math.max(headerLen, Math.min(dataLen, 100));
-      return Math.max(30, Math.min(500, charCount * 8 + 28));
+      const dataWidth = (dataLen * 8) + 25;
+      return Math.max(60, Math.min(500, Math.max(headerWidth, dataWidth)));
     };
 
     try {
@@ -784,7 +827,7 @@ const TableApp = ({ data, postMessage }: { data: OutputPayload | any[], postMess
               const cId = info.column.id;
               const isEdited = meta?.editedRows?.[rowIndex]?.[cId] !== undefined;
               const val = isEdited ? meta.editedRows[rowIndex][cId] : info.getValue();
-              return <EditableCell initialValue={val} row={info.row} column={info.column} updateData={meta?.updateData} isEdited={isEdited} />;
+              return <EditableCell initialValue={val} row={info.row} column={info.column} updateData={meta?.updateData} isEdited={isEdited} badgeKeywords={meta?.badgeKeywords} />;
             }
           };
         });
@@ -815,7 +858,7 @@ const TableApp = ({ data, postMessage }: { data: OutputPayload | any[], postMess
               const cId = info.column.id;
               const isEdited = meta?.editedRows?.[rowIndex]?.[cId] !== undefined;
               const val = isEdited ? meta.editedRows[rowIndex][cId] : info.getValue();
-              return <EditableCell initialValue={val} row={info.row} column={info.column} updateData={meta?.updateData} isEdited={isEdited} />;
+              return <EditableCell initialValue={val} row={info.row} column={info.column} updateData={meta?.updateData} isEdited={isEdited} badgeKeywords={meta?.badgeKeywords} />;
             }
           }));
         }
@@ -838,7 +881,7 @@ const TableApp = ({ data, postMessage }: { data: OutputPayload | any[], postMess
             const cId = info.column.id;
             const isEdited = meta?.editedRows?.[rowIndex]?.[cId] !== undefined;
             const val = isEdited ? meta.editedRows[rowIndex][cId] : info.getValue();
-            return <EditableCell initialValue={val} row={info.row} column={info.column} updateData={meta?.updateData} isEdited={isEdited} />;
+            return <EditableCell initialValue={val} row={info.row} column={info.column} updateData={meta?.updateData} isEdited={isEdited} badgeKeywords={meta?.badgeKeywords} />;
           }
         }];
       });
@@ -851,16 +894,19 @@ const TableApp = ({ data, postMessage }: { data: OutputPayload | any[], postMess
       const idxW = String(totalRowsFromBackend).length * 8 + 8;
       const realIndexW = Math.max(28, idxW);
 
-      let extraPerCol = 0;
+      let extraAvailable = 0;
       if (containerWidth > 0) {
         const available = containerWidth - realIndexW - 2;
         if (available > totalBaseSize && rawCols.length > 0) {
-          extraPerCol = (available - totalBaseSize) / rawCols.length;
+          extraAvailable = available - totalBaseSize;
         }
       }
 
-      if (extraPerCol > 0) {
-        rawCols.forEach(c => { c.size += extraPerCol; });
+      if (extraAvailable > 0 && totalBaseSize > 0) {
+        const extraPerCol = Math.floor(extraAvailable / rawCols.length);
+        rawCols.forEach(c => {
+          c.size += extraPerCol;
+        });
       }
 
       return rawCols;
@@ -875,7 +921,7 @@ const TableApp = ({ data, postMessage }: { data: OutputPayload | any[], postMess
     columns: columns,
     state: { sorting, columnFilters, columnSizing },
     columnResizeMode: 'onChange',
-    meta: { editedRows, updateData },
+    meta: { editedRows, updateData, badgeKeywords },
     onSortingChange: setSorting,
     onColumnFiltersChange: setColumnFilters,
     onColumnSizingChange: setColumnSizing,
@@ -915,7 +961,7 @@ const TableApp = ({ data, postMessage }: { data: OutputPayload | any[], postMess
       setActiveMenuId(null);
       setIsDragging(false);
       setDragStart(null);
-      setExportSqlText('📝 INSERTs');
+      setExportSqlText('📝 To Insert');
       setSaveBtnText('💾 Save Changes');
     }, [executionId]);
 
@@ -1169,7 +1215,7 @@ const TableApp = ({ data, postMessage }: { data: OutputPayload | any[], postMess
     if (postMessage) {
       postMessage({ type: 'export_sql', payload: { sql } });
       setExportSqlText('⏳ Exporting...');
-      setTimeout(() => setExportSqlText('📝 INSERTs'), 2000);
+      setTimeout(() => setExportSqlText('📝 To Insert'), 2000);
     }
   };
 
@@ -1240,7 +1286,12 @@ const TableApp = ({ data, postMessage }: { data: OutputPayload | any[], postMess
   return (
     <div
       className="sql-grid-container"
-      style={{ minHeight: containerMinHeight, '--index-width': `${indexWidth}px` } as React.CSSProperties}
+      style={{ 
+        minHeight: containerMinHeight, 
+        '--index-width': `${indexWidth}px`,
+        '--selection-border': themeColor,
+        '--selection-bg-dim': themeBgDim
+      } as React.CSSProperties}
       onMouseUp={onMouseUp}
       onMouseLeave={onMouseUp}
     >
@@ -1258,6 +1309,14 @@ const TableApp = ({ data, postMessage }: { data: OutputPayload | any[], postMess
           <span className="toolbar-time">
             📅 {runDate}
           </span>
+        <span className="toolbar-time" title="Color del Selector">
+          <input
+            type="color"
+            value={themeColor}
+            onChange={handleColorChange}
+            style={{ width: '14px', height: '14px', padding: 0, border: '1px solid #555', borderRadius: '2px', cursor: 'pointer', background: 'transparent' }}
+          />
+        </span>
         <div style={{flex:1}}/>
         {!isSelectNoRows && (
           <>
@@ -1266,7 +1325,7 @@ const TableApp = ({ data, postMessage }: { data: OutputPayload | any[], postMess
                 {saveBtnText}
               </button>
             )}
-            <button className="btn-action" onClick={exportSQL} title="Export as SQL INSERTs to File">
+            <button className="btn-action" onClick={exportSQL} title="Export as SQL To Insert to File">
               {exportSqlText}
             </button>
             <button className="btn-action" onClick={exportExcel}>
