@@ -1,5 +1,19 @@
 # Change Log
 
+## [3.3.3]
+### ⚡ Performance & Core Engine
+- **Zero-Lag Interactive Grid:** Completely rewrote the grid's event engine using Event Delegation and Cell-level Memoization (`React.memo`). The table now effortlessly handles hundreds of columns and thousands of rows with zero CPU spikes or UI lag when hovering or selecting data.
+- **Aggressive Virtualization:** Fine-tuned the vertical and horizontal rendering thresholds. Dragging to select data across 100+ columns now auto-scrolls buttery smooth at 60fps.
+
+### ✨ SQL Formatter Magic
+- **Symmetrical Lists:** The SQL Formatter (`Shift + Alt + F`) is now incredibly smart. It automatically compacts long `SELECT`, `INSERT INTO`, `GROUP BY`, and `ORDER BY` lists into beautifully aligned, tab-indented blocks that wrap perfectly at ~100 characters.
+- **Smart Logic Blocks:** Small `CASE WHEN` statements are now cleanly collapsed into a single line.
+- **Comment & Parentheses Awareness:** The formatter now seamlessly handles nested parentheses `( ... )` and inline `-- comments`, keeping complex `AND/OR` conditional blocks perfectly structured without breaking the logic.
+
+### 🐛 UI/UX & Bug Fixes
+- **Row Drag Selection:** You can now instantly select multiple full rows by simply clicking and dragging down the grey row-index column!
+- **No More Flickering:** Fixed an annoying visual glitch where the native color picker button in the toolbar would constantly flicker or steal focus when interacting with the grid.
+
 ## [3.3.2]
 ### ✨ UI/UX Enhancements
 - **Dynamic Theming:** The interactive results grid now automatically adapts to your active VS Code theme (Light, Dark, High Contrast), ensuring text and backgrounds are always perfectly legible.

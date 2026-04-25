@@ -99,6 +99,10 @@ const styles = `
   .btn-action:hover { background: #454545; border-color: #555; }
   .btn-action:focus { outline: none; }
 
+  .table-wrapper:focus {
+    outline: none;
+  }
+
   .table-wrapper {
     overflow: auto;
     position: relative;
@@ -328,8 +332,8 @@ const styles = `
 `;
 
 const ROW_HEIGHT_PX = 26;
-const VIRTUALIZATION_THRESHOLD = 500;
-const VIRTUAL_OVERSCAN = 50;
+const VIRTUALIZATION_THRESHOLD = 50;
+const VIRTUAL_OVERSCAN = 15;
 const MAX_FILTER_OPTIONS = 1000;
 
 const FilterMenu = ({
@@ -491,7 +495,7 @@ const BADGE_STYLES: Record<string, React.CSSProperties> = {
   processing: { backgroundColor: '#003366', color: '#99ccff', border: '1px solid #004488' }
 };
 
-const SmartCell = ({ value, badgeKeywords }: { value: unknown, badgeKeywords?: any }) => {
+const SmartCell = React.memo(({ value, badgeKeywords }: { value: unknown, badgeKeywords?: any }) => {
   if (value === null || value === undefined) {
     return <span style={{ opacity: 0.5, fontStyle: 'italic' }}>NULL</span>;
   }
@@ -546,9 +550,9 @@ const SmartCell = ({ value, badgeKeywords }: { value: unknown, badgeKeywords?: a
   }
 
   return <span>{str}</span>;
-};
+});
 
-const EditableCell = ({ initialValue, row, column, updateData, isEdited, badgeKeywords }: any) => {
+const EditableCell = React.memo(({ initialValue, row, column, updateData, isEdited, badgeKeywords }: any) => {
   const [value, setValue] = useState(initialValue);
   const [isEditing, setIsEditing] = useState(false);
 
@@ -600,7 +604,52 @@ const EditableCell = ({ initialValue, row, column, updateData, isEdited, badgeKe
       <SmartCell value={value} badgeKeywords={badgeKeywords} />
     </div>
   );
-};
+});
+
+const ThemeColorPicker = React.memo(({ color, onChange }: { color: string, onChange: (e: React.ChangeEvent<HTMLInputElement>) => void }) => (
+  <span className="toolbar-time" title="Color del Selector">
+    <input
+      type="color"
+      value={color}
+      onChange={onChange}
+      style={{ width: '14px', height: '14px', padding: 0, border: '1px solid #555', borderRadius: '2px', cursor: 'pointer', background: 'transparent' }}
+    />
+  </span>
+));
+
+const MemoTd = React.memo(({ cell, rIndex, cIndex, colId, customWidth, selectionStyle, isEdited }: any) => {
+  return (
+    <td
+        data-r={rIndex}
+        data-c={cIndex}
+        style={{
+           ...selectionStyle,
+           width: customWidth,
+           minWidth: customWidth,
+        }}
+    >
+      {flexRender(cell.column.columnDef.cell, cell.getContext())}
+    </td>
+  );
+}, (prev, next) => {
+  return prev.rIndex === next.rIndex &&
+         prev.cIndex === next.cIndex &&
+         prev.customWidth === next.customWidth &&
+         prev.isEdited === next.isEdited &&
+         prev.selectionStyle?.backgroundColor === next.selectionStyle?.backgroundColor &&
+         prev.selectionStyle?.boxShadow === next.selectionStyle?.boxShadow &&
+         prev.colId === next.colId &&
+         prev.cell === next.cell;
+});
+
+const MemoRowIndex = React.memo(({ rIndex, isSelected }: any) => {
+   return (
+      <td className={`row-index ${isSelected ? 'selected-bg' : ''}`}
+          data-row-index={rIndex}>
+          {rIndex + 1}
+      </td>
+   );
+}, (prev, next) => prev.rIndex === next.rIndex && prev.isSelected === next.isSelected);
 
 const normalizeRows = (rows: unknown[], columnOrder: string[] | null) => {
   if (!columnOrder || !Array.isArray(rows)) {return rows;}
@@ -659,6 +708,7 @@ const TableApp = ({ data, postMessage }: { data: OutputPayload | any[], postMess
   const tableWrapperRef = useRef<HTMLDivElement>(null);
   const scrollRafRef = useRef<number | null>(null);
   const [scrollTop, setScrollTop] = useState(0);
+  const [scrollLeft, setScrollLeft] = useState(0);
 
   const [containerWidth, setContainerWidth] = useState(0);
   useLayoutEffect(() => {
@@ -693,13 +743,17 @@ const TableApp = ({ data, postMessage }: { data: OutputPayload | any[], postMess
   const runDate = executionDateFromBackend || fallbackDate;
   const tableNameFromBackend = !Array.isArray(data) && data.info?.tableName ? data.info.tableName : 'TargetTable';
   const executionId = !Array.isArray(data) && data.info?.executionId ? data.info.executionId : 'fallback';
-  const badgeKeywords = !Array.isArray(data) && data.info?.badgeKeywords ? data.info.badgeKeywords : {
-    danger: ['🔴', 'atrasada', 'failed', 'fail', 'error', 'critical', 'cancelado', 'cancelled', 'rechazado', 'rejected', 'timeout'],
-    warning: ['🟡', 'urgente', 'warning', 'pending', 'en pausa', 'paused', 'en espera', 'waiting', 'delayed', 'demorado'],
-    success: ['🟢', 'a tiempo', 'success', 'ready', 'ok', 'completed', 'done', 'activo', 'active', 'terminado', 'finished', 'aprobado', 'approved', 'entregado'],
-    inactive: ['⚪', 'sin fecha', 'inactive', 'null', 'none', 'cerrado', 'closed', 'disabled', 'desactivado', 'archived', 'archivado', 'n/a', 'empty'],
-    processing: ['🔵', 'processing', 'running', 'en progreso', 'in progress', 'en proceso', 'started', 'iniciado', 'cargando', 'loading']
-  };
+  
+  const badgeKeywords = useMemo(() => {
+    return !Array.isArray(data) && data.info?.badgeKeywords ? data.info.badgeKeywords : {
+      danger: ['🔴', 'atrasada', 'failed', 'fail', 'error', 'critical', 'cancelado', 'cancelled', 'rechazado', 'rejected', 'timeout'],
+      warning: ['🟡', 'urgente', 'warning', 'pending', 'en pausa', 'paused', 'en espera', 'waiting', 'delayed', 'demorado'],
+      success: ['🟢', 'a tiempo', 'success', 'ready', 'ok', 'completed', 'done', 'activo', 'active', 'terminado', 'finished', 'aprobado', 'approved', 'entregado'],
+      inactive: ['⚪', 'sin fecha', 'inactive', 'null', 'none', 'cerrado', 'closed', 'disabled', 'desactivado', 'archived', 'archivado', 'n/a', 'empty'],
+      processing: ['🔵', 'processing', 'running', 'en progreso', 'in progress', 'en proceso', 'started', 'iniciado', 'cargando', 'loading']
+    };
+  }, [data]);
+  
   const [sorting, setSorting] = useState<SortingState>([]);
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
   const [columnSizing, setColumnSizing] = useState<ColumnSizingState>({});
@@ -713,11 +767,11 @@ const TableApp = ({ data, postMessage }: { data: OutputPayload | any[], postMess
     return localStorage.getItem('sqlnotebook-selection-color') || '#005a9e';
   });
 
-  const handleColorChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleColorChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const newColor = e.target.value;
     setThemeColor(newColor);
     localStorage.setItem('sqlnotebook-selection-color', newColor);
-  };
+  }, []);
 
   const themeBgDim = useMemo(() => {
     let hex = themeColor.replace(/^#/, '');
@@ -743,8 +797,9 @@ const TableApp = ({ data, postMessage }: { data: OutputPayload | any[], postMess
     ranges?: Array<{ r1: number, c1: number, r2: number, c2: number }>
   } | null>(null);
 
-  const [isDragging, setIsDragging] = useState(false);
+  const [dragMode, setDragMode] = useState<'none' | 'cell' | 'row'>('none');
   const [dragStart, setDragStart] = useState<{r: number, c: number} | null>(null);
+  const [dragStartRow, setDragStartRow] = useState<number | null>(null);
 
   const isSelectNoRows =
   Array.isArray(rows) &&
@@ -916,12 +971,13 @@ const TableApp = ({ data, postMessage }: { data: OutputPayload | any[], postMess
       }
   }, [rows, isSelectNoRows, columnOrder, containerWidth, totalRowsFromBackend]);
 
+  const tableMeta = useMemo(() => ({ editedRows, updateData, badgeKeywords }), [editedRows, updateData, badgeKeywords]);
   const table = useReactTable({
     data: statusData,
     columns: columns,
     state: { sorting, columnFilters, columnSizing },
     columnResizeMode: 'onChange',
-    meta: { editedRows, updateData, badgeKeywords },
+    meta: tableMeta,
     onSortingChange: setSorting,
     onColumnFiltersChange: setColumnFilters,
     onColumnSizingChange: setColumnSizing,
@@ -932,9 +988,14 @@ const TableApp = ({ data, postMessage }: { data: OutputPayload | any[], postMess
     getFacetedUniqueValues: getFacetedUniqueValues(),
   });
 
+  const COL_VIRTUALIZATION_THRESHOLD = 10;
+  const COL_OVERSCAN = 4;
+
   const tableRows = table.getRowModel().rows;
   const visibleColumns = table.getVisibleFlatColumns();
   const shouldVirtualize = tableRows.length > VIRTUALIZATION_THRESHOLD;
+  const shouldVirtualizeCols = visibleColumns.length > COL_VIRTUALIZATION_THRESHOLD;
+
   const viewportHeight = tableWrapperRef.current?.clientHeight ?? 390;
   const visibleRowCount = Math.max(20, Math.ceil(viewportHeight / ROW_HEIGHT_PX) + (VIRTUAL_OVERSCAN * 2));
   const startIndex = shouldVirtualize
@@ -947,8 +1008,42 @@ const TableApp = ({ data, postMessage }: { data: OutputPayload | any[], postMess
   const topSpacerHeight = shouldVirtualize ? startIndex * ROW_HEIGHT_PX : 0;
   const bottomSpacerHeight = shouldVirtualize ? Math.max(0, (tableRows.length - endIndex) * ROW_HEIGHT_PX) : 0;
 
+  const colPositions = useMemo(() => {
+    let currentLeft = 0;
+    return visibleColumns.map((c, index) => {
+       const width = c.getSize();
+       const pos = currentLeft;
+       currentLeft += width;
+       return { column: c, left: pos, width, index };
+    });
+  }, [visibleColumns, columnSizing]);
+
+  let startColIdx = 0;
+  let endColIdx = visibleColumns.length;
+
+  if (shouldVirtualizeCols) {
+     const viewPortWidth = containerWidth || 1000;
+     while (startColIdx < colPositions.length && colPositions[startColIdx].left + colPositions[startColIdx].width < scrollLeft) {
+        startColIdx++;
+     }
+     startColIdx = Math.max(0, startColIdx - COL_OVERSCAN);
+
+     endColIdx = startColIdx;
+     while (endColIdx < colPositions.length && colPositions[endColIdx].left < scrollLeft + viewPortWidth) {
+        endColIdx++;
+     }
+     endColIdx = Math.min(colPositions.length, endColIdx + COL_OVERSCAN);
+  }
+
+  const renderedColumnsInfo = shouldVirtualizeCols ? colPositions.slice(startColIdx, endColIdx) : colPositions;
+  const leftSpacerWidth = shouldVirtualizeCols && renderedColumnsInfo.length > 0 ? renderedColumnsInfo[0].left : 0;
+  const totalColsWidth = colPositions.length > 0 ? colPositions[colPositions.length - 1].left + colPositions[colPositions.length - 1].width : 0;
+  const rightSpacerWidth = shouldVirtualizeCols && renderedColumnsInfo.length > 0 ? totalColsWidth - (renderedColumnsInfo[renderedColumnsInfo.length - 1].left + renderedColumnsInfo[renderedColumnsInfo.length - 1].width) : 0;
+  const colSpanCount = renderedColumnsInfo.length + (leftSpacerWidth > 0 ? 1 : 0) + (rightSpacerWidth > 0 ? 1 : 0) + 1;
+
   useEffect(() => {
     setScrollTop(0);
+    setScrollLeft(0);
     if (tableWrapperRef.current) {
       tableWrapperRef.current.scrollTop = 0;
       tableWrapperRef.current.scrollLeft = 0;
@@ -959,8 +1054,9 @@ const TableApp = ({ data, postMessage }: { data: OutputPayload | any[], postMess
       setColumnFilters([]);
       setColumnSizing({});
       setActiveMenuId(null);
-      setIsDragging(false);
+      setDragMode('none');
       setDragStart(null);
+      setDragStartRow(null);
       setExportSqlText('📝 To Insert');
       setSaveBtnText('💾 Save Changes');
     }, [executionId]);
@@ -981,8 +1077,8 @@ const TableApp = ({ data, postMessage }: { data: OutputPayload | any[], postMess
   const handleCopy = useCallback(() => {
     if (!selection) {return;}
 
-    const getVal = (r: number, cId: string) => {
-      const cell = tableRows[r]?.getVisibleCells().find(c => c.column.id === cId);
+    const getVal = (r: number, cIdx: number) => {
+      const cell = tableRows[r]?.getVisibleCells()[cIdx];
       let v = cell?.getValue();
       return typeof v === 'object' ? JSON.stringify(v) : String(v ?? '');
     };
@@ -999,7 +1095,7 @@ const TableApp = ({ data, postMessage }: { data: OutputPayload | any[], postMess
           const line = [];
           for (let c = minC; c <= maxC; c++) {
             if (visibleColumns[c]) {
-              line.push(getVal(r, visibleColumns[c].id));
+              line.push(getVal(r, c));
             }
           }
           rowsToText.push(line.join('\t'));
@@ -1018,7 +1114,7 @@ const TableApp = ({ data, postMessage }: { data: OutputPayload | any[], postMess
         const line = [];
         for (let c = minC; c <= maxC; c++) {
           if (visibleColumns[c]) {
-            line.push(getVal(r, visibleColumns[c].id));
+            line.push(getVal(r, c));
           }
         }
         rowsToText.push(line.join('\t'));
@@ -1054,30 +1150,30 @@ const TableApp = ({ data, postMessage }: { data: OutputPayload | any[], postMess
   }, [handleCopy]);
 
   const onMouseDown = (r:number, c:number, isCtrl: boolean) => {
-    if (isCtrl && selection?.type === 'range' && selection.range) {
+    if (isCtrl && selection && selection.type === 'range' && selection.range) {
       setSelection(prev => ({
         type: 'multi',
-        ranges: prev ? [prev.range!, { r1: r, c1: c, r2: r, c2: c }] : [{ r1: r, c1: c, r2: r, c2: c }]
+        ranges: prev?.range ? [prev.range, { r1: r, c1: c, r2: r, c2: c }] : [{ r1: r, c1: c, r2: r, c2: c }]
       }));
-      setIsDragging(true);
+      setDragMode('cell');
       setDragStart({r, c});
-    } else if (isCtrl && selection?.type === 'multi' && selection.ranges) {
+    } else if (isCtrl && selection && selection.type === 'multi' && selection.ranges) {
       setSelection(prev => ({
         type: 'multi',
-        ranges: [...prev!.ranges!, { r1: r, c1: c, r2: r, c2: c }]
+        ranges: [...(prev?.ranges || []), { r1: r, c1: c, r2: r, c2: c }]
       }));
-      setIsDragging(true);
+      setDragMode('cell');
       setDragStart({r, c});
     } else {
-      setIsDragging(true);
+      setDragMode('cell');
       setDragStart({r,c});
       setSelection({type:'range', range:{r1:r,c1:c,r2:r,c2:c}});
     }
   };
 
   const onMouseEnter = (r:number, c:number) => {
-    if(isDragging && dragStart) {
-      if (selection?.type === 'multi' && selection.ranges) {
+    if(dragMode === 'cell' && dragStart) {
+      if (selection && selection.type === 'multi' && selection.ranges) {
         const updatedRanges = [...selection.ranges];
         updatedRanges[updatedRanges.length - 1] = {
           r1: dragStart.r,
@@ -1085,18 +1181,135 @@ const TableApp = ({ data, postMessage }: { data: OutputPayload | any[], postMess
           r2: r,
           c2: c
         };
-        setSelection({type:'multi', ranges: updatedRanges});
+        const lastRange = selection.ranges[selection.ranges.length - 1];
+        if (lastRange.r2 === r && lastRange.c2 === c) { return; }
+        setSelection(prev => ({ type:'multi', ranges: updatedRanges }));
       } else {
-        setSelection({type:'range', range:{r1:dragStart.r,c1:dragStart.c,r2:r,c2:c}});
+        if (selection && selection.range?.r2 === r && selection.range?.c2 === c) { return; }
+        setSelection(prev => ({ type:'range', range:{r1:dragStart.r,c1:dragStart.c,r2:r,c2:c} }));
       }
     }
   };
 
-  const onMouseUp = () => setIsDragging(false);
+  const onRowMouseDown = (r: number, isCtrl: boolean) => {
+    setDragMode('row');
+    setDragStartRow(r);
+    handleRowHeaderClick(r, isCtrl);
+  };
+
+  const onRowMouseEnter = (r: number) => {
+    if (dragMode === 'row' && dragStartRow !== null) {
+      const minR = Math.min(dragStartRow, r);
+      const maxR = Math.max(dragStartRow, r);
+      setSelection(prev => {
+        if (prev?.type === 'row' && prev.ids && prev.ids.size === maxR - minR + 1 && prev.ids.has(r) && prev.ids.has(dragStartRow)) {
+           return prev;
+        }
+        const newIds = new Set<number>();
+        for(let i = minR; i <= maxR; i++) {newIds.add(i);}
+        return { type: 'row', ids: newIds };
+      });
+    }
+  };
+
   const handleCornerClick = () => setSelection({type:'all'});
 
+  useEffect(() => {
+    if (dragMode === 'none') {return;}
+
+    let animationFrame: number;
+    const wrapper = tableWrapperRef.current;
+    let lastX = 0;
+    let lastY = 0;
+    let isScrolling = false;
+
+    const handleMouseUpGlobal = () => {
+      setDragMode('none');
+      setDragStartRow(null);
+    };
+
+    const autoScroll = () => {
+      if (!wrapper) {return;}
+      const rect = wrapper.getBoundingClientRect();
+      let scrollX = 0;
+      let scrollY = 0;
+      const edge = 40;
+      const speed = 25;
+
+      if (lastY > rect.bottom - edge) {scrollY = speed;}
+      else if (lastY < rect.top + edge) {scrollY = -speed;}
+      if (lastX > rect.right - edge) {scrollX = speed;}
+      else if (lastX < rect.left + edge) {scrollX = -speed;}
+
+      if (scrollX !== 0 || scrollY !== 0) {
+         wrapper.scrollBy({ left: scrollX, top: scrollY });
+         const el = document.elementFromPoint(lastX, lastY);
+         if (el) {
+           const td = el.closest('td');
+           if (td) {
+              if (dragMode === 'cell' && dragStart) {
+                const rStr = td.getAttribute('data-r');
+                const cStr = td.getAttribute('data-c');
+                if (rStr && cStr) {
+                   const r = parseInt(rStr, 10);
+                   const c = parseInt(cStr, 10);
+                   setSelection(prev => {
+                      if (prev?.type === 'multi' && prev.ranges) {
+                         const lastRange = prev.ranges[prev.ranges.length - 1];
+                         if (lastRange.r2 === r && lastRange.c2 === c) {return prev;}
+                         const updatedRanges = [...prev.ranges];
+                         updatedRanges[updatedRanges.length - 1] = { r1: dragStart.r, c1: dragStart.c, r2: r, c2: c };
+                         return { type: 'multi', ranges: updatedRanges };
+                      }
+                      if (prev?.type === 'range' && prev.range?.r2 === r && prev.range?.c2 === c) {return prev;}
+                      return { type: 'range', range: { r1: dragStart.r, c1: dragStart.c, r2: r, c2: c } };
+                   });
+                }
+              } else if (dragMode === 'row' && dragStartRow !== null) {
+                const rStr = td.getAttribute('data-row-index');
+                if (rStr) {
+                    const r = parseInt(rStr, 10);
+                    const minR = Math.min(dragStartRow, r);
+                    const maxR = Math.max(dragStartRow, r);
+                    setSelection(prev => {
+                        if (prev?.type === 'row' && prev.ids && prev.ids.size === maxR - minR + 1 && prev.ids.has(r) && prev.ids.has(dragStartRow)) {
+                            return prev;
+                        }
+                        const newIds = new Set<number>();
+                        for(let i=minR; i<=maxR; i++) {newIds.add(i);}
+                        return { type: 'row', ids: newIds };
+                    });
+                }
+              }
+           }
+         }
+         animationFrame = requestAnimationFrame(autoScroll);
+      } else {
+         isScrolling = false;
+      }
+    };
+
+    const handleMouseMoveGlobal = (e: MouseEvent) => {
+      lastX = e.clientX;
+      lastY = e.clientY;
+      if (!isScrolling) {
+         isScrolling = true;
+         autoScroll();
+      }
+    };
+
+    window.addEventListener('mouseup', handleMouseUpGlobal);
+    window.addEventListener('mousemove', handleMouseMoveGlobal);
+
+    return () => {
+      window.removeEventListener('mouseup', handleMouseUpGlobal);
+      window.removeEventListener('mousemove', handleMouseMoveGlobal);
+      cancelAnimationFrame(animationFrame);
+    };
+  }, [dragMode, dragStart, dragStartRow]);
+
   const handleRowHeaderClick = (idx: number, isCtrl: boolean) => {
-    if (isCtrl && selection?.type === 'row' && selection.ids) {
+    if (isCtrl && selection && selection.type === 'row' && selection.ids) {
       const newIds = new Set(selection.ids);
       if (newIds.has(idx)) {
         newIds.delete(idx);
@@ -1109,8 +1322,9 @@ const TableApp = ({ data, postMessage }: { data: OutputPayload | any[], postMess
     }
   };
 
+  const EMPTY_STYLE: React.CSSProperties = {};
   const getCellSelectionStyle = (r: number, c: number, colId: string): React.CSSProperties => {
-    if (!selection) { return {}; }
+    if (!selection) { return EMPTY_STYLE; }
 
     let isSel = false;
     let minR = -1, maxR = -1, minC = -1, maxC = -1;
@@ -1147,7 +1361,7 @@ const TableApp = ({ data, postMessage }: { data: OutputPayload | any[], postMess
       }
     }
 
-    if (!isSel) { return {}; }
+    if (!isSel) { return EMPTY_STYLE; }
 
     let shadows = [];
     const color = 'var(--selection-border)';
@@ -1166,8 +1380,8 @@ const TableApp = ({ data, postMessage }: { data: OutputPayload | any[], postMess
     if (postMessage) {
       const exportColumns = visibleColumns.map(c => String(c.columnDef.header ?? c.id));
       const exportRows = tableRows.map(r =>
-        visibleColumns.map(c => {
-          const value = r.getVisibleCells().find(cell => cell.column.id === c.id)?.getValue();
+        visibleColumns.map((c, i) => {
+          const value = r.getVisibleCells()[i]?.getValue();
           return typeof value === 'object' ? JSON.stringify(value) : value;
         })
       );
@@ -1199,8 +1413,8 @@ const TableApp = ({ data, postMessage }: { data: OutputPayload | any[], postMess
     });
 
     const sqlRows = tableRows.map(r => {
-      const vals = visibleColumns.map(c => {
-        const val = r.getVisibleCells().find(cell => cell.column.id === c.id)?.getValue();
+        const vals = visibleColumns.map((c, i) => {
+          const val = r.getVisibleCells()[i]?.getValue();
         if (val === null || val === undefined) {return 'NULL';}
         if (typeof val === 'number') {return val;}
         if (typeof val === 'boolean') {return val ? 1 : 0;}
@@ -1292,8 +1506,6 @@ const TableApp = ({ data, postMessage }: { data: OutputPayload | any[], postMess
         '--selection-border': themeColor,
         '--selection-bg-dim': themeBgDim
       } as React.CSSProperties}
-      onMouseUp={onMouseUp}
-      onMouseLeave={onMouseUp}
     >
       <style>{styles}</style>
       <div className="toolbar">
@@ -1309,14 +1521,7 @@ const TableApp = ({ data, postMessage }: { data: OutputPayload | any[], postMess
           <span className="toolbar-time">
             📅 {runDate}
           </span>
-        <span className="toolbar-time" title="Color del Selector">
-          <input
-            type="color"
-            value={themeColor}
-            onChange={handleColorChange}
-            style={{ width: '14px', height: '14px', padding: 0, border: '1px solid #555', borderRadius: '2px', cursor: 'pointer', background: 'transparent' }}
-          />
-        </span>
+        <ThemeColorPicker color={themeColor} onChange={handleColorChange} />
         <div style={{flex:1}}/>
         {!isSelectNoRows && (
           <>
@@ -1349,15 +1554,18 @@ const TableApp = ({ data, postMessage }: { data: OutputPayload | any[], postMess
       <div
         ref={tableWrapperRef}
         className="table-wrapper"
+        tabIndex={-1}
         onScroll={(e) => {
-          if (shouldVirtualize) {
+          if (shouldVirtualize || shouldVirtualizeCols) {
             const currentScrollTop = e.currentTarget.scrollTop;
+            const currentScrollLeft = e.currentTarget.scrollLeft;
             if (scrollRafRef.current) {
               cancelAnimationFrame(scrollRafRef.current);
             }
 
             scrollRafRef.current = requestAnimationFrame(() => {
               setScrollTop(currentScrollTop);
+              setScrollLeft(currentScrollLeft);
             });
           }
         }}
@@ -1365,20 +1573,25 @@ const TableApp = ({ data, postMessage }: { data: OutputPayload | any[], postMess
       <table style={{ width: `calc(${table.getTotalSize()}px + var(--index-width, 45px))` }}>
           <colgroup>
             <col style={{ width: 'var(--index-width, 45px)' }} />
-            {visibleColumns.map(c => (
-              <col key={c.id} style={{ width: c.getSize() }} />
+            {leftSpacerWidth > 0 && <col style={{ width: leftSpacerWidth }} />}
+            {renderedColumnsInfo.map(cInfo => (
+              <col key={cInfo.column.id} style={{ width: cInfo.width }} />
             ))}
+            {rightSpacerWidth > 0 && <col style={{ width: rightSpacerWidth }} />}
           </colgroup>
           <thead>
             {table.getHeaderGroups().map(hg => (
               <tr key={hg.id}>
                 <th className="corner-header" onClick={handleCornerClick}>◢</th>
-                {hg.headers.map((header, colIndex) => {
-                  const customWidth = header.column.getSize();
+                {leftSpacerWidth > 0 && <th className="virtual-spacer-cell" />}
+                {renderedColumnsInfo.map(cInfo => {
+                  const header = hg.headers.find(h => h.column.id === cInfo.column.id);
+                  if (!header) {return null;}
+                  const customWidth = cInfo.width;
 
                   return (
                     <th key={header.id}
-                      className={selection?.type==='col' && selection.ids?.has(header.id) ? 'selected-bg' : ''}
+                      className={selection && selection.type === 'col' && selection.ids?.has(header.id) ? 'selected-bg' : ''}
                       style={{
                         width: customWidth,
                         minWidth: customWidth,
@@ -1474,42 +1687,78 @@ const TableApp = ({ data, postMessage }: { data: OutputPayload | any[], postMess
                   </th>
                   );
                 })}
+                {rightSpacerWidth > 0 && <th className="virtual-spacer-cell" />}
               </tr>
             ))}
           </thead>
-          <tbody>
+          <tbody
+            onMouseDown={(e) => {
+               const td = (e.target as HTMLElement).closest('td');
+               if (!td) {return;}
+               if (td.classList.contains('row-index')) {
+                   const rStr = td.getAttribute('data-row-index');
+                   if (rStr) {onRowMouseDown(parseInt(rStr, 10), e.ctrlKey || e.metaKey);}
+                   return;
+               }
+               const rStr = td.getAttribute('data-r');
+               const cStr = td.getAttribute('data-c');
+               if (rStr && cStr) {
+                  onMouseDown(parseInt(rStr, 10), parseInt(cStr, 10), e.ctrlKey || e.metaKey);
+               }
+            }}
+            onMouseOver={(e) => {
+               const td = (e.target as HTMLElement).closest('td');
+               if (!td) {return;}
+               if (td.classList.contains('row-index')) {
+                   const rStr = td.getAttribute('data-row-index');
+                   if (rStr) {onRowMouseEnter(parseInt(rStr, 10));}
+                   return;
+               }
+               const rStr = td.getAttribute('data-r');
+               const cStr = td.getAttribute('data-c');
+               if (rStr && cStr) {
+                  onMouseEnter(parseInt(rStr, 10), parseInt(cStr, 10));
+               }
+            }}
+          >
             {shouldVirtualize && topSpacerHeight > 0 && (
               <tr aria-hidden="true">
                 <td
                   className="virtual-spacer-cell"
-                  colSpan={visibleColumns.length + 1}
+                  colSpan={colSpanCount}
                   style={{ height: `${topSpacerHeight}px` }}
                 />
               </tr>
             )}
             {renderedRows.map((row, localIndex) => {
               const rIndex = shouldVirtualize ? startIndex + localIndex : localIndex;
+              const isRowSelected = selection && selection.type === 'row' && selection.ids?.has(rIndex);
+              
               return (
                 <tr key={row.id}>
-                  <td className={`row-index ${selection?.type==='row' && selection.ids?.has(rIndex)?'selected-bg':''}`}
-                      onClick={(e)=>handleRowHeaderClick(rIndex, e.ctrlKey || e.metaKey)}>{rIndex + 1}</td>
-                  {row.getVisibleCells().map((cell, cIndex) => {
-                    const customWidth = cell.column.getSize();
+                  <MemoRowIndex rIndex={rIndex} isSelected={isRowSelected} />
+                  {leftSpacerWidth > 0 && <td className="virtual-spacer-cell" />}
+                  {renderedColumnsInfo.map(cInfo => {
+                    const cell = row.getVisibleCells()[cInfo.index];
+                    if (!cell) {return null;}
+                    const customWidth = cInfo.width;
+                    const selectionStyle = getCellSelectionStyle(rIndex, cInfo.index, cell.column.id);
+                    const isEdited = editedRows[rIndex]?.[cell.column.id] !== undefined;
 
                     return (
-                      <td key={cell.id}
-                          onMouseDown={(e)=>onMouseDown(rIndex, cIndex, e.ctrlKey || e.metaKey)}
-                          onMouseEnter={()=>onMouseEnter(rIndex, cIndex)}
-                          style={{
-                             ...getCellSelectionStyle(rIndex, cIndex, cell.column.id),
-                             width: customWidth,
-                             minWidth: customWidth,
-                          }}
-                      >
-                        {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                      </td>
+                      <MemoTd
+                        key={cell.id}
+                        cell={cell}
+                        rIndex={rIndex}
+                        cIndex={cInfo.index}
+                        colId={cell.column.id}
+                        customWidth={customWidth}
+                        selectionStyle={selectionStyle}
+                        isEdited={isEdited}
+                      />
                     );
                   })}
+                  {rightSpacerWidth > 0 && <td className="virtual-spacer-cell" />}
                 </tr>
               );
             })}
@@ -1517,7 +1766,7 @@ const TableApp = ({ data, postMessage }: { data: OutputPayload | any[], postMess
               <tr aria-hidden="true">
                 <td
                   className="virtual-spacer-cell"
-                  colSpan={visibleColumns.length + 1}
+                  colSpan={colSpanCount}
                   style={{ height: `${bottomSpacerHeight}px` }}
                 />
               </tr>
