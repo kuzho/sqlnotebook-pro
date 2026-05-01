@@ -1,5 +1,23 @@
 # Change Log
 
+## [3.3.4]
+### 🧠 IntelliSense Evolution
+- **Native Data Types:** Column suggestions now display their native SQL data type (e.g., `(VARCHAR)`, `(INT)`) directly in the autocomplete list.
+- **Smart Context Awareness:** When typing `INSERT INTO` or `UPDATE`, the extension isolates the target table and strictly prioritizes its columns.
+- **CTE Recognition:** Real-time detection of `WITH` clauses! CTEs are now instantly suggested as temporary tables.
+- **Standalone Aliases:** If you alias a table (`FROM Users u`), the engine now suggests the standalone letter `u` as a variable.
+
+### ✨ SQL Formatter Polish
+- **T-SQL Indentation:** Fixed a critical bug where `BEGIN TRAN` or inline `CASE` statements would break the hierarchical indentation of the entire file. The parser now uses a robust AST tokenizer.
+- **Subquery Safety:** Fixed an issue where the formatter would accidentally inject commas into `IN (SELECT ...)` subqueries, breaking the syntax.
+- **Resilient Parsing:** The formatter now correctly handles `INSERT INTO` column lists even if column names contain parentheses (e.g., `[Col(2)]`).
+
+### 🐛 Bug Fixes & UI Cleanup
+- **MSSQL 1000-Row Limit Fixed:** The `📝 Export SQL` button now automatically chunks massive exports into batches of 900 rows, preventing SQL Server syntax errors.
+- **Empty String Edits:** You can now successfully save empty strings (`""`) when editing cells in the grid (previously forced to `NULL`).
+- **Bracket & Backtick Support:** Fixed a parser bug where semicolons inside table names like `[My;Table]` or `` `My;Table` `` would incorrectly split the query execution.
+- **Minimalist UI:** Removed the redundant "optimized view" badge and the aggressive yellow "Large result" warning from the grid to provide a cleaner, distraction-free interface.
+
 ## [3.3.3]
 ### ⚡ Performance & Core Engine
 - **Zero-Lag Interactive Grid:** Completely rewrote the grid's event engine using Event Delegation and Cell-level Memoization (`React.memo`). The table now effortlessly handles hundreds of columns and thousands of rows with zero CPU spikes or UI lag when hovering or selecting data.

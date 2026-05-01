@@ -265,8 +265,9 @@ export class SQLNotebookKernel {
           }
         });
 
+        const strippedBatch = batch.replace(/--.*/g, '').replace(/\/\*[\s\S]*?\*\//g, '').replace(/'[^']*'/g, '').replace(/"[^"]*"/g, '');
+
         if (safeDelete) {
-           const strippedBatch = batch.replace(/--.*/g, '').replace(/\/\*[\s\S]*?\*\//g, '').replace(/'[^']*'/g, '').replace(/"[^"]*"/g, '');
            const isDelete = /\bDELETE\b/i.test(strippedBatch);
            const isUpdate = /\bUPDATE\b/i.test(strippedBatch);
            if ((isDelete || isUpdate) && !/\bWHERE\b/i.test(strippedBatch)) {
@@ -289,7 +290,7 @@ export class SQLNotebookKernel {
         try {
           result = await conn.query(batch);
 
-          if (/\b(CREATE|ALTER|DROP|TRUNCATE)\b/i.test(batch)) {
+          if (/\b(CREATE|ALTER|DROP|TRUNCATE)\b/i.test(strippedBatch)) {
             this.schemaCache = null;
           }
         } finally {

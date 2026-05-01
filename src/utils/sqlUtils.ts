@@ -17,24 +17,25 @@ function wrapSqlList(prefix: string, content: string, safeRegex: RegExp, prefixL
   const effectivePrefixLen = prefixLengthOverride !== undefined ? prefixLengthOverride : (prefix ? prefix.length + 1 : 0);
 
   for (const part of parts) {
-    const lineLen = currentLine.length + part.length + (isFirstLine ? effectivePrefixLen : 0);
-    if (lineLen > 100 || part.includes('\n')) {
+    const cleanPart = part.trimStart();
+    const lineLen = currentLine.length + cleanPart.length + (isFirstLine ? effectivePrefixLen : 0);
+    if (lineLen > 100 || cleanPart.includes('\n')) {
       if (currentLine) {
-        lines.push(currentLine);
-        currentLine = '\t' + part.trimStart();
+        lines.push(currentLine.replace(/\r?\n$/, ''));
+        currentLine = '\t' + cleanPart;
         isFirstLine = false;
       } else {
-        currentLine = part.trimStart();
+        currentLine = cleanPart;
       }
     } else {
       if (currentLine) {
-        currentLine += ' ' + part.trimStart();
+        currentLine += ' ' + cleanPart;
       } else {
-        currentLine = part.trimStart();
+        currentLine = cleanPart;
       }
     }
   }
-  if (currentLine) { lines.push(currentLine); }
+  if (currentLine) { lines.push(currentLine.replace(/\r?\n$/, '')); }
   return prefix ? `${prefix} ${lines.join('\n')}` : lines.join('\n');
 }
 
@@ -53,7 +54,7 @@ export function compactFormattedSql(sql: string, language: string): string {
   sql = sql.replace(/\bOVER\s*\([\s\S]*?\)/gi, match => match.replace(/\s+/g, ' '));
 
   sql = sql.replace(/\bINSERT\s+INTO\s*\n\s*/gi, 'INSERT INTO ');
-  sql = sql.replace(/\b(INSERT\s+INTO\s+[a-zA-Z0-9_\[\]"`'.]+)\s*\(([^)]+)\)/gi, (match, prefix, inner) => {
+  sql = sql.replace(/\b(INSERT\s+INTO\s+[a-zA-Z0-9_\[\]"`'.]+)\s*\(([\s\S]*?)\)\s*(?=\bVALUES\b|\bSELECT\b|\bOUTPUT\b|;|$)/gi, (match, prefix, inner) => {
     if (inner.match(/\bSELECT\b/i)) { return match; }
     const wrapped = wrapSqlList('', inner, /,\s*\n?\s*/g, prefix.length + 2).trimEnd();
     if (wrapped.includes('--')) {
@@ -97,7 +98,7 @@ export function compactFormattedSql(sql: string, language: string): string {
       const closes = (stripped.match(/\)/g) || []).length;
       if (opens !== closes) { return match; }
 
-      if (/\b(SELECT|FROM|JOIN|WHERE|GROUP BY|ORDER BY|HAVING|INSERT|UPDATE|DELETE)\b/i.test(inner)) { return match; }
+      if (/\b(GROUP BY|ORDER BY|HAVING|INSERT|UPDATE|DELETE)\b/i.test(inner)) { return match; }
 
       const compacted = inner.replace(/\s*\n\s*/g, ' ').trim();
       if (compacted.length <= 150) { return `(${compacted})`; }
@@ -128,7 +129,8 @@ export function compactFormattedSql(sql: string, language: string): string {
     sql = sql.replace(/\bOPTION\s*\n?\s*\(([^)]+)\)/gi, (_m, inner) => `OPTION (${inner.replace(/\s+/g, ' ').trim()})`);
   }
 
-  sql = sql.replace(/\bIN\s*\(\s*\n([\s\S]*?)\s*\)/gi, (_m, inner) => {
+  sql = sql.replace(/\bIN\s*\(\s*\n([^()]+)\s*\)/gi, (_m, inner) => {
+    if (/\bSELECT\b/i.test(inner)) { return _m; }
     const items = inner.split('\n').map((s: string) => s.trim().replace(/,+$/, '')).filter(Boolean).join(', ');
     if (items.length < 100) {return `IN (${items})`;}
     return _m;
@@ -212,29 +214,35 @@ function reindentTsqlByContext(sql: string): string {
 
     const leading = rawLine.match(/^\s*/)?.[0] || '';
     const existingLevel = (leading.match(/\t/g) || []).length + Math.floor((leading.match(/ /g) || []).length / 2);
-    const contextLevel = stack.filter(x => x === 'BEGIN').length;
 
-    if (/^END\b/i.test(trimmed)) {
-      if (stack.length > 0) {
-        stack.pop();
-      }
-      const levelAfterPop = stack.filter(x => x === 'BEGIN').length;
-      output.push(`${makeIndent(levelAfterPop + existingLevel)}${trimmed}`);
-      if (/^END\s+ELSE\s+BEGIN$/i.test(trimmed)) {
-        stack.push('BEGIN');
-      }
-      continue;
+    const safeLine = trimmed.replace(/N?'[^']*'/g, '').replace(/--.*/g, '').replace(/\/\*[\s\S]*?\*\//g, '').replace(/\[[^\]]*\]/g, '');
+    const isEndLine = /^END\b/i.test(trimmed);
+
+    if (isEndLine && stack.length > 0) {
+      stack.pop();
     }
 
+    const contextLevel = stack.filter(x => x === 'BEGIN').length;
     output.push(`${makeIndent(contextLevel + existingLevel)}${trimmed}`);
 
-    if (/^IF\b[\s\S]*\bBEGIN$/i.test(trimmed) || /^BEGIN$/i.test(trimmed) || /^ELSE\s+BEGIN$/i.test(trimmed)) {
-      stack.push('BEGIN');
-    } else if (/^CASE\b/i.test(trimmed)) {
-      stack.push('CASE');
+    let beginCount = (safeLine.match(/\bBEGIN\b(?!\s+(?:TRAN|TRANSACTION|DIALOG)\b)/gi) || []).length;
+    const caseCount = (safeLine.match(/\bCASE\b/gi) || []).length;
+    let endCount = (safeLine.match(/\bEND\b/gi) || []).length;
+
+    if (isEndLine) {
+      endCount = Math.max(0, endCount - 1);
+      if (/^END\s+ELSE\s+BEGIN\b/i.test(trimmed)) {
+        stack.push('BEGIN');
+        beginCount = Math.max(0, beginCount - 1);
+      }
+    }
+
+    for (let i = 0; i < beginCount; i++) {stack.push('BEGIN');}
+    for (let i = 0; i < caseCount; i++) {stack.push('CASE');}
+    for (let i = 0; i < endCount; i++) {
+      if (stack.length > 0) {stack.pop();}
     }
   }
-
   return output.join('\n').replace(/\n{3,}/g, '\n\n').trim();
 }
 

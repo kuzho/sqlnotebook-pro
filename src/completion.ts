@@ -8,17 +8,19 @@ const SQL_KEYWORDS = [
   'CREATE', 'TABLE', 'DROP', 'ALTER', 'INDEX', 'VIEW',
   'JOIN', 'INNER JOIN', 'LEFT JOIN', 'RIGHT JOIN', 'FULL OUTER JOIN', 'ON',
   'GROUP BY', 'ORDER BY', 'HAVING', 'LIMIT', 'OFFSET', 'DISTINCT',
-  'AND', 'OR', 'NOT', 'NULL', 'IS', 'IN', 'BETWEEN', 'LIKE', 'AS', 'CASE', 'WHEN', 'THEN', 'ELSE', 'END',
-  'COUNT', 'SUM', 'AVG', 'MIN', 'MAX', 'CAST', 'CONVERT'
+  'AND', 'OR', 'NOT', 'NULL', 'IS', 'IN', 'BETWEEN', 'LIKE', 'AS', 'CASE', 'WHEN', 'THEN', 'ELSE', 'END', 'COALESCE', 'NULLIF',
+  'COUNT', 'SUM', 'AVG', 'MIN', 'MAX', 'CAST', 'CONVERT', 'ROW_NUMBER', 'RANK', 'DENSE_RANK', 'OVER', 'PARTITION BY'
 ];
 
 const CONTEXT_KEYWORDS: Record<QueryContext, string[]> = {
-  select: ['SELECT', 'DISTINCT', 'AS', 'CASE', 'WHEN', 'THEN', 'ELSE', 'END'],
-  from: ['FROM', 'JOIN', 'INNER JOIN', 'LEFT JOIN', 'RIGHT JOIN', 'FULL OUTER JOIN', 'ON'],
+  select: ['SELECT', 'DISTINCT', 'AS', 'CASE', 'WHEN', 'THEN', 'ELSE', 'END', 'COALESCE', 'NULLIF'],
+  from: ['FROM', 'JOIN', 'INNER JOIN', 'LEFT JOIN', 'RIGHT JOIN', 'FULL OUTER JOIN', 'CROSS JOIN', 'ON'],
   where: ['WHERE', 'AND', 'OR', 'NOT', 'NULL', 'IS', 'IN', 'BETWEEN', 'LIKE', 'EXISTS', 'NOT EXISTS'],
   order: ['ORDER BY', 'ASC', 'DESC'],
   group: ['GROUP BY', 'HAVING'],
-  join: ['JOIN', 'INNER JOIN', 'LEFT JOIN', 'RIGHT JOIN', 'FULL OUTER JOIN', 'ON'],
+  join: ['JOIN', 'INNER JOIN', 'LEFT JOIN', 'RIGHT JOIN', 'FULL OUTER JOIN', 'CROSS JOIN', 'ON'],
+  insert: ['INTO', 'VALUES'],
+  update: ['SET', 'WHERE'],
   unknown: []
 };
 
@@ -38,7 +40,7 @@ const DRIVER_FUNCTIONS: Record<string, string[]> = {
   trino: ['date_diff', 'date_add', 'date_trunc', 'format_datetime', 'json_extract', 'json_format', 'try_cast']
 };
 
-type QueryContext = 'select' | 'from' | 'where' | 'join' | 'order' | 'group' | 'unknown';
+type QueryContext = 'select' | 'from' | 'where' | 'join' | 'order' | 'group' | 'insert' | 'update' | 'unknown';
 
 export class SqlCompletionItemProvider implements vscode.CompletionItemProvider {
   private consolidatedSchema: Map<string, TableSchema[]> = new Map();
@@ -113,14 +115,14 @@ export class SqlCompletionItemProvider implements vscode.CompletionItemProvider 
     const token = value.toUpperCase();
     const keywords = new Set([
       'SELECT', 'FROM', 'WHERE', 'JOIN', 'INNER', 'LEFT', 'RIGHT', 'FULL', 'ON', 'GROUP', 'ORDER',
-      'HAVING', 'LIMIT', 'OFFSET', 'UNION', 'EXCEPT', 'INTERSECT'
+      'HAVING', 'LIMIT', 'OFFSET', 'UNION', 'EXCEPT', 'INTERSECT', 'SET', 'INTO', 'VALUES', 'WITH'
     ]);
     return keywords.has(token);
   }
 
   private buildAliasMap(text: string, includeImplicit = false): Map<string, string> {
     const aliasMap = new Map<string, string>();
-    const regex = /\b(from|join)\s+([^\s,]+)(?:\s+as)?(?:\s+([a-zA-Z_][\w]*))?/gi;
+    const regex = /\b(from|join|update)\s+([^\s,\(]+)(?:\s+as)?(?:\s+([a-zA-Z_][\w]*))?/gi;
     let match: RegExpExecArray | null;
     while ((match = regex.exec(text)) !== null) {
       const tableToken = this.normalizeTableForLookup(match[2]);
@@ -137,13 +139,27 @@ export class SqlCompletionItemProvider implements vscode.CompletionItemProvider 
 
   private getTablesInQuery(text: string): Set<string> {
     const tables = new Set<string>();
-    const regex = /\b(from|join)\s+([^\s,;]+)/gi;
+    const regex = /\b(from|join|update)\s+([^\s,\(;]+)/gi;
     let match: RegExpExecArray | null;
     while ((match = regex.exec(text)) !== null) {
       const tableToken = this.normalizeTableForLookup(match[2]);
       tables.add(tableToken);
     }
     return tables;
+  }
+
+  private getCTEs(text: string): Set<string> {
+    const ctes = new Set<string>();
+    const regex = /\bWITH\s+([a-zA-Z_][\w]*)\s+AS/gi;
+    let match;
+    while ((match = regex.exec(text)) !== null) {
+      ctes.add(match[1]);
+    }
+    const regexChained = /,\s*([a-zA-Z_][\w]*)\s+AS\s*\(/gi;
+    while ((match = regexChained.exec(text)) !== null) {
+      ctes.add(match[1]);
+    }
+    return ctes;
   }
 
   private getForeignKeys(): ForeignKey[] {
@@ -231,7 +247,7 @@ export class SqlCompletionItemProvider implements vscode.CompletionItemProvider 
   }
 
   private getQueryContext(textBefore: string): QueryContext {
-    const clauses = textBefore.match(/\b(SELECT|FROM|WHERE|JOIN|INNER\s+JOIN|LEFT\s+JOIN|RIGHT\s+JOIN|ORDER\s+BY|GROUP\s+BY|HAVING)\b(?=[^;]*$)/gi);
+    const clauses = textBefore.match(/\b(SELECT|FROM|WHERE|JOIN|INNER\s+JOIN|LEFT\s+JOIN|RIGHT\s+JOIN|FULL\s+OUTER\s+JOIN|ORDER\s+BY|GROUP\s+BY|HAVING|INSERT\s+INTO|UPDATE|SET|VALUES)\b(?=[^;]*$)/gi);
 
     if (!clauses || clauses.length === 0) {
       return 'unknown';
@@ -253,6 +269,12 @@ export class SqlCompletionItemProvider implements vscode.CompletionItemProvider 
     }
     if (lastClause === 'GROUP BY') {
       return 'group';
+    }
+    if (lastClause === 'INSERT INTO' || lastClause === 'VALUES') {
+      return 'insert';
+    }
+    if (lastClause === 'UPDATE' || lastClause === 'SET') {
+      return 'update';
     }
 
     return 'unknown';
@@ -413,6 +435,9 @@ export class SqlCompletionItemProvider implements vscode.CompletionItemProvider 
 
     const aliasMap = this.buildAliasMap(textBefore);
     const tablesInQuery = this.getTablesInQuery(textBefore);
+    
+    const ctes = this.getCTEs(textBefore);
+    ctes.forEach(c => tablesInQuery.add(c));
 
     const identifierMatch = lineText.match(/([\w\[\]"`\.]+)$/);
     const rawIdentifier = (identifierMatch?.[1] || '').trim();
@@ -424,7 +449,15 @@ export class SqlCompletionItemProvider implements vscode.CompletionItemProvider 
           position
         )
       : undefined;
-    const allTables = this.getAllTables(queryContext, currentIdentifier, tableReplaceRange, tablesInQuery);
+
+    const cteItems = Array.from(ctes).map(cte => {
+      const item = new vscode.CompletionItem(cte, vscode.CompletionItemKind.Class);
+      item.detail = 'CTE (Temporary Table)';
+      item.sortText = `05_${cte}`;
+      item.insertText = cte;
+      return item;
+    });
+    const allTables = [...cteItems, ...this.getAllTables(queryContext, currentIdentifier, tableReplaceRange, tablesInQuery)];
     const allColumns = this.getAllColumns(queryContext);
     const scopedColumns = tablesInQuery.size > 0
       ? this.getColumnsForTables(Array.from(tablesInQuery))
@@ -440,6 +473,18 @@ export class SqlCompletionItemProvider implements vscode.CompletionItemProvider 
     );
     const keywordItems = this.getKeywordItems(driver, queryContext);
     const snippets = this.getSnippets(queryContext, driver);
+
+    if (queryContext === 'insert' || queryContext === 'update') {
+      const targetMatch = textBefore.match(/\b(?:INSERT\s+INTO|UPDATE)\s+([^\s\(\)]+)/i);
+      let targetColumns: vscode.CompletionItem[] = [];
+      if (targetMatch) {
+         const targetTable = this.normalizeTableForLookup(targetMatch[1]);
+         targetColumns = this.getColumnsForTable(targetTable);
+         this.setSortPrefix(targetColumns, '10');
+      }
+      this.setSortPrefix(keywordItems, '80');
+      return this.dedupeByLabel([...snippets, ...targetColumns, ...allColumns, ...keywordItems]);
+    }
 
     const orderedKeywords = queryContext === 'order'
       ? this.prioritizeOrderByKeywords(keywordItems, textBefore)
@@ -460,12 +505,20 @@ export class SqlCompletionItemProvider implements vscode.CompletionItemProvider 
       return this.dedupeByLabel([...snippets, ...joinClauseSnippets, ...allTables, ...keywordItems]);
     }
 
+    const standaloneAliasItems = Array.from(aliasMap.keys()).map(alias => {
+      const item = new vscode.CompletionItem(alias, vscode.CompletionItemKind.Variable);
+      item.detail = `Alias for ${aliasMap.get(alias)}`;
+      item.sortText = `05_${alias}`;
+      return item;
+    });
+
     if (queryContext === 'select' || queryContext === 'where' || queryContext === 'order' || queryContext === 'group') {
       // SELECT/WHERE style ranking: alias token -> alias columns -> scoped columns -> keywords.
       const columns = scopedColumns.length > 0 ? scopedColumns : allColumns;
       const qualifiedColumns = aliasMap.size > 0 ? this.getQualifiedColumnsForAliases(aliasMap) : [];
 
       this.setSortPrefix(snippets, '00');
+      this.setSortPrefix(standaloneAliasItems, '05');
       this.setSortPrefix(aliasItems, '10');
       this.setSortPrefix(qualifiedColumns, '20');
       this.setSortPrefix(columns, '30');
@@ -477,6 +530,7 @@ export class SqlCompletionItemProvider implements vscode.CompletionItemProvider 
 
       return this.dedupeByLabel([
         ...snippets,
+        ...standaloneAliasItems,
         ...aliasItems,
         ...qualifiedColumns,
         ...columns,
@@ -494,7 +548,7 @@ export class SqlCompletionItemProvider implements vscode.CompletionItemProvider 
   }
 
   private getColumnsForTables(tables: string[]): vscode.CompletionItem[] {
-    const columnsByName = new Map<string, { tables: Set<string>; count: number }>();
+    const columnsByName = new Map<string, { tables: Set<string>; count: number; typeStr: string }>();
 
     for (const tableName of tables) {
       const lookupName = this.normalizeTableForLookup(tableName);
@@ -506,7 +560,7 @@ export class SqlCompletionItemProvider implements vscode.CompletionItemProvider 
 
         table.columns.forEach(col => {
           if (!columnsByName.has(col)) {
-            columnsByName.set(col, { tables: new Set(), count: 0 });
+            columnsByName.set(col, { tables: new Set(), count: 0, typeStr: '' });
           }
           const info = columnsByName.get(col)!;
           info.tables.add(table.table);
@@ -537,11 +591,21 @@ export class SqlCompletionItemProvider implements vscode.CompletionItemProvider 
 
     for (const [alias, table] of aliasMap) {
       const columns = this.getColumnsForTable(table);
+      let colTypes: Record<string, string> = {};
+      for (const [, schema] of this.consolidatedSchema) {
+         const lookup = schema.find(t => t.table.toLowerCase() === this.normalizeTableForLookup(table).toLowerCase());
+         if (lookup && lookup.columnTypes) {
+           colTypes = lookup.columnTypes;
+           break;
+         }
+      }
+
       columns.forEach(colItem => {
         const colName = colItem.label.toString();
+        const typeDisplay = colTypes[colName] ? ` (${colTypes[colName]})` : '';
         const qualified = `${alias}.${colName}`;
         const item = new vscode.CompletionItem(qualified, vscode.CompletionItemKind.Field);
-        item.detail = `Column of ${table}`;
+        item.detail = `Column of ${table}${typeDisplay}`;
         item.sortText = `0_${qualified}`;
         item.insertText = qualified;
         items.push(item);
@@ -642,12 +706,14 @@ export class SqlCompletionItemProvider implements vscode.CompletionItemProvider 
     const lookupName = this.normalizeTableForLookup(tableName);
     let foundColumns: string[] | undefined;
     let sourceTable = lookupName;
+    let columnTypes: Record<string, string> | undefined;
 
     for (const [kernelId, schema] of this.consolidatedSchema) {
       const table = schema.find(t => t.table.toLowerCase() === lookupName.toLowerCase());
       if (table) {
         foundColumns = table.columns;
         sourceTable = table.table;
+        columnTypes = table.columnTypes;
         break;
       }
     }
@@ -658,7 +724,8 @@ export class SqlCompletionItemProvider implements vscode.CompletionItemProvider 
 
     return foundColumns.map(col => {
       const item = new vscode.CompletionItem(col, vscode.CompletionItemKind.Field);
-      item.detail = `Column of ${sourceTable}`;
+        const typeStr = columnTypes?.[col] ? ` (${columnTypes[col]})` : '';
+        item.detail = `Column of ${sourceTable}${typeStr}`;
       item.sortText = `0_${col}`;
       return item;
     });
@@ -738,7 +805,7 @@ export class SqlCompletionItemProvider implements vscode.CompletionItemProvider 
   }
 
   private getAllColumns(context: QueryContext): vscode.CompletionItem[] {
-    const columnMap = new Map<string, Set<string>>();
+    const columnMap = new Map<string, { tables: Set<string>; typeStr: string }>();
 
     const prioritizeColumns = context === 'select' || context === 'where' || context === 'order' || context === 'group';
 
@@ -746,20 +813,23 @@ export class SqlCompletionItemProvider implements vscode.CompletionItemProvider 
       schema.forEach(t => {
         t.columns.forEach(col => {
           if (!columnMap.has(col)) {
-            columnMap.set(col, new Set());
+            columnMap.set(col, { tables: new Set(), typeStr: '' });
           }
-          columnMap.get(col)?.add(t.table);
+          const info = columnMap.get(col)!;
+          info.tables.add(t.table);
+          if (t.columnTypes?.[col] && !info.typeStr) {info.typeStr = t.columnTypes[col];}
         });
       });
     }
 
     const allColumns: vscode.CompletionItem[] = [];
-    columnMap.forEach((tables, colName) => {
+    columnMap.forEach((info, colName) => {
       const item = new vscode.CompletionItem(colName, vscode.CompletionItemKind.Field);
-      const tableList = Array.from(tables).slice(0, 3).join(', ');
-      const moreCount = tables.size > 3 ? ` (+${tables.size - 3} more)` : '';
+      const tableList = Array.from(info.tables).slice(0, 3).join(', ');
+      const moreCount = info.tables.size > 3 ? ` (+${info.tables.size - 3} more)` : '';
+      const typeDisplay = info.typeStr ? ` (${info.typeStr})` : '';
 
-      item.detail = `Column in: ${tableList}${moreCount}`;
+      item.detail = `Column in: ${tableList}${moreCount}${typeDisplay}`;
       item.sortText = prioritizeColumns ? `0_${colName}` : `9_${colName}`;
       item.insertText = colName;
 

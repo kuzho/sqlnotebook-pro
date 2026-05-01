@@ -50,12 +50,12 @@ WHERE (@Country = '' OR country_code = @Country)
 
 ### 3. Interactive Data Grid (Excel-Style)
 Filter, sort, and analyze your data without writing extra queries.
-* **Elastic Layout:** The grid auto-expands horizontally to fit your data.
+* **Column Resizing:** Drag column headers to resize them. **Double-click** the edge to auto-fit to content.
 * **Filtering:** Use the funnel icon to search, select, or exclude specific values.
 * **Multi-Select:** Hold **Ctrl/Cmd** to select multiple columns, rows, or cell ranges at once.
-  * Select multiple columns by Ctrl+clicking headers
-  * Select multiple rows by Ctrl+clicking row numbers
-  * Select multiple cell ranges by Ctrl+dragging in different areas
+  * Select multiple columns by Ctrl+clicking headers.
+  * Select multiple rows by clicking and dragging on the row numbers.
+  * Select multiple cell ranges by Ctrl+dragging in different areas.
 
 <br>
 <div align="center">
@@ -125,9 +125,11 @@ For the best visual experience (matching the look & feel of Azure Data Studio), 
 ## 🚀 What's in the Box
 - **🧠 Intellisense:** Schema-aware autocomplete for tables, columns, and SQL keywords across all your connections.
 - **🎛️ Parameters Panel:** Define `@Name` variables (text, dropdown, date, or checkbox) from the sidebar. Mark them as **Required** for automatic pre-execution validation. Values are substituted at run time and can be saved per file.
-- **📊 Interactive Grid:** Filter, sort, and multi-select (Ctrl+Click) columns, rows, and cell ranges. Export to Excel/XLSX or CSV with one click.
-- **🖼️ Embedded Images:** Images pasted into markdown cells are stored as notebook attachments and rendered inline — no external files needed.
+- **� Interactive Grid:** Filter, sort, resize columns (double-click to auto-fit), and multi-select (Ctrl+Click or drag) columns, rows, and cell ranges. Export to Excel/XLSX or CSV with one click.
+- **�️ Embedded Images:** Images pasted into markdown cells are stored as notebook attachments and rendered inline — no external files needed.
 - **📋 JSON Formatting:** Query results containing JSON strings are automatically pretty-printed.
+- **🛑 Query Cancellation:** Stop long-running queries instantly without restarting the kernel.
+- **🎨 Customizable UI:** The grid automatically adapts to your VS Code theme, and you can pick your own selection color right from the toolbar.
 - **🔌 Connection Groups:** Organize connections by environment or project. Edit host/user/port without re-entering passwords. Auto-fills default ports per driver.
 - **🔒 Secure Credentials:** Passwords stored in the OS keychain via VS Code Secret Storage, never in plain text.
 - **🛡️ Safe Execution:** Built-in protection automatically blocks `DELETE` and `UPDATE` statements missing a `WHERE` clause, preventing accidental data wipes.
@@ -223,10 +225,11 @@ Tip:
 
 You can customize the extension in VS Code Settings:
 
-* **SQL Notebook: Max Result Rows:** (Default: 100) Limits the initial rows rendered for performance.
+* **SQL Notebook: Max Result Rows:** (Default: 10000) Limits the rows returned from the database to prevent UI freezes on massive queries.
+* **SQL Notebook: Query Timeout:** (Default: 60) Cancels queries that take too long, in seconds.
 * **SQL Notebook: Open After Export:** (Default: true) Automatically opens the Excel/CSV file after exporting.
 * **SQL Notebook: Safe Delete:** (Default: true) Prevent execution of DELETE and UPDATE statements without a WHERE clause.
-* **SQL Notebook: Query Timeout:** (Default: 30000ms) Cancels queries that take too long.
+* **SQL Notebook: Badge Keywords (Danger, Warning, etc.):** Five settings to customize the keywords that trigger automatic cell highlighting badges (e.g., making cells with "Failed" appear red).
 
 ## FAQ
 

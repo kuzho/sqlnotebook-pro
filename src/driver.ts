@@ -655,6 +655,8 @@ function splitSqlStatements(sql: string): string[] {
   let current = '';
   let inSingle = false;
   let inDouble = false;
+  let inBracket = false;
+  let inBacktick = false;
   let inLineComment = false;
   let inBlockComment = false;
 
@@ -678,7 +680,7 @@ function splitSqlStatements(sql: string): string[] {
       continue;
     }
 
-    if (!inSingle && !inDouble) {
+    if (!inSingle && !inDouble && !inBracket && !inBacktick) {
       if (ch === '-' && next === '-') {
         inLineComment = true;
         i++;
@@ -691,7 +693,7 @@ function splitSqlStatements(sql: string): string[] {
       }
     }
 
-    if (!inDouble && ch === "'") {
+    if (!inDouble && !inBracket && !inBacktick && ch === "'") {
       if (inSingle && next === "'") {
         current += "''";
         i++;
@@ -702,13 +704,28 @@ function splitSqlStatements(sql: string): string[] {
       continue;
     }
 
-    if (!inSingle && ch === '"') {
+    if (!inSingle && !inBracket && !inBacktick && ch === '"') {
       inDouble = !inDouble;
       current += ch;
       continue;
     }
 
-    if (ch === ';' && !inSingle && !inDouble) {
+    if (!inSingle && !inDouble && !inBacktick && ch === '[') {
+      inBracket = true;
+      current += ch;
+      continue;
+    } else if (!inSingle && !inDouble && !inBacktick && inBracket && ch === ']') {
+      inBracket = false;
+      current += ch;
+      continue;
+    }
+    if (!inSingle && !inDouble && !inBracket && ch === '`') {
+      inBacktick = !inBacktick;
+      current += ch;
+      continue;
+    }
+
+    if (ch === ';' && !inSingle && !inDouble && !inBracket && !inBacktick) {
       const trimmed = current.trim();
       if (trimmed.length > 0) {
         statements.push(trimmed);

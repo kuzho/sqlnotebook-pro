@@ -7,7 +7,7 @@
   "repository": {
     "url": "https://github.com/kuzho/sqlnotebook-pro.git"
   },
-  "version": "3.3.3",
+  "version": "3.3.4",
   "preview": false,
   "engines": {
     "vscode": "^1.94.0",

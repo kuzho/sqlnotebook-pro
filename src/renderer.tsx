@@ -277,15 +277,6 @@ const styles = `
   .btn-secondary { background: #3c3c3c; color: white; border: 1px solid transparent; padding: 4px 12px; border-radius: 2px; cursor: pointer; }
   .btn-secondary:hover { background: #454545; }
 
-  .toolbar-badge {
-    font-size: 10px;
-    color: #9cdcfe;
-    background: rgba(0, 120, 212, 0.15);
-    border: 1px solid rgba(0, 120, 212, 0.35);
-    border-radius: 999px;
-    padding: 1px 6px;
-  }
-
   .dataset-warning {
     padding: 6px 8px;
     font-size: 11px;
@@ -1424,7 +1415,14 @@ const TableApp = ({ data, postMessage }: { data: OutputPayload | any[], postMess
       return `  (${vals.join(', ')})`;
     });
 
-    const sql = `-- Exported from SQL Notebook Pro\nINSERT INTO ${tableName} (${exportColumns.join(', ')})\nVALUES\n${sqlRows.join(',\n')};`;
+    const chunkSize = 900;
+    const chunks: string[] = [];
+    for (let i = 0; i < sqlRows.length; i += chunkSize) {
+      const chunk = sqlRows.slice(i, i + chunkSize);
+      chunks.push(`INSERT INTO ${tableName} (${exportColumns.join(', ')})\nVALUES\n${chunk.join(',\n')};`);
+    }
+
+    const sql = `-- Exported from SQL Notebook Pro\n${chunks.join('\n\n')}`;
 
     if (postMessage) {
       postMessage({ type: 'export_sql', payload: { sql } });
@@ -1454,7 +1452,7 @@ const TableApp = ({ data, postMessage }: { data: OutputPayload | any[], postMess
         if (pkValue === undefined) { return; }
 
         const setClauses = Object.entries(changes).map(([colId, val]) => {
-            const safeVal = val === null || val === '' ? 'NULL' : `'${String(val).replace(/'/g, "''")}'`;
+            const safeVal = val === null || val === undefined ? 'NULL' : `'${String(val).replace(/'/g, "''")}'`;
             const colDef = columns.find((c: any) => c.id === colId) as any;
             const colName = String(colDef ? (colDef.header ?? colId) : colId);
             const safeCol = colName.match(/^[a-zA-Z0-9_]+$/) ? colName : `[${colName}]`;
@@ -1514,7 +1512,6 @@ const TableApp = ({ data, postMessage }: { data: OutputPayload | any[], postMess
             ? `${tableRows.length.toLocaleString()} rows shown of ${totalRowsFromBackend.toLocaleString()} total`
             : `${tableRows.length.toLocaleString()} rows`}
         </span>
-        {shouldVirtualize && <span className="toolbar-badge">⚡ optimized view</span>}
         <span className="toolbar-time">
            🕒 {runTime}
         </span>
@@ -1543,11 +1540,9 @@ const TableApp = ({ data, postMessage }: { data: OutputPayload | any[], postMess
         )}
       </div>
 
-      {(shouldVirtualize || isTruncated) && !isSelectNoRows && (
+      {isTruncated && !isSelectNoRows && (
         <div className="dataset-warning">
-          {isTruncated
-            ? `This notebook is limited to ${tableRows.length.toLocaleString()} rows by the "SQL Notebook: Max Result Rows" setting. The query returned ${totalRowsFromBackend.toLocaleString()} rows. Increase that setting to view more rows here.`
-            : 'Large result detected. Only the visible rows are rendered while you scroll to avoid UI freezes.'}
+          {`This notebook is limited to ${tableRows.length.toLocaleString()} rows by the "SQL Notebook: Max Result Rows" setting. The query returned ${totalRowsFromBackend.toLocaleString()} rows. Increase that setting to view more rows here.`}
         </div>
       )}
 
