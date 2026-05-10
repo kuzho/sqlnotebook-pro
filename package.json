@@ -7,7 +7,7 @@
   "repository": {
     "url": "https://github.com/kuzho/sqlnotebook-pro.git"
   },
-  "version": "3.3.4",
+  "version": "3.3.5",
   "preview": false,
   "engines": {
     "vscode": "^1.94.0",
@@ -51,6 +51,15 @@
           "application/vnd.code-sql-notebook.table+json"
         ],
         "requiresMessaging": "optional"
+      }
+    ],
+    "chatParticipants": [
+      {
+        "id": "sqlnotebook.aiAssistant",
+        "fullName": "SQL Assistant",
+        "name": "sql",
+        "description": "AI Assistant for SQL Notebook Pro that knows your database schema.",
+        "isSticky": true
       }
     ],
     "menus": {
@@ -260,6 +269,12 @@
           "type": "string",
           "default": "🔵, processing, running, en progreso, in progress, en proceso, started, iniciado, cargando, loading",
           "description": "Comma-separated keywords to automatically highlight a cell in Blue (Processing)."
+        },
+        "sqlnotebook.ai.executionMode": {
+          "type": "string",
+          "enum": ["manual", "strict", "free"],
+          "default": "manual",
+          "markdownDescription": "AI execution permissions.\n- **manual**: Inserts the code into a cell.\n- **strict**: Automatically executes only SELECT statements.\n- **free**: Executes any generated query."
         }
       }
     },

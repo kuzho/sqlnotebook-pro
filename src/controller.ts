@@ -80,6 +80,17 @@ export class KernelManager {
     return undefined;
   }
 
+  public getKernelForNotebook(notebook: vscode.NotebookDocument | undefined): SQLNotebookKernel | undefined {
+    if (!notebook) { return undefined; }
+    const uri = notebook.uri.toString();
+    const kernel = this.selectedKernelByNotebook.get(uri);
+    if (kernel) { return kernel; }
+    if (this.controllers.size === 1) {
+      return [...this.controllers.values()][0];
+    }
+    return undefined;
+  }
+
   public async runBackgroundQuery(notebookUri: string, sql: string): Promise<void> {
     const kernel = this.selectedKernelByNotebook.get(notebookUri);
     if (kernel) {
@@ -319,6 +330,15 @@ export class SQLNotebookKernel {
     const tableMatch = query.match(/\bFROM\s+([#\w.\[\]"`]+)/i) || query.match(/\bUPDATE\s+([#\w.\[\]"`]+)/i) || query.match(/\bINSERT\s+INTO\s+([#\w.\[\]"`]+)/i);
     const tableName = tableMatch ? tableMatch[1] : undefined;
 
+    let primaryKeys: string[] | undefined;
+    if (tableName && this.schemaCache) {
+      const cleanTableName = tableName.replace(/[\[\]"`]/g, '').split('.').pop();
+      const tableMeta = this.schemaCache.find(t => t.table.toLowerCase() === cleanTableName?.toLowerCase());
+      if (tableMeta && tableMeta.primaryKeys && tableMeta.primaryKeys.length > 0) {
+        primaryKeys = tableMeta.primaryKeys;
+      }
+    }
+
     for (const res of result) {
       let rows = Array.isArray(res) ? res : res.rows;
       const columns = Array.isArray(res) ? undefined : res.columns;
@@ -334,6 +354,7 @@ export class SQLNotebookKernel {
         const info = makeExecutionInfo(now) as any;
         if (truncated) { info.truncated = true; info.originalLength = originalLength; }
         if (tableName) { info.tableName = tableName; }
+        if (primaryKeys) { info.primaryKeys = primaryKeys; }
         newOutputs.push(new vscode.NotebookCellOutput([
           vscode.NotebookCellOutputItem.json({ rows, columns, info }, 'application/vnd.code-sql-notebook.table+json'),
           vscode.NotebookCellOutputItem.json(rows, 'application/json')

@@ -684,6 +684,7 @@ interface OutputPayload {
     truncated?: boolean;
     originalLength?: number;
     tableName?: string;
+    primaryKeys?: string[];
     executionId?: string;
     badgeKeywords?: {
       danger: string[];
@@ -733,6 +734,7 @@ const TableApp = ({ data, postMessage }: { data: OutputPayload | any[], postMess
   const runTime = executionTimeFromBackend || fallbackTime;
   const runDate = executionDateFromBackend || fallbackDate;
   const tableNameFromBackend = !Array.isArray(data) && data.info?.tableName ? data.info.tableName : 'TargetTable';
+  const primaryKeysFromBackend = !Array.isArray(data) && data.info?.primaryKeys ? data.info.primaryKeys : [];
   const executionId = !Array.isArray(data) && data.info?.executionId ? data.info.executionId : 'fallback';
   
   const badgeKeywords = useMemo(() => {
@@ -1434,13 +1436,10 @@ const TableApp = ({ data, postMessage }: { data: OutputPayload | any[], postMess
   const generateUpdates = () => {
      const tableName = tableNameFromBackend;
 
-     let pkColDef = columns.find((c: any) => String(c.header).toLowerCase() === 'id') as any;
-     if (!pkColDef && columns.length > 0) {
-         pkColDef = columns[0] as any;
-     }
-     if (!pkColDef) { return; }
-
-     const pkCol = String(pkColDef.header ?? pkColDef.id);
+     let pkCols = primaryKeysFromBackend.length > 0 
+       ? columns.filter((c: any) => primaryKeysFromBackend.includes(c.header || c.id))
+       : [columns.find((c: any) => String(c.header).toLowerCase() === 'id') || columns[0]].filter(Boolean);
+     if (!pkCols || pkCols.length === 0) { return; }
 
      const updates: string[] = [];
      Object.keys(editedRows).forEach(rIndexStr => {
@@ -1448,8 +1447,8 @@ const TableApp = ({ data, postMessage }: { data: OutputPayload | any[], postMess
         const changes = editedRows[rIndex];
         const originalRow = rows[rIndex] as Record<string, any>;
 
-        let pkValue = originalRow[pkColDef.id];
-        if (pkValue === undefined) { return; }
+        const hasAllPks = pkCols.every((pkColDef: any) => originalRow[pkColDef.id] !== undefined);
+        if (!hasAllPks) { return; }
 
         const setClauses = Object.entries(changes).map(([colId, val]) => {
             const safeVal = val === null || val === undefined ? 'NULL' : `'${String(val).replace(/'/g, "''")}'`;
@@ -1461,10 +1460,15 @@ const TableApp = ({ data, postMessage }: { data: OutputPayload | any[], postMess
 
         if (setClauses.length === 0) {return;}
 
-        const safePkVal = typeof pkValue === 'number' ? pkValue : `'${String(pkValue).replace(/'/g, "''")}'`;
-        const safePkCol = pkCol.match(/^[a-zA-Z0-9_]+$/) ? pkCol : `[${pkCol}]`;
+        const whereClauses = pkCols.map((pkColDef: any) => {
+            const pkValue = originalRow[pkColDef.id];
+            const safePkVal = typeof pkValue === 'number' ? pkValue : `'${String(pkValue).replace(/'/g, "''")}'`;
+            const pkColName = String(pkColDef.header ?? pkColDef.id);
+            const safePkCol = pkColName.match(/^[a-zA-Z0-9_]+$/) ? pkColName : `[${pkColName}]`;
+            return `${safePkCol} = ${safePkVal}`;
+        });
 
-        updates.push(`UPDATE ${tableName} SET ${setClauses.join(', ')} WHERE ${safePkCol} = ${safePkVal};`);
+        updates.push(`UPDATE ${tableName} SET ${setClauses.join(', ')} WHERE ${whereClauses.join(' AND ')};`);
      });
 
      if (updates.length > 0) {

@@ -18,6 +18,7 @@ export type TableSchema = {
   columnTypes?: Record<string, string>;
   schema?: string;
   foreignKeys?: ForeignKey[];
+  primaryKeys?: string[];
 };
 
 export type ForeignKey = {
@@ -133,13 +134,17 @@ function sqlitePool(pool: SqliteDatabase, dbFile?: string): Pool {
             const resCols = pool.exec(`PRAGMA table_info("${tableName}")`);
             const columns: string[] = [];
             const columnTypes: Record<string, string> = {};
+            const primaryKeys: string[] = [];
             if (resCols.length && resCols[0].values) {
               for (const c of resCols[0].values) {
                 columns.push(c[1] as string);
                 columnTypes[c[1] as string] = c[2] as string;
+                if (c[5]) {
+                  primaryKeys.push(c[1] as string);
+                }
               }
             }
-            tables.push({ table: tableName, columns, columnTypes });
+            tables.push({ table: tableName, columns, columnTypes, primaryKeys });
           }
         }
       } catch (e) {
@@ -386,6 +391,16 @@ function postgresPool(pool: pg.Pool): Pool {
           WHERE table_schema NOT IN ('pg_catalog', 'information_schema')
         `);
 
+        const pkRes = await pool.query(`
+          SELECT kcu.table_schema, kcu.table_name, kcu.column_name
+          FROM information_schema.table_constraints tc
+          JOIN information_schema.key_column_usage kcu
+            ON tc.constraint_name = kcu.constraint_name
+            AND tc.table_schema = kcu.table_schema
+          WHERE tc.constraint_type = 'PRIMARY KEY'
+            AND tc.table_schema NOT IN ('pg_catalog', 'information_schema')
+        `);
+
         const map = new Map<string, TableSchema>();
         res.rows.forEach(r => {
           const key = `${r.table_schema}.${r.table_name}`;
@@ -394,12 +409,20 @@ function postgresPool(pool: pg.Pool): Pool {
               table: r.table_name,
               schema: r.table_schema,
               columns: [],
-              columnTypes: {}
+              columnTypes: {},
+              primaryKeys: []
             });
           }
           const schemaObj = map.get(key)!;
           schemaObj.columns.push(r.column_name);
           schemaObj.columnTypes![r.column_name] = r.data_type;
+        });
+
+        pkRes.rows.forEach(r => {
+          const key = `${r.table_schema}.${r.table_name}`;
+          if (map.has(key)) {
+            map.get(key)!.primaryKeys!.push(r.column_name);
+          }
         });
         return Array.from(map.values());
       } catch (e) {
@@ -503,10 +526,24 @@ function mssqlPool(pool: mssql.ConnectionPool): Pool {
           JOIN sys.columns rc ON fkc.referenced_object_id = rc.object_id AND fkc.referenced_column_id = rc.column_id
         `);
 
+        const pkRes = await pool.query(`
+          SELECT
+            sch.name AS table_schema,
+            t.name AS table_name,
+            c.name AS column_name
+          FROM sys.indexes i
+          JOIN sys.index_columns ic ON i.object_id = ic.object_id AND i.index_id = ic.index_id
+          JOIN sys.columns c ON ic.object_id = c.object_id AND ic.column_id = c.column_id
+          JOIN sys.tables t ON i.object_id = t.object_id
+          JOIN sys.schemas sch ON t.schema_id = sch.schema_id
+          WHERE i.is_primary_key = 1
+        `);
+
         const map = new Map<string, string[]>();
         const typeMap = new Map<string, Record<string, string>>();
         const schemaMap = new Map<string, string>();
         const fkMap = new Map<string, ForeignKey[]>();
+        const pkMap = new Map<string, string[]>();
         res.recordset.forEach((r: any) => {
           if (!map.has(r.TABLE_NAME)) {
             map.set(r.TABLE_NAME, []);
@@ -534,12 +571,20 @@ function mssqlPool(pool: mssql.ConnectionPool): Pool {
           fkMap.get(r.table_name)?.push(entry);
         });
 
+        pkRes.recordset.forEach((r: any) => {
+          if (!pkMap.has(r.table_name)) {
+            pkMap.set(r.table_name, []);
+          }
+          pkMap.get(r.table_name)?.push(r.column_name);
+        });
+
         return Array.from(map.entries()).map(([table, columns]) => ({
           table,
           columns,
           columnTypes: typeMap.get(table),
           schema: schemaMap.get(table),
-          foreignKeys: fkMap.get(table) || []
+          foreignKeys: fkMap.get(table) || [],
+          primaryKeys: pkMap.get(table) || []
         }));
       } catch(e) {
         console.error('Error fetching mssql schema', e);
@@ -645,12 +690,12 @@ function mssqlConn(req: mssql.Request): Conn {
   };
 }
 
-function getStatementInfos(sql: string): Array<{ type: string; label: string }> {
+export function getStatementInfos(sql: string): Array<{ type: string; label: string }> {
   const statements = splitSqlStatements(sql);
   return statements.map(s => getStatementInfo(s));
 }
 
-function splitSqlStatements(sql: string): string[] {
+export function splitSqlStatements(sql: string): string[] {
   const statements: string[] = [];
   let current = '';
   let inSingle = false;
@@ -794,7 +839,7 @@ function getStatementInfo(statement: string): { type: string; label: string } {
     return { type: 'SELECT', label: 'SELECT' };
   }
 
-  const keywordMatch = cleaned.match(/\b(INSERT|UPDATE|DELETE|MERGE|CREATE|ALTER|DROP|TRUNCATE|EXEC|EXECUTE|SELECT)\b/i);
+  const keywordMatch = cleaned.match(/\b(INSERT|UPDATE|DELETE|MERGE|CREATE|ALTER|DROP|TRUNCATE|EXEC|EXECUTE|SELECT|SHOW|DESCRIBE|EXPLAIN|PRAGMA)\b/i);
   if (keywordMatch) {
     const keyword = keywordMatch[1].toUpperCase();
     return { type: keyword, label: keyword };

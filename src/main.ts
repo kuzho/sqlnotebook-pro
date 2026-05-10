@@ -6,6 +6,7 @@ import { activateFormProvider } from './form';
 import { SQLSerializer } from './serializer';
 import { KernelManager } from './controller';
 import { SqlCompletionItemProvider } from './completion';
+import { registerAiAssistant } from './aiAssistant';
 import * as XLSX from 'xlsx';
 import * as path from 'path';
 import * as fs from 'fs';
@@ -252,6 +253,8 @@ export function activate(context: vscode.ExtensionContext) {
 
   const kernelManager = new KernelManager(context, parameterProvider);
   context.subscriptions.push({ dispose: () => kernelManager.dispose() });
+
+  registerAiAssistant(context, kernelManager);
 
   const messaging = vscode.notebooks.createRendererMessaging('sqlnotebook-pro-interactive-renderer');
   context.subscriptions.push(

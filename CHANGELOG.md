@@ -1,5 +1,17 @@
 # Change Log
 
+## [3.3.5]
+### 🤖 Native AI Integration & World-Class Context (Graph RAG)
+- **Native VS Code Chat API:** Introducing a brand new AI assistant powered by VS Code's native Language Model API! It automatically uses your selected model (Copilot, Gemini, Ollama, etc.) straight from the chat interface, requiring absolutely no manual configurations.
+- **Graph RAG (Relational Context):** Built a highly optimized contextual engine for the AI. Instead of sending the entire massive database schema, it uses a Lexical and Relational Graph approach to automatically inject only the tables you mention *plus* their 1st-degree Foreign Key dependencies.
+- **Conversational Memory & Active Editor Reading:** The new AI assistant remembers the chat history and automatically reads the SQL code you currently have focused or selected in your notebook.
+- **Anti-Rejection Rules:** Enforced strict system prompt rules to prevent models from refusing SQL tasks and perfectly handle multi-table query generation.
+
+### 🛡️ Grid Safety & UX Polish
+- **True Primary Key Detection:** The database drivers (`mssql`, `mysql`, `postgres`, `sqlite`) now correctly extract actual Primary Keys (PKs) from the database metadata instead of guessing.
+- **Bulletproof Inline Updates:** The interactive grid's `💾 Save Changes` feature now uses these exact Primary Keys to construct precise, safe `UPDATE` statements, preventing accidental multi-row mutations on complex tables.
+- **Sidebar 🔑 Icons:** Primary Keys are now beautifully marked with a golden key icon (🔑) in the database connections side panel.
+
 ## [3.3.4]
 ### 🧠 IntelliSense Evolution
 - **Native Data Types:** Column suggestions now display their native SQL data type (e.g., `(VARCHAR)`, `(INT)`) directly in the autocomplete list.

@@ -89,7 +89,8 @@ export class SQLNotebookConnections
       }
       return element.tableSchema.columns.map(c => {
         const type = element.tableSchema.columnTypes ? element.tableSchema.columnTypes[c] : undefined;
-        return new ColumnItem(c, type);
+        const isPk = element.tableSchema.primaryKeys ? element.tableSchema.primaryKeys.includes(c) : false;
+        return new ColumnItem(c, type, isPk);
       });
     }
 
@@ -162,10 +163,10 @@ export class TableItem extends vscode.TreeItem {
 }
 
 export class ColumnItem extends vscode.TreeItem {
-  constructor(public readonly columnName: string, public readonly dataType?: string) {
+  constructor(public readonly columnName: string, public readonly dataType?: string, public readonly isPrimaryKey: boolean = false) {
     super(columnName, vscode.TreeItemCollapsibleState.None);
     this.contextValue = 'column';
-    this.iconPath = new vscode.ThemeIcon('symbol-field');
+    this.iconPath = new vscode.ThemeIcon(isPrimaryKey ? 'key' : 'symbol-field');
     if (dataType) {
       this.tooltip = `${columnName} (${dataType})`;
       this.description = dataType;
