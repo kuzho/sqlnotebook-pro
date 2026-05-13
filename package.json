@@ -7,7 +7,7 @@
   "repository": {
     "url": "https://github.com/kuzho/sqlnotebook-pro.git"
   },
-  "version": "3.3.5",
+  "version": "3.3.6",
   "preview": false,
   "engines": {
     "vscode": "^1.94.0",
@@ -269,6 +269,11 @@
           "type": "string",
           "default": "🔵, processing, running, en progreso, in progress, en proceso, started, iniciado, cargando, loading",
           "description": "Comma-separated keywords to automatically highlight a cell in Blue (Processing)."
+        },
+        "sqlnotebook.autoFetchSchema": {
+          "type": "boolean",
+          "default": true,
+          "description": "Automatically fetch database schema in the background for Intellisense and AI context. Disable this if your database has a massive schema (like Trino) that causes performance issues or freezes."
         },
         "sqlnotebook.ai.executionMode": {
           "type": "string",

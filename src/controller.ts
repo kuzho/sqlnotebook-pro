@@ -140,6 +140,9 @@ export class SQLNotebookKernel {
   public async getSchemaOrLoad(): Promise<TableSchema[]> {
     if (this.schemaCache) { return this.schemaCache; }
 
+    const autoFetch = vscode.workspace.getConfiguration('sqlnotebook').get<boolean>('autoFetchSchema') ?? true;
+    if (!autoFetch) { return []; }
+
     try {
         const pool = await this.getPool();
         this.schemaCache = await pool.getSchema();
@@ -199,7 +202,10 @@ export class SQLNotebookKernel {
     }
 
     if (!this.schemaCache) {
-       this.getSchemaOrLoad().then(() => console.log('Schema pre-fetched after execution'));
+       const autoFetch = vscode.workspace.getConfiguration('sqlnotebook').get<boolean>('autoFetchSchema') ?? true;
+       if (autoFetch) {
+          this.getSchemaOrLoad().then(() => console.log('Schema pre-fetched after execution'));
+       }
     }
   }
 

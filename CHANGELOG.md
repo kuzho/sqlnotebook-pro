@@ -1,5 +1,9 @@
 # Change Log
 
+## [3.3.6]
+### 🚀 Performance & Big Data
+- **Trino Performance Fix:** Added a new setting `sqlnotebook.autoFetchSchema` (default: `true`). Disabling this setting prevents the extension from automatically fetching the entire database schema in the background. This is a critical fix for users on large-scale data platforms like Trino, Presto, or Hive, where schema discovery can cause queries to freeze for several minutes.
+
 ## [3.3.5]
 ### 🤖 Native AI Integration & World-Class Context (Graph RAG)
 - **Native VS Code Chat API:** Introducing a brand new AI assistant powered by VS Code's native Language Model API! It automatically uses your selected model (Copilot, Gemini, Ollama, etc.) straight from the chat interface, requiring absolutely no manual configurations.

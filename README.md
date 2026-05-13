@@ -10,7 +10,23 @@
 
 ## ✨ Key Features
 
-### 1. 🧠 Smart Intellisense & Autocomplete
+### 1.  AI Assistant (@sql)
+Harness the power of AI directly in your workflow. Open the VS Code Chat view (`Ctrl+Shift+P` -> `Chat: Focus on Chat View`) and mention `@sql` to get help from an assistant that understands your database schema.
+
+* **Context-Aware:** The AI automatically knows which tables you're talking about and their relationships (foreign keys).
+* **Query Generation:** Ask for queries in natural language. _"Get me the top 10 users with the most orders."_
+* **Code Optimization:** Paste a query and ask the AI to _"optimize this"_.
+* **Explanation:** Ask the AI to _"explain what this query does"_.
+* **Seamless Integration:** Works with your configured VS Code large language model (Copilot, Gemini, etc.).
+
+<br>
+<!-- <div align="center">
+  <img src="media/demo-ai.gif" width="85%" alt="GIF showing AI assistant usage">
+  <p><em>Use @sql in the chat to generate queries from natural language</em></p>
+</div> -->
+<br>
+
+### 2. 🧠 Smart Intellisense & Autocomplete
 Write SQL faster with our native Intellisense engine. The extension automatically reads your database schema to provide context-aware suggestions.
 
 * **Global Search:** If a table isn't found in the current connection, the extension smartly scans all your active connections to find it.
@@ -18,7 +34,7 @@ Write SQL faster with our native Intellisense engine. The extension automaticall
 * **Columns:** Type a table name followed by a dot (e.g., `users.`) to instantly see that table's columns.
 * **Keywords:** Full support for standard SQL keywords (SELECT, WHERE, JOIN, etc.).
 
-### 2. ⚙️ SQL Parameters Panel
+### 3. ⚙️ SQL Parameters Panel
 Define reusable variables and run parameterized queries with a dedicated side panel. Save per-file when needed, or keep them temporary for quick testing.
 
 <br>
