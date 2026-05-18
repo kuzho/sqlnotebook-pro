@@ -1,5 +1,4 @@
 /// <reference lib="dom" />
-
 import React, { useState, useMemo, useEffect, useLayoutEffect, useRef, useCallback } from 'react';
 function injectAttachmentsIntoMarkdown(markdown: string, attachments: Record<string, Record<string, string>>) {
   if (!attachments) {return markdown;}
@@ -25,10 +24,8 @@ import {
   ColumnFiltersState,
   ColumnSizingState,
 } from '@tanstack/react-table';
-
 const Portal = ({ children }: { children: React.ReactNode }) =>
-  ReactDOM.createPortal(children, document.body);
-
+  ReactDOM.createPortal(children, window.document.body);
 const styles = `
   :root {
     --grid-border: var(--vscode-panel-border, #454545);
@@ -59,7 +56,6 @@ const styles = `
     box-sizing: border-box;
     overflow: hidden;
   }
-
   .toolbar {
     height: var(--row-height);
     padding: 0 8px;
@@ -71,7 +67,6 @@ const styles = `
     align-items: center;
     flex-shrink: 0;
   }
-
   .toolbar-time {
     font-size: 11px;
     color: #858585;
@@ -82,7 +77,6 @@ const styles = `
     align-items: center;
     gap: 4px;
   }
-
   .btn-action {
     background: transparent;
     color: var(--vscode-editor-foreground, #cccccc);
@@ -98,11 +92,9 @@ const styles = `
   }
   .btn-action:hover { background: #454545; border-color: #555; }
   .btn-action:focus { outline: none; }
-
   .table-wrapper:focus {
     outline: none;
   }
-
   .table-wrapper {
     overflow: auto;
     position: relative;
@@ -112,7 +104,6 @@ const styles = `
     margin: 0;
     padding: 0;
   }
-
   table {
     border-collapse: separate;
     table-layout: fixed;
@@ -120,7 +111,6 @@ const styles = `
     border-spacing: 0;
     border-style: hidden;
   }
-
   th, td {
     border-right: 1px solid var(--grid-border);
     border-bottom: 1px solid var(--grid-border);
@@ -131,7 +121,6 @@ const styles = `
     box-sizing: border-box;
     cursor: default;
   }
-
   td {
     padding: 0 8px;
     text-align: left;
@@ -139,7 +128,6 @@ const styles = `
     text-overflow: ellipsis;
     max-width: 500px;
   }
-
   thead {
     position: sticky;
     top: 0;
@@ -147,7 +135,6 @@ const styles = `
     background: var(--grid-header-bg);
     box-shadow: 0 1px 0 var(--grid-border);
   }
-
   th {
     font-weight: 600;
     text-align: left;
@@ -156,7 +143,6 @@ const styles = `
     cursor: url('data:image/svg+xml;utf8,<svg width="16" height="16" viewBox="0 0 24 24" fill="%23858585" xmlns="http://www.w3.org/2000/svg"><path d="M12 2L12 22M12 22L7 17M12 22L17 17" stroke="%23858585" stroke-width="2"/></svg>') 8 8, pointer;
     min-width: 80px;
   }
-
   .th-content {
     display: flex;
     align-items: center;
@@ -166,7 +152,6 @@ const styles = `
     padding-left: 8px;
   }
   .th-content:hover { background-color: #383838; }
-
   .th-text-group {
     display: flex;
     align-items: center;
@@ -177,10 +162,8 @@ const styles = `
     padding-right: 8px;
   }
   .th-text-group:hover { color: var(--vscode-editor-foreground, white); }
-
   .th-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .th-sort-icon { font-size: 10px; color: #0078d4; flex-shrink: 0; }
-
   .filter-wrapper {
     width: 28px;
     height: 100%;
@@ -190,7 +173,6 @@ const styles = `
     flex-shrink: 0;
     margin-right: 6px;
   }
-
   .filter-trigger {
     width: 20px;
     height: 20px;
@@ -203,11 +185,9 @@ const styles = `
     opacity: 0;
     cursor: default;
   }
-
   .th-content:hover .filter-trigger, .filter-trigger.active { opacity: 1; }
   .filter-trigger:hover { background-color: #454545; color: white; }
   .filter-trigger.active { color: #0078d4; font-weight: bold; opacity: 1; }
-
   .corner-header, .row-index {
     position: sticky;
     left: 0;
@@ -226,7 +206,6 @@ const styles = `
     padding-left: 4px;
     box-sizing: border-box;
   }
-
   th:last-child, td:last-child {
     border-right: none;
   }
@@ -234,7 +213,6 @@ const styles = `
   .corner-header:hover { background: var(--grid-hover); color: var(--vscode-editor-foreground, white); }
   .row-index { cursor: pointer; }
   .row-index:hover { background: var(--grid-hover); color: var(--vscode-editor-foreground, white); }
-
   .resizer {
     position: absolute;
     right: 0;
@@ -250,9 +228,7 @@ const styles = `
   .resizer:hover, .resizer.isResizing {
     background: #0078d4;
   }
-
   .selected-bg { background-color: var(--selection-bg-dim) !important; color: white !important; }
-
   .filter-menu-floating {
     position: fixed;
     z-index: 10000;
@@ -276,7 +252,6 @@ const styles = `
   .btn-primary:hover { background: #0063b1; }
   .btn-secondary { background: #3c3c3c; color: white; border: 1px solid transparent; padding: 4px 12px; border-radius: 2px; cursor: pointer; }
   .btn-secondary:hover { background: #454545; }
-
   .dataset-warning {
     padding: 6px 8px;
     font-size: 11px;
@@ -284,21 +259,17 @@ const styles = `
     background: #2d2415;
     border-bottom: 1px solid var(--grid-border);
   }
-
-
-  /* Bloqueo agresivo para anular estilos inyectados por VS Code y evitar el parpadeo */
+  
   .table-wrapper,
   .sql-grid-container table,
   .sql-grid-container tbody,
   .sql-grid-container tbody tr {
     background-color: var(--grid-bg) !important;
   }
-
   .sql-grid-container thead tr,
   .sql-grid-container thead th {
     background-color: var(--grid-header-bg) !important;
   }
-
   .virtual-spacer-cell {
     padding: 0 !important;
     border: none !important;
@@ -306,27 +277,22 @@ const styles = `
     line-height: 0;
     background-color: var(--grid-bg) !important;
   }
-
-
-  /* Si VS Code intenta hacer filas cebra (una clara, una oscura), esto lo anula */
+  
   .sql-grid-container tr:nth-child(even) td,
   .sql-grid-container tr:nth-child(even) td,
   .sql-grid-container tr:nth-child(odd) td {
     background-color: transparent;
   }
-
-  /* Recuperar el fondo oscuro de la columna ID (sobreescribe el fondo base) */
+  
   .sql-grid-container .row-index,
   .sql-grid-container .corner-header {
     background-color: var(--grid-header-bg) !important;
   }
 `;
-
 const ROW_HEIGHT_PX = 26;
 const VIRTUALIZATION_THRESHOLD = 50;
 const VIRTUAL_OVERSCAN = 15;
 const MAX_FILTER_OPTIONS = 1000;
-
 const FilterMenu = ({
   column,
   isOpen,
@@ -341,16 +307,13 @@ const FilterMenu = ({
   const [search, setSearch] = useState("");
   const triggerRef = useRef<HTMLDivElement>(null);
   const [coords, setCoords] = useState({ x: 0, y: 0, alignTop: false });
-
   const { uniqueValues, totalUniqueValues, isCapped } = useMemo(() => {
     const unique = column.getFacetedUniqueValues?.();
     if (!unique || typeof unique.keys !== 'function') {
       return { uniqueValues: [], totalUniqueValues: 0, isCapped: false };
     }
-
     const allValues = Array.from(unique.keys());
     const cappedValues = allValues.slice(0, MAX_FILTER_OPTIONS);
-
     return {
       uniqueValues: cappedValues.map(val => {
         const label =
@@ -363,33 +326,27 @@ const FilterMenu = ({
       isCapped: allValues.length > MAX_FILTER_OPTIONS
     };
   }, [column]);
-
   const filteredList = uniqueValues.filter(v => v.label.toLowerCase().includes(search.toLowerCase()));
   const currentFilter = (column.getFilterValue() as any[]) || [];
-
   const handleCheckbox = (val: any) => {
     let newFilter = currentFilter.includes(val)
       ? currentFilter.filter(i => i !== val)
       : [...currentFilter, val];
     column.setFilterValue(newFilter.length ? newFilter : undefined);
   };
-
   const selectAll = () => column.setFilterValue(filteredList.map(v => v.raw));
   const clearFilter = () => {
     column.setFilterValue(undefined);
     setSearch("");
   };
-
   useEffect(() => {
     if (isOpen && triggerRef.current) {
-      const rect = triggerRef.current.getBoundingClientRect();
+      const rect = (triggerRef.current as HTMLElement).getBoundingClientRect();
       const MENU_HEIGHT = 280;
-      const spaceBelow = window.innerHeight - rect.bottom;
+      const spaceBelow = (window.innerHeight || 0) - rect.bottom;
       const showAbove = spaceBelow < MENU_HEIGHT;
-
       let left = rect.right - 240;
       if (left < 0) {left = rect.left;}
-
       setCoords({
         x: left,
         y: showAbove ? rect.top : rect.bottom,
@@ -398,18 +355,16 @@ const FilterMenu = ({
       setSearch("");
     }
   }, [isOpen]);
-
   useEffect(() => {
     if (!isOpen) {return;}
     const close = (e: MouseEvent) => {
-      if (triggerRef.current && !triggerRef.current.contains(e.target as Node)) {
+      if (triggerRef.current && !(triggerRef.current as HTMLElement).contains(e.target as Node)) {
          onClose();
       }
     };
-    window.addEventListener('mousedown', close);
+    window.addEventListener('mousedown', close as any);
     return () => window.removeEventListener('mousedown', close);
   }, [isOpen, onClose]);
-
   return (
     <div className="filter-wrapper" onClick={e => e.stopPropagation()}>
       <div
@@ -423,7 +378,6 @@ const FilterMenu = ({
           <path fillRule="evenodd" clipRule="evenodd" d="M1.5 2h13l-5 5v5l-3 3V7l-5-5z"/>
         </svg>
       </div>
-
       {isOpen && (
         <Portal>
           <div
@@ -441,7 +395,7 @@ const FilterMenu = ({
               <input
                 placeholder="Search.."
                 value={search}
-                onChange={e => setSearch(e.target.value)}
+                onChange={(e: any) => setSearch(e.target.value)}
                 onKeyDown={e => e.stopPropagation()}
                 autoFocus
               />
@@ -477,7 +431,6 @@ const FilterMenu = ({
     </div>
   );
 };
-
 const BADGE_STYLES: Record<string, React.CSSProperties> = {
   danger: { backgroundColor: '#4a1818', color: '#ff9999', border: '1px solid #752525' },
   warning: { backgroundColor: '#4d4100', color: '#ffeb80', border: '1px solid #6e5d00' },
@@ -485,37 +438,31 @@ const BADGE_STYLES: Record<string, React.CSSProperties> = {
   inactive: { backgroundColor: '#2d2d2d', color: '#cccccc', border: '1px solid #454545' },
   processing: { backgroundColor: '#003366', color: '#99ccff', border: '1px solid #004488' }
 };
-
 const SmartCell = React.memo(({ value, badgeKeywords }: { value: unknown, badgeKeywords?: any }) => {
   if (value === null || value === undefined) {
     return <span style={{ opacity: 0.5, fontStyle: 'italic' }}>NULL</span>;
   }
-
   if (typeof value === 'object') {
     return <span style={{ fontFamily: 'monospace', fontSize: '0.9em' }}>{JSON.stringify(value)}</span>;
   }
-
   const str = String(value);
-
   if (str.startsWith('http://') || str.startsWith('https://')) {
     return (
       <a
         href={str}
         target="_blank"
         rel="noopener noreferrer"
-        style={{ color: '#3794ff', textDecoration: 'none' }}
+        style={{ color: '#3794ff', textDecoration: 'none' } as React.CSSProperties}
         onClick={(e) => e.stopPropagation()}
-        onMouseEnter={(e) => e.currentTarget.style.textDecoration = 'underline'}
-        onMouseLeave={(e) => e.currentTarget.style.textDecoration = 'none'}
+        onMouseEnter={(e) => (e.currentTarget as HTMLAnchorElement).style.textDecoration = 'underline'}
+        onMouseLeave={(e) => (e.currentTarget as HTMLAnchorElement).style.textDecoration = 'none'}
       >
         {str}
       </a>
     );
   }
-
   const lower = str.toLowerCase();
   let style: React.CSSProperties | null = null;
-
   const kw = badgeKeywords || {
     danger: ['🔴', 'atrasada', 'failed', 'fail', 'error', 'critical', 'cancelado', 'cancelled', 'rechazado', 'rejected', 'timeout'],
     warning: ['🟡', 'urgente', 'warning', 'pending', 'en pausa', 'paused', 'en espera', 'waiting', 'delayed', 'demorado'],
@@ -523,7 +470,6 @@ const SmartCell = React.memo(({ value, badgeKeywords }: { value: unknown, badgeK
     inactive: ['⚪', 'sin fecha', 'inactive', 'null', 'none', 'cerrado', 'closed', 'disabled', 'desactivado', 'archived', 'archivado', 'n/a', 'empty'],
     processing: ['🔵', 'processing', 'running', 'en progreso', 'in progress', 'en proceso', 'started', 'iniciado', 'cargando', 'loading']
   };
-
   if (kw.danger.some((w: string) => lower.includes(w.toLowerCase()))) {
     style = BADGE_STYLES.danger;
   } else if (kw.warning.some((w: string) => lower.includes(w.toLowerCase()))) {
@@ -535,27 +481,21 @@ const SmartCell = React.memo(({ value, badgeKeywords }: { value: unknown, badgeK
   } else if (kw.processing.some((w: string) => lower.includes(w.toLowerCase()))) {
     style = BADGE_STYLES.processing;
   }
-
   if (style) {
     return <span style={{ ...style, padding: '1px 8px', borderRadius: '10px', fontSize: '11px', display: 'inline-block', lineHeight: '1.4', fontWeight: 500 }}>{str}</span>;
   }
-
   return <span>{str}</span>;
 });
-
 const EditableCell = React.memo(({ initialValue, row, column, updateData, isEdited, badgeKeywords }: any) => {
   const [value, setValue] = useState(initialValue);
   const [isEditing, setIsEditing] = useState(false);
-
   useEffect(() => { setValue(initialValue); }, [initialValue]);
-
   const onBlur = () => {
     setIsEditing(false);
     if (value !== initialValue) {
       updateData(row.index, column.id, value);
     }
   };
-
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter') {
       onBlur();
@@ -564,13 +504,12 @@ const EditableCell = React.memo(({ initialValue, row, column, updateData, isEdit
       setIsEditing(false);
     }
   };
-
   if (isEditing) {
     return (
       <input
         autoFocus
         value={value ?? ''}
-        onChange={e => setValue(e.target.value)}
+        onChange={(e: any) => setValue(e.target.value)}
         onBlur={onBlur}
         onKeyDown={handleKeyDown}
         style={{
@@ -596,7 +535,6 @@ const EditableCell = React.memo(({ initialValue, row, column, updateData, isEdit
     </div>
   );
 });
-
 const ThemeColorPicker = React.memo(({ color, onChange }: { color: string, onChange: (e: React.ChangeEvent<HTMLInputElement>) => void }) => (
   <span className="toolbar-time" title="Color del Selector">
     <input
@@ -607,7 +545,6 @@ const ThemeColorPicker = React.memo(({ color, onChange }: { color: string, onCha
     />
   </span>
 ));
-
 const MemoTd = React.memo(({ cell, rIndex, cIndex, colId, customWidth, selectionStyle, isEdited }: any) => {
   return (
     <td
@@ -632,7 +569,6 @@ const MemoTd = React.memo(({ cell, rIndex, cIndex, colId, customWidth, selection
          prev.colId === next.colId &&
          prev.cell === next.cell;
 });
-
 const MemoRowIndex = React.memo(({ rIndex, isSelected }: any) => {
    return (
       <td className={`row-index ${isSelected ? 'selected-bg' : ''}`}
@@ -641,7 +577,6 @@ const MemoRowIndex = React.memo(({ rIndex, isSelected }: any) => {
       </td>
    );
 }, (prev, next) => prev.rIndex === next.rIndex && prev.isSelected === next.isSelected);
-
 const normalizeRows = (rows: unknown[], columnOrder: string[] | null) => {
   if (!columnOrder || !Array.isArray(rows)) {return rows;}
   return rows.map(row => {
@@ -652,7 +587,6 @@ const normalizeRows = (rows: unknown[], columnOrder: string[] | null) => {
       });
       return obj;
     }
-
     if (row && typeof row === 'object') {
       const obj: Record<string, unknown> = {};
       columnOrder.forEach((col, idx) => {
@@ -660,21 +594,17 @@ const normalizeRows = (rows: unknown[], columnOrder: string[] | null) => {
       });
       return obj;
     }
-
     return row;
   });
 };
-
 const formatExecutionTime = (date: Date) => {
   const pad = (value: number) => String(value).padStart(2, '0');
   return `${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
 };
-
 const formatExecutionDate = (date: Date) => {
   const pad = (value: number) => String(value).padStart(2, '0');
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
 };
-
 interface OutputPayload {
   rows?: any[];
   columns?: string[];
@@ -695,18 +625,16 @@ interface OutputPayload {
     };
   };
 }
-
 const TableApp = ({ data, postMessage }: { data: OutputPayload | any[], postMessage?: (msg: any) => void }) => {
   const tableWrapperRef = useRef<HTMLDivElement>(null);
   const scrollRafRef = useRef<number | null>(null);
   const [scrollTop, setScrollTop] = useState(0);
   const [scrollLeft, setScrollLeft] = useState(0);
-
   const [containerWidth, setContainerWidth] = useState(0);
   useLayoutEffect(() => {
     if (!tableWrapperRef.current) {return;}
-    setContainerWidth(tableWrapperRef.current.clientWidth);
-    const observer = new ResizeObserver(entries => {
+    setContainerWidth((tableWrapperRef.current as HTMLElement).clientWidth);
+    const observer = new (window as any).ResizeObserver((entries: any[]) => {
       for (const entry of entries) {
         setContainerWidth(entry.contentRect.width);
       }
@@ -714,12 +642,10 @@ const TableApp = ({ data, postMessage }: { data: OutputPayload | any[], postMess
     observer.observe(tableWrapperRef.current);
     return () => observer.disconnect();
   }, []);
-
   const rawRows = Array.isArray(data) ? data : (data.rows || []);
   const columnOrder = !Array.isArray(data) && Array.isArray(data.columns) ? data.columns : null;
   const normalizedRows = useMemo(() => normalizeRows(rawRows, columnOrder), [rawRows, columnOrder]);
   const [rows, setRows] = useState(normalizedRows);
-
   useLayoutEffect(() => {
     setRows(normalizedRows);
   }, [normalizedRows]);
@@ -746,33 +672,27 @@ const TableApp = ({ data, postMessage }: { data: OutputPayload | any[], postMess
       processing: ['🔵', 'processing', 'running', 'en progreso', 'in progress', 'en proceso', 'started', 'iniciado', 'cargando', 'loading']
     };
   }, [data]);
-  
   const [sorting, setSorting] = useState<SortingState>([]);
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
   const [columnSizing, setColumnSizing] = useState<ColumnSizingState>({});
   const [activeMenuId, setActiveMenuId] = useState<string | null>(null);
   const [exportSqlText, setExportSqlText] = useState('📝 To Insert');
-
   const [editedRows, setEditedRows] = useState<Record<number, Record<string, any>>>({});
   const [saveBtnText, setSaveBtnText] = useState('💾 Save Changes');
-
   const [themeColor, setThemeColor] = useState(() => {
-    return localStorage.getItem('sqlnotebook-selection-color') || '#005a9e';
+    return window.localStorage.getItem('sqlnotebook-selection-color') || '#005a9e';
   });
-
   const handleColorChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const newColor = e.target.value;
     setThemeColor(newColor);
-    localStorage.setItem('sqlnotebook-selection-color', newColor);
+    window.localStorage.setItem('sqlnotebook-selection-color', newColor);
   }, []);
-
   const themeBgDim = useMemo(() => {
     let hex = themeColor.replace(/^#/, '');
     if (hex.length === 3) { hex = hex.split('').map(c => c + c).join(''); }
     const num = parseInt(hex, 16);
     return `rgba(${(num >> 16) & 255}, ${(num >> 8) & 255}, ${num & 255}, 0.25)`;
   }, [themeColor]);
-
   const updateData = useCallback((rowIndex: number, columnId: string, value: any) => {
      setEditedRows(old => ({
         ...old,
@@ -782,18 +702,15 @@ const TableApp = ({ data, postMessage }: { data: OutputPayload | any[], postMess
         }
      }));
   }, []);
-
   const [selection, setSelection] = useState<{
     type: 'all' | 'row' | 'col' | 'range' | 'multi',
     ids?: Set<any>,
     range?: { r1: number, c1: number, r2: number, c2: number },
     ranges?: Array<{ r1: number, c1: number, r2: number, c2: number }>
   } | null>(null);
-
   const [dragMode, setDragMode] = useState<'none' | 'cell' | 'row'>('none');
   const [dragStart, setDragStart] = useState<{r: number, c: number} | null>(null);
   const [dragStartRow, setDragStartRow] = useState<number | null>(null);
-
   const isSelectNoRows =
   Array.isArray(rows) &&
   (
@@ -807,7 +724,6 @@ const TableApp = ({ data, postMessage }: { data: OutputPayload | any[], postMess
          ))
     )
   );
-
   const statusData = isSelectNoRows
   ? [{
       rowsReturned: 0,
@@ -815,13 +731,11 @@ const TableApp = ({ data, postMessage }: { data: OutputPayload | any[], postMess
       message: 'No rows returned'
     }]
   : rows;
-
   const columns = useMemo(() => {
     const getColSize = (headerText: string, colKey?: string, subIndex?: number) => {
       const headerLen = headerText ? String(headerText).length : 0;
       const headerWidth = (headerLen * 8) + 60;
       let dataLen = 0;
-
       if (colKey) {
         const scanLimit = Math.min(rows.length, 50);
         for (let i = 0; i < scanLimit; i++) {
@@ -840,10 +754,8 @@ const TableApp = ({ data, postMessage }: { data: OutputPayload | any[], postMess
       const dataWidth = (dataLen * 8) + 25;
       return Math.max(60, Math.min(500, Math.max(headerWidth, dataWidth)));
     };
-
     try {
       let rawCols: any[] = [];
-
       if (isSelectNoRows) {
         rawCols = [
           { header: 'rowsReturned', accessorKey: 'rowsReturned', size: getColSize('rowsReturned') },
@@ -855,7 +767,6 @@ const TableApp = ({ data, postMessage }: { data: OutputPayload | any[], postMess
       } else {
         const firstRow = rows.find(row => row && typeof row === 'object') as Record<string, any>;
         if (!firstRow) {return [];}
-
         if (columnOrder && Array.isArray(columnOrder)) {
           rawCols = columnOrder.map((header, index) => {
           const safeHeader = header && String(header).trim().length > 0 ? String(header) : '(No column name)';
@@ -883,7 +794,6 @@ const TableApp = ({ data, postMessage }: { data: OutputPayload | any[], postMess
           rawCols = Object.keys(firstRow).flatMap((key, index) => {
         const isUnnamed = !key || key.trim() === '';
         const sampleValue = firstRow[key];
-
         if (Array.isArray(sampleValue)) {
           const headerLabel = isUnnamed ? '(No column name)' : key;
           return sampleValue.map((_, subIndex) => ({
@@ -910,10 +820,8 @@ const TableApp = ({ data, postMessage }: { data: OutputPayload | any[], postMess
             }
           }));
         }
-
         const safeId = isUnnamed ? `col_unnamed_${index}` : key;
         const safeHeader = isUnnamed ? '(No column name)' : key;
-
         return [{
           id: safeId,
           header: safeHeader,
@@ -935,13 +843,10 @@ const TableApp = ({ data, postMessage }: { data: OutputPayload | any[], postMess
       });
         }
       }
-
       let totalBaseSize = 0;
       rawCols.forEach(c => { totalBaseSize += c.size; });
-
       const idxW = String(totalRowsFromBackend).length * 8 + 8;
       const realIndexW = Math.max(28, idxW);
-
       let extraAvailable = 0;
       if (containerWidth > 0) {
         const available = containerWidth - realIndexW - 2;
@@ -949,21 +854,18 @@ const TableApp = ({ data, postMessage }: { data: OutputPayload | any[], postMess
           extraAvailable = available - totalBaseSize;
         }
       }
-
       if (extraAvailable > 0 && totalBaseSize > 0) {
         const extraPerCol = Math.floor(extraAvailable / rawCols.length);
         rawCols.forEach(c => {
           c.size += extraPerCol;
         });
       }
-
       return rawCols;
     } catch (error) {
         console.error("Error generating columns:", error);
         return [];
       }
   }, [rows, isSelectNoRows, columnOrder, containerWidth, totalRowsFromBackend]);
-
   const tableMeta = useMemo(() => ({ editedRows, updateData, badgeKeywords }), [editedRows, updateData, badgeKeywords]);
   const table = useReactTable({
     data: statusData,
@@ -980,15 +882,12 @@ const TableApp = ({ data, postMessage }: { data: OutputPayload | any[], postMess
     getFacetedRowModel: getFacetedRowModel(),
     getFacetedUniqueValues: getFacetedUniqueValues(),
   });
-
   const COL_VIRTUALIZATION_THRESHOLD = 10;
   const COL_OVERSCAN = 4;
-
   const tableRows = table.getRowModel().rows;
   const visibleColumns = table.getVisibleFlatColumns();
   const shouldVirtualize = tableRows.length > VIRTUALIZATION_THRESHOLD;
   const shouldVirtualizeCols = visibleColumns.length > COL_VIRTUALIZATION_THRESHOLD;
-
   const viewportHeight = tableWrapperRef.current?.clientHeight ?? 390;
   const visibleRowCount = Math.max(20, Math.ceil(viewportHeight / ROW_HEIGHT_PX) + (VIRTUAL_OVERSCAN * 2));
   const startIndex = shouldVirtualize
@@ -1000,7 +899,6 @@ const TableApp = ({ data, postMessage }: { data: OutputPayload | any[], postMess
   const renderedRows = shouldVirtualize ? tableRows.slice(startIndex, endIndex) : tableRows;
   const topSpacerHeight = shouldVirtualize ? startIndex * ROW_HEIGHT_PX : 0;
   const bottomSpacerHeight = shouldVirtualize ? Math.max(0, (tableRows.length - endIndex) * ROW_HEIGHT_PX) : 0;
-
   const colPositions = useMemo(() => {
     let currentLeft = 0;
     return visibleColumns.map((c, index) => {
@@ -1010,30 +908,25 @@ const TableApp = ({ data, postMessage }: { data: OutputPayload | any[], postMess
        return { column: c, left: pos, width, index };
     });
   }, [visibleColumns, columnSizing]);
-
   let startColIdx = 0;
   let endColIdx = visibleColumns.length;
-
   if (shouldVirtualizeCols) {
      const viewPortWidth = containerWidth || 1000;
      while (startColIdx < colPositions.length && colPositions[startColIdx].left + colPositions[startColIdx].width < scrollLeft) {
         startColIdx++;
      }
      startColIdx = Math.max(0, startColIdx - COL_OVERSCAN);
-
      endColIdx = startColIdx;
      while (endColIdx < colPositions.length && colPositions[endColIdx].left < scrollLeft + viewPortWidth) {
         endColIdx++;
      }
      endColIdx = Math.min(colPositions.length, endColIdx + COL_OVERSCAN);
   }
-
   const renderedColumnsInfo = shouldVirtualizeCols ? colPositions.slice(startColIdx, endColIdx) : colPositions;
   const leftSpacerWidth = shouldVirtualizeCols && renderedColumnsInfo.length > 0 ? renderedColumnsInfo[0].left : 0;
   const totalColsWidth = colPositions.length > 0 ? colPositions[colPositions.length - 1].left + colPositions[colPositions.length - 1].width : 0;
   const rightSpacerWidth = shouldVirtualizeCols && renderedColumnsInfo.length > 0 ? totalColsWidth - (renderedColumnsInfo[renderedColumnsInfo.length - 1].left + renderedColumnsInfo[renderedColumnsInfo.length - 1].width) : 0;
   const colSpanCount = renderedColumnsInfo.length + (leftSpacerWidth > 0 ? 1 : 0) + (rightSpacerWidth > 0 ? 1 : 0) + 1;
-
   useEffect(() => {
     setScrollTop(0);
     setScrollLeft(0);
@@ -1053,11 +946,9 @@ const TableApp = ({ data, postMessage }: { data: OutputPayload | any[], postMess
       setExportSqlText('📝 To Insert');
       setSaveBtnText('💾 Save Changes');
     }, [executionId]);
-
   const handleSortClick = (column: any, e: React.MouseEvent) => {
     e.stopPropagation();
     const isSorted = column.getIsSorted();
-
     if (!isSorted) {
       column.toggleSorting(false);
     } else if (isSorted === 'asc') {
@@ -1066,24 +957,19 @@ const TableApp = ({ data, postMessage }: { data: OutputPayload | any[], postMess
       column.clearSorting();
     }
   };
-
   const handleCopy = useCallback(() => {
     if (!selection) {return;}
-
     const getVal = (r: number, cIdx: number) => {
       const cell = tableRows[r]?.getVisibleCells()[cIdx];
       let v = cell?.getValue();
       return typeof v === 'object' ? JSON.stringify(v) : String(v ?? '');
     };
-
     let rowsToText: string[] = [];
-
     if (selection.type === 'multi' && Array.isArray(selection.ranges)) {
       selection.ranges.forEach((range, idx) => {
         const { r1, c1, r2, c2 } = range;
         const minR = Math.min(r1, r2), maxR = Math.max(r1, r2);
         const minC = Math.min(c1, c2), maxC = Math.max(c1, c2);
-
         for (let r = minR; r <= maxR; r++) {
           const line = [];
           for (let c = minC; c <= maxC; c++) {
@@ -1093,7 +979,6 @@ const TableApp = ({ data, postMessage }: { data: OutputPayload | any[], postMess
           }
           rowsToText.push(line.join('\t'));
         }
-
         if (selection.ranges && idx < selection.ranges.length - 1) {
           rowsToText.push('');
         }
@@ -1102,7 +987,6 @@ const TableApp = ({ data, postMessage }: { data: OutputPayload | any[], postMess
       const { r1, c1, r2, c2 } = selection.range;
       const minR = Math.min(r1, r2), maxR = Math.max(r1, r2);
       const minC = Math.min(c1, c2), maxC = Math.max(c1, c2);
-
       for (let r = minR; r <= maxR; r++) {
         const line = [];
         for (let c = minC; c <= maxC; c++) {
@@ -1115,16 +999,13 @@ const TableApp = ({ data, postMessage }: { data: OutputPayload | any[], postMess
     } else if (selection.type === 'all' || selection.type === 'row' || selection.type === 'col') {
       let targetRows = tableRows;
       let targetCols = visibleColumns;
-
       if (selection.type === 'row' && selection.ids) {
         targetRows = tableRows.filter((_, i) => selection.ids!.has(i));
       }
       if (selection.type === 'col' && selection.ids) {
         targetCols = visibleColumns.filter(c => selection.ids!.has(c.id));
       }
-
       rowsToText.push(targetCols.map(c => c.columnDef.header).join('\t'));
-
       targetRows.forEach(r => {
         const line = targetCols.map(c => {
           let v = r.getVisibleCells().find(cell => cell.column.id === c.id)?.getValue();
@@ -1133,15 +1014,12 @@ const TableApp = ({ data, postMessage }: { data: OutputPayload | any[], postMess
         rowsToText.push(line.join('\t'));
       });
     }
-
-    navigator.clipboard.writeText(rowsToText.join('\n'));
+    window.navigator.clipboard.writeText(rowsToText.join('\n'));
   }, [selection, tableRows, visibleColumns]);
-
   useEffect(() => {
     const k = (e: KeyboardEvent) => { if((e.ctrlKey||e.metaKey)&&e.key==='c') { e.preventDefault(); handleCopy(); }};
     window.addEventListener('keydown', k); return ()=>window.removeEventListener('keydown', k);
   }, [handleCopy]);
-
   const onMouseDown = (r:number, c:number, isCtrl: boolean) => {
     if (isCtrl && selection && selection.type === 'range' && selection.range) {
       setSelection(prev => ({
@@ -1163,7 +1041,6 @@ const TableApp = ({ data, postMessage }: { data: OutputPayload | any[], postMess
       setSelection({type:'range', range:{r1:r,c1:c,r2:r,c2:c}});
     }
   };
-
   const onMouseEnter = (r:number, c:number) => {
     if(dragMode === 'cell' && dragStart) {
       if (selection && selection.type === 'multi' && selection.ranges) {
@@ -1183,13 +1060,11 @@ const TableApp = ({ data, postMessage }: { data: OutputPayload | any[], postMess
       }
     }
   };
-
   const onRowMouseDown = (r: number, isCtrl: boolean) => {
     setDragMode('row');
     setDragStartRow(r);
     handleRowHeaderClick(r, isCtrl);
   };
-
   const onRowMouseEnter = (r: number) => {
     if (dragMode === 'row' && dragStartRow !== null) {
       const minR = Math.min(dragStartRow, r);
@@ -1204,39 +1079,32 @@ const TableApp = ({ data, postMessage }: { data: OutputPayload | any[], postMess
       });
     }
   };
-
   const handleCornerClick = () => setSelection({type:'all'});
-
   useEffect(() => {
     if (dragMode === 'none') {return;}
-
     let animationFrame: number;
     const wrapper = tableWrapperRef.current;
     let lastX = 0;
     let lastY = 0;
     let isScrolling = false;
-
     const handleMouseUpGlobal = () => {
       setDragMode('none');
       setDragStartRow(null);
     };
-
     const autoScroll = () => {
       if (!wrapper) {return;}
-      const rect = wrapper.getBoundingClientRect();
+      const rect = (wrapper as HTMLElement).getBoundingClientRect();
       let scrollX = 0;
       let scrollY = 0;
       const edge = 40;
       const speed = 25;
-
       if (lastY > rect.bottom - edge) {scrollY = speed;}
       else if (lastY < rect.top + edge) {scrollY = -speed;}
       if (lastX > rect.right - edge) {scrollX = speed;}
       else if (lastX < rect.left + edge) {scrollX = -speed;}
-
       if (scrollX !== 0 || scrollY !== 0) {
-         wrapper.scrollBy({ left: scrollX, top: scrollY });
-         const el = document.elementFromPoint(lastX, lastY);
+         (wrapper as HTMLElement).scrollBy({ left: scrollX, top: scrollY });
+         const el = window.document.elementFromPoint(lastX, lastY);
          if (el) {
            const td = el.closest('td');
            if (td) {
@@ -1276,31 +1144,27 @@ const TableApp = ({ data, postMessage }: { data: OutputPayload | any[], postMess
               }
            }
          }
-         animationFrame = requestAnimationFrame(autoScroll);
+         animationFrame = window.requestAnimationFrame(autoScroll);
       } else {
          isScrolling = false;
       }
     };
-
-    const handleMouseMoveGlobal = (e: MouseEvent) => {
-      lastX = e.clientX;
-      lastY = e.clientY;
+    const handleMouseMoveGlobal = (e: any) => {
+      lastX = e.clientX || 0;
+      lastY = e.clientY || 0;
       if (!isScrolling) {
          isScrolling = true;
          autoScroll();
       }
     };
-
     window.addEventListener('mouseup', handleMouseUpGlobal);
     window.addEventListener('mousemove', handleMouseMoveGlobal);
-
     return () => {
       window.removeEventListener('mouseup', handleMouseUpGlobal);
       window.removeEventListener('mousemove', handleMouseMoveGlobal);
-      cancelAnimationFrame(animationFrame);
+      window.cancelAnimationFrame(animationFrame);
     };
   }, [dragMode, dragStart, dragStartRow]);
-
   const handleRowHeaderClick = (idx: number, isCtrl: boolean) => {
     if (isCtrl && selection && selection.type === 'row' && selection.ids) {
       const newIds = new Set(selection.ids);
@@ -1314,14 +1178,11 @@ const TableApp = ({ data, postMessage }: { data: OutputPayload | any[], postMess
       setSelection({type:'row', ids: new Set([idx])});
     }
   };
-
   const EMPTY_STYLE: React.CSSProperties = {};
   const getCellSelectionStyle = (r: number, c: number, colId: string): React.CSSProperties => {
     if (!selection) { return EMPTY_STYLE; }
-
     let isSel = false;
     let minR = -1, maxR = -1, minC = -1, maxC = -1;
-
     if (selection.type === 'all') {
       isSel = true;
       minR = 0; maxR = tableRows.length - 1;
@@ -1353,22 +1214,18 @@ const TableApp = ({ data, postMessage }: { data: OutputPayload | any[], postMess
         }
       }
     }
-
     if (!isSel) { return EMPTY_STYLE; }
-
     let shadows = [];
     const color = 'var(--selection-border)';
     if (r === minR) { shadows.push(`inset 0 1px 0 0 ${color}`); }
     if (r === maxR) { shadows.push(`inset 0 -1px 0 0 ${color}`); }
     if (c === minC) { shadows.push(`inset 1px 0 0 0 ${color}`); }
     if (c === maxC) { shadows.push(`inset -1px 0 0 0 ${color}`); }
-
     return {
       backgroundColor: 'var(--selection-bg-dim)',
       boxShadow: shadows.length > 0 ? shadows.join(', ') : undefined
     };
   };
-
   const exportCSV = () => {
     if (postMessage) {
       const exportColumns = visibleColumns.map(c => String(c.columnDef.header ?? c.id));
@@ -1382,7 +1239,6 @@ const TableApp = ({ data, postMessage }: { data: OutputPayload | any[], postMess
       postMessage({ type: 'export_data', payload: { data: currentData, columns: exportColumns, rows: exportRows, format: 'csv' } });
     }
   };
-
   const exportExcel = () => {
     if (postMessage) {
       const exportColumns = visibleColumns.map(c => String(c.columnDef.header ?? c.id));
@@ -1396,15 +1252,12 @@ const TableApp = ({ data, postMessage }: { data: OutputPayload | any[], postMess
       postMessage({ type: 'export_data', payload: { data: currentData, columns: exportColumns, rows: exportRows, format: 'xlsx' } });
     }
   };
-
   const exportSQL = () => {
     const tableName = tableNameFromBackend;
-
     const exportColumns = visibleColumns.map(c => {
        const header = String(c.columnDef.header ?? c.id);
        return header.match(/^[a-zA-Z0-9_]+$/) ? header : `[${header}]`;
     });
-
     const sqlRows = tableRows.map(r => {
         const vals = visibleColumns.map((c, i) => {
           const val = r.getVisibleCells()[i]?.getValue();
@@ -1416,40 +1269,32 @@ const TableApp = ({ data, postMessage }: { data: OutputPayload | any[], postMess
       });
       return `  (${vals.join(', ')})`;
     });
-
     const chunkSize = 900;
     const chunks: string[] = [];
     for (let i = 0; i < sqlRows.length; i += chunkSize) {
       const chunk = sqlRows.slice(i, i + chunkSize);
       chunks.push(`INSERT INTO ${tableName} (${exportColumns.join(', ')})\nVALUES\n${chunk.join(',\n')};`);
     }
-
     const sql = `-- Exported from SQL Notebook Pro\n${chunks.join('\n\n')}`;
-
     if (postMessage) {
       postMessage({ type: 'export_sql', payload: { sql } });
       setExportSqlText('⏳ Exporting...');
       setTimeout(() => setExportSqlText('📝 To Insert'), 2000);
     }
   };
-
   const generateUpdates = () => {
      const tableName = tableNameFromBackend;
-
      let pkCols = primaryKeysFromBackend.length > 0 
        ? columns.filter((c: any) => primaryKeysFromBackend.includes(c.header || c.id))
        : [columns.find((c: any) => String(c.header).toLowerCase() === 'id') || columns[0]].filter(Boolean);
      if (!pkCols || pkCols.length === 0) { return; }
-
      const updates: string[] = [];
      Object.keys(editedRows).forEach(rIndexStr => {
         const rIndex = parseInt(rIndexStr, 10);
         const changes = editedRows[rIndex];
         const originalRow = rows[rIndex] as Record<string, any>;
-
         const hasAllPks = pkCols.every((pkColDef: any) => originalRow[pkColDef.id] !== undefined);
         if (!hasAllPks) { return; }
-
         const setClauses = Object.entries(changes).map(([colId, val]) => {
             const safeVal = val === null || val === undefined ? 'NULL' : `'${String(val).replace(/'/g, "''")}'`;
             const colDef = columns.find((c: any) => c.id === colId) as any;
@@ -1457,9 +1302,7 @@ const TableApp = ({ data, postMessage }: { data: OutputPayload | any[], postMess
             const safeCol = colName.match(/^[a-zA-Z0-9_]+$/) ? colName : `[${colName}]`;
             return `${safeCol} = ${safeVal}`;
         });
-
         if (setClauses.length === 0) {return;}
-
         const whereClauses = pkCols.map((pkColDef: any) => {
             const pkValue = originalRow[pkColDef.id];
             const safePkVal = typeof pkValue === 'number' ? pkValue : `'${String(pkValue).replace(/'/g, "''")}'`;
@@ -1467,16 +1310,13 @@ const TableApp = ({ data, postMessage }: { data: OutputPayload | any[], postMess
             const safePkCol = pkColName.match(/^[a-zA-Z0-9_]+$/) ? pkColName : `[${pkColName}]`;
             return `${safePkCol} = ${safePkVal}`;
         });
-
         updates.push(`UPDATE ${tableName} SET ${setClauses.join(', ')} WHERE ${whereClauses.join(' AND ')};`);
      });
-
      if (updates.length > 0) {
          const finalSql = updates.join('\n');
          if (postMessage) {
             postMessage({ type: 'apply_updates', payload: { sql: finalSql } });
             setSaveBtnText('✅ Saved!');
-
             const updatedRows = [...rows];
             Object.keys(editedRows).forEach(rIndexStr => {
                 const rIndex = parseInt(rIndexStr, 10);
@@ -1486,19 +1326,15 @@ const TableApp = ({ data, postMessage }: { data: OutputPayload | any[], postMess
                 };
             });
             setRows(updatedRows);
-
             setTimeout(() => { setSaveBtnText('💾 Save Changes'); setEditedRows({}); }, 2000);
          }
      }
   };
-
   const containerMinHeight = activeMenuId ? 360 : 'auto';
-
   const indexWidth = useMemo(() => {
     const digits = String(totalRowsFromBackend).length;
     return Math.max(28, digits * 8 + 8);
   }, [totalRowsFromBackend]);
-
   return (
     <div
       className="sql-grid-container"
@@ -1543,26 +1379,23 @@ const TableApp = ({ data, postMessage }: { data: OutputPayload | any[], postMess
           </>
         )}
       </div>
-
       {isTruncated && !isSelectNoRows && (
         <div className="dataset-warning">
           {`This notebook is limited to ${tableRows.length.toLocaleString()} rows by the "SQL Notebook: Max Result Rows" setting. The query returned ${totalRowsFromBackend.toLocaleString()} rows. Increase that setting to view more rows here.`}
         </div>
       )}
-
       <div
         ref={tableWrapperRef}
         className="table-wrapper"
         tabIndex={-1}
         onScroll={(e) => {
           if (shouldVirtualize || shouldVirtualizeCols) {
-            const currentScrollTop = e.currentTarget.scrollTop;
-            const currentScrollLeft = e.currentTarget.scrollLeft;
+            const currentScrollTop = (e.currentTarget as HTMLElement).scrollTop;
+            const currentScrollLeft = (e.currentTarget as HTMLElement).scrollLeft;
             if (scrollRafRef.current) {
-              cancelAnimationFrame(scrollRafRef.current);
+              window.cancelAnimationFrame(scrollRafRef.current);
             }
-
-            scrollRafRef.current = requestAnimationFrame(() => {
+            scrollRafRef.current = window.requestAnimationFrame(() => {
               setScrollTop(currentScrollTop);
               setScrollLeft(currentScrollLeft);
             });
@@ -1587,7 +1420,6 @@ const TableApp = ({ data, postMessage }: { data: OutputPayload | any[], postMess
                   const header = hg.headers.find(h => h.column.id === cInfo.column.id);
                   if (!header) {return null;}
                   const customWidth = cInfo.width;
-
                   return (
                     <th key={header.id}
                       className={selection && selection.type === 'col' && selection.ids?.has(header.id) ? 'selected-bg' : ''}
@@ -1597,13 +1429,11 @@ const TableApp = ({ data, postMessage }: { data: OutputPayload | any[], postMess
                         position: 'relative'
                       }}
                     >
-
                     <div
                         className="th-content"
                         onClick={(e) => {
                            const isMulti = e.ctrlKey || e.metaKey;
                            const colId = header.id;
-
                            setSelection(prev => {
                              if (!isMulti || !prev || prev.type !== 'col' || !prev.ids) {
                                return { type: 'col', ids: new Set([colId]) };
@@ -1630,7 +1460,6 @@ const TableApp = ({ data, postMessage }: { data: OutputPayload | any[], postMess
                           {{ asc: ' ▲', desc: ' ▼' }[header.column.getIsSorted() as string] ?? ''}
                         </span>
                       </div>
-
                       <FilterMenu
                         column={header.column}
                         isOpen={activeMenuId === header.id}
@@ -1640,29 +1469,24 @@ const TableApp = ({ data, postMessage }: { data: OutputPayload | any[], postMess
                         }}
                         onClose={() => setActiveMenuId(null)}
                       />
-
                       <div
                         onMouseDown={header.getResizeHandler()}
                         onTouchStart={header.getResizeHandler()}
                         onDoubleClick={(e) => {
                           e.stopPropagation();
                           const colId = header.column.id;
-
                           const resizerDiv = e.currentTarget as HTMLDivElement;
-                          const thContent = resizerDiv.parentElement;
+                          const thContent = resizerDiv.parentElement as HTMLElement;
                           const titleSpan = thContent?.querySelector('.th-title') as HTMLSpanElement | null;
-
-                          const canvas = document.createElement('canvas');
+                          const canvas = window.document.createElement('canvas');
                           const ctx = canvas.getContext('2d');
                           if (!ctx) {return;}
-
                           const headerText = titleSpan?.textContent || String(header.column.id);
                           ctx.font = '600 13px "Segoe UI", sans-serif';
                           const headerTextWidth = ctx.measureText(headerText).width;
                           const finalHeaderWidth = headerTextWidth + 70;
                           ctx.font = '13px "Segoe UI", sans-serif';
                           let textWidthData = 0;
-
                           const rowsToScan = tableRows.slice(0, 500);
                           for (const r of rowsToScan) {
                             const val = r.getValue(colId);
@@ -1672,10 +1496,8 @@ const TableApp = ({ data, postMessage }: { data: OutputPayload | any[], postMess
                               if (w > textWidthData) { textWidthData = w; }
                             }
                           }
-
                           const finalDataWidth = textWidthData + 25;
                           const newWidth = Math.min(800, Math.max(60, finalHeaderWidth, finalDataWidth));
-
                           setColumnSizing(old => ({ ...old, [header.id]: newWidth }));
                         }}
                         className={`resizer ${header.column.getIsResizing() ? 'isResizing' : ''}`}
@@ -1743,7 +1565,6 @@ const TableApp = ({ data, postMessage }: { data: OutputPayload | any[], postMess
                     const customWidth = cInfo.width;
                     const selectionStyle = getCellSelectionStyle(rIndex, cInfo.index, cell.column.id);
                     const isEdited = editedRows[rIndex]?.[cell.column.id] !== undefined;
-
                     return (
                       <MemoTd
                         key={cell.id}
@@ -1776,7 +1597,6 @@ const TableApp = ({ data, postMessage }: { data: OutputPayload | any[], postMess
     </div>
   );
 };
-
 export const activate: ActivationFunction = (context) => {
   return {
     renderOutputItem(data, element) {

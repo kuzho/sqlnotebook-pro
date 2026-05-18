@@ -66,6 +66,19 @@ WHERE (@Country = '' OR country_code = @Country)
 
 ### 3. Interactive Data Grid (Excel-Style)
 Filter, sort, and analyze your data without writing extra queries.
+
+### 4. 📊 SQL Reports & Dashboards (New!)
+Create professional dashboards by combining multiple data sources in a single view.
+* **Report Builder:** Visually design dashboards with Chart.js charts and interactive tables.
+* **Smart Filters:** Add Slicers to dynamically filter dates or categories.
+* **PDF Pro:** Generate print-ready reports with automatic pagination and high-quality rendering.
+
+<br>
+<div align="center">
+  <p><em>Transform your SQL queries into executive reports in seconds.</em></p>
+</div>
+<br>
+
 * **Column Resizing:** Drag column headers to resize them. **Double-click** the edge to auto-fit to content.
 * **Filtering:** Use the funnel icon to search, select, or exclude specific values.
 * **Multi-Select:** Hold **Ctrl/Cmd** to select multiple columns, rows, or cell ranges at once.

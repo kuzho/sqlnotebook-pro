@@ -1,5 +1,14 @@
 # Change Log
 
+## [3.4.0]
+### 📊 SQL Reports & Dashboards
+- **Report Builder:** New sidebar view to design complex reports with multiple datasets.
+- **Visual Dashboards:** Transform your queries into dashboards with Charts (Bar, Line, Pie), KPI Cards, and Tables.
+- **Global Slicers:** Filter all dashboard data simultaneously using date, text, or list parameters.
+- **Native Printing:** Optimized engine using VS Code's print function to generate infinite, pixel-perfect PDFs without page breaks.
+- **Multi-Sheet Export:** One-click export of all dashboard datasets into a single Excel file with multiple sheets.
+- **Auto-Refresh:** Set automatic update intervals for real-time data monitoring.
+
 ## [3.3.6]
 ### 🚀 Performance & Big Data
 - **Trino Performance Fix:** Added a new setting `sqlnotebook.autoFetchSchema` (default: `true`). Disabling this setting prevents the extension from automatically fetching the entire database schema in the background. This is a critical fix for users on large-scale data platforms like Trino, Presto, or Hive, where schema discovery can cause queries to freeze for several minutes.

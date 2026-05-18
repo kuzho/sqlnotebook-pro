@@ -2,7 +2,6 @@ import * as vscode from 'vscode';
 import { KernelManager } from './controller';
 import { ParameterProvider } from './ParameterProvider';
 import { TableSchema, ForeignKey } from './driver';
-
 const SQL_KEYWORDS = [
   'SELECT', 'FROM', 'WHERE', 'INSERT', 'INTO', 'VALUES', 'UPDATE', 'SET', 'DELETE',
   'CREATE', 'TABLE', 'DROP', 'ALTER', 'INDEX', 'VIEW',
@@ -11,7 +10,6 @@ const SQL_KEYWORDS = [
   'AND', 'OR', 'NOT', 'NULL', 'IS', 'IN', 'BETWEEN', 'LIKE', 'AS', 'CASE', 'WHEN', 'THEN', 'ELSE', 'END', 'COALESCE', 'NULLIF',
   'COUNT', 'SUM', 'AVG', 'MIN', 'MAX', 'CAST', 'CONVERT', 'ROW_NUMBER', 'RANK', 'DENSE_RANK', 'OVER', 'PARTITION BY'
 ];
-
 const CONTEXT_KEYWORDS: Record<QueryContext, string[]> = {
   select: ['SELECT', 'DISTINCT', 'AS', 'CASE', 'WHEN', 'THEN', 'ELSE', 'END', 'COALESCE', 'NULLIF'],
   from: ['FROM', 'JOIN', 'INNER JOIN', 'LEFT JOIN', 'RIGHT JOIN', 'FULL OUTER JOIN', 'CROSS JOIN', 'ON'],
@@ -80,7 +78,7 @@ export class SqlCompletionItemProvider implements vscode.CompletionItemProvider 
   }
 
   private getCellText(document: vscode.TextDocument, position: vscode.Position): string {
-    const notebook = vscode.workspace.notebookDocuments.find(nb => 
+    const notebook = vscode.workspace.notebookDocuments.find(nb =>
       nb.getCells().some(cell => cell.document === document)
     );
 
@@ -435,7 +433,7 @@ export class SqlCompletionItemProvider implements vscode.CompletionItemProvider 
 
     const aliasMap = this.buildAliasMap(textBefore);
     const tablesInQuery = this.getTablesInQuery(textBefore);
-    
+
     const ctes = this.getCTEs(textBefore);
     ctes.forEach(c => tablesInQuery.add(c));
 
@@ -774,20 +772,17 @@ export class SqlCompletionItemProvider implements vscode.CompletionItemProvider 
         const label = t.schema ? `${t.schema}.${t.table}` : t.table;
         const tableItem = new vscode.CompletionItem(label, vscode.CompletionItemKind.Class);
         tableItem.detail = t.schema ? `Table (${t.schema})` : `Table (${connectionName})`;
-        
+
         const qualifierRank = hasQualifier
           ? (normalizedSchemaLower === qualifierPrefixLower ? '0' : '1')
           : (prioritizeTables ? '2' : '4');
-        
-        // Prefix match: if it starts with what user typed
+
         const isPrefixMatch = tablePrefix && t.table.toLowerCase().startsWith(tablePrefixLower);
         const tableRank = isPrefixMatch ? '0' : (tablePrefix ? '1' : '2');
-        
-        // Check if this table is already used in the query (less relevant in FROM)
-        // But still show it if there are FK relationships
+
         const isUsedInQuery = tablesInQuery && tablesInQuery.has(t.table.toLowerCase());
-        const usageRank = isUsedInQuery ? '3' : '2'; // Used tables go after new ones in FROM
-        
+        const usageRank = isUsedInQuery ? '3' : '2';
+
         tableItem.sortText = `${qualifierRank}${tableRank}${usageRank}_${label}`;
 
         tableItem.filterText = label;

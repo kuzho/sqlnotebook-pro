@@ -6,7 +6,6 @@ import {
   VSCodeOption,
   VSCodeCheckbox,
 } from '@vscode/webview-ui-toolkit/react';
-
 const DEFAULT_PORTS: { [key: string]: string } = {
   mysql: '3306',
   postgres: '5432',
@@ -14,7 +13,6 @@ const DEFAULT_PORTS: { [key: string]: string } = {
   sqlite: '',
   trino: '8080'
 };
-
 const Form: React.FC<{
   handleSubmit: (form: HTMLFormElement, isSaveAsNew: boolean) => void,
   handleTest: (form: HTMLFormElement) => void
@@ -24,7 +22,6 @@ const Form: React.FC<{
 }) => {
   const formRef = React.useRef<HTMLFormElement>(null);
   const [isEditing, setIsEditing] = React.useState(false);
-
   const {
     ref: dropdownRef,
     value: driver,
@@ -35,22 +32,18 @@ const Form: React.FC<{
         portField.value = DEFAULT_PORTS[newDriver];
     }
   });
-
   const handleSmartReset = () => {
     const currentDriver = driver;
     formRef.current?.reset();
     setIsEditing(false);
-
     const origNameField = formRef.current?.elements.namedItem('originalName') as HTMLInputElement;
     if (origNameField) {
       origNameField.value = '';
     }
-
     if (dropdownRef.current) {
         dropdownRef.current.value = currentDriver;
     }
     setDriver(currentDriver);
-
     setTimeout(() => {
        const portField = formRef.current?.elements.namedItem('port') as HTMLInputElement;
        if(portField && DEFAULT_PORTS[currentDriver] !== undefined) {
@@ -58,7 +51,6 @@ const Form: React.FC<{
        }
     }, 0);
   };
-
   React.useEffect(() => {
     const handleMessage = (event: MessageEvent) => {
       const { data } = event;
@@ -66,30 +58,25 @@ const Form: React.FC<{
         case 'clear_form':
           handleSmartReset();
           break;
-
         case 'edit_connection': {
           const config = data.data;
           setIsEditing(true);
           setDriver(config.driver);
-
           setTimeout(() => {
             if (dropdownRef.current) {
               dropdownRef.current.value = config.driver;
             }
-
             const setField = (name: string, val: any) => {
                const el = formRef.current?.elements.namedItem(name) as any;
                if (!el) {
                  return;
                }
-
                if (el.tagName === 'VSCODE-CHECKBOX' || el.type === 'checkbox') {
                  el.checked = !!val;
                } else {
                  el.value = val === undefined || val === null ? '' : val;
                }
             };
-
           setField('originalName', config.name);
             setField('displayName', config.name);
             setField('group', config.group);
@@ -102,28 +89,23 @@ const Form: React.FC<{
             } else {
                setField('path', config.path);
             }
-
             setField('multipleStatements', config.multipleStatements);
             setField('encrypt', config.encrypt);
             setField('trustServerCertificate', config.trustServerCertificate);
             setField('legacyTls10', config.legacyTls10);
-
           }, 0);
           break;
         }
       }
     };
-
     window.addEventListener('message', handleMessage);
     return () => window.removeEventListener('message', handleMessage);
   }, [driver, setDriver]);
-
   return (
     <form ref={formRef} style={{ display: 'grid', gridRowGap: '15px' }}>
       <input type="hidden" name="originalName" />
       <TextOption label="Display Name" objectKey="displayName" />
       <TextOption label="Group / Folder (Optional)" objectKey="group" />
-
       <div style={{ display: 'flex', flexDirection: 'column' }}>
         <label style={{ display: 'block', marginBottom: '3px' }}>
           Database Driver
@@ -136,7 +118,6 @@ const Form: React.FC<{
           <VSCodeOption>trino</VSCodeOption>
         </VSCodeDropdown>
       </div>
-
       {driver !== 'sqlite' && (
         <>
           <TextOption label="Database Host" objectKey="host" />
@@ -159,9 +140,7 @@ const Form: React.FC<{
           />
         </>
       )}
-
       {showDriverConfig(driver)}
-
       <div style={{ display: 'flex', gap: '10px', marginTop: '10px' }}>
         <VSCodeButton
           appearance="secondary"
@@ -170,7 +149,6 @@ const Form: React.FC<{
         >
           Test Connection
         </VSCodeButton>
-
         {isEditing && (
           <VSCodeButton
             appearance="secondary"
@@ -181,7 +159,6 @@ const Form: React.FC<{
             Save as New
           </VSCodeButton>
         )}
-
         <VSCodeButton
           style={{flex: isEditing ? 1 : 2}}
           onClick={() => formRef.current && handleSubmit(formRef.current, false)}
@@ -189,7 +166,6 @@ const Form: React.FC<{
           Save Connection
         </VSCodeButton>
       </div>
-
       <div style={{ textAlign: 'right', marginTop: '-5px' }}>
         <VSCodeButton
             appearance="icon"
@@ -202,13 +178,10 @@ const Form: React.FC<{
     </form>
   );
 };
-
 export default Form;
-
 function useDropdownValue(onChange?: (newVal: string) => void) {
   const [value, setValue] = React.useState<string>('mssql');
   const ref = React.useRef<any>(null);
-
   React.useEffect(() => {
     const { current } = ref;
     const handleChange = (e: Event) => {
@@ -221,10 +194,8 @@ function useDropdownValue(onChange?: (newVal: string) => void) {
     current?.addEventListener('change', handleChange);
     return () => current?.removeEventListener('change', handleChange);
   }, [ref.current, onChange]);
-
   return { ref, value, setValue };
 }
-
 function showDriverConfig(driver: string) {
   switch (driver) {
     case 'mysql':
@@ -247,7 +218,6 @@ function showDriverConfig(driver: string) {
   }
   return <></>;
 }
-
 const TextOption: React.FC<{ label: string; objectKey: string; type?: string; placeholder?: string; defaultValue?: string }> = ({ objectKey, label, type, placeholder, defaultValue }) => {
   return (
     <VSCodeTextField name={objectKey} type={type as any} placeholder={placeholder || ""} value={defaultValue|| ""}>

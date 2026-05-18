@@ -1,64 +1,53 @@
 import * as vscode from 'vscode';
-
 export class ParameterProvider implements vscode.WebviewViewProvider {
   public static readonly viewType = 'sqlnotebook.parameters';
   private _view?: vscode.WebviewView;
   private _activeUri: string | null = null;
   private _runtimeParamsByUri = new Map<string, Record<string, StoredParameter>>();
   private _explicitSaveRequests = new Set<string>();
-
   constructor(
     private readonly _extensionUri: vscode.Uri,
     private readonly _context: vscode.ExtensionContext
   ) {
-    // Subscriptions move to constructor to persist state independently of the view lifecycle
     this._context.subscriptions.push(
       vscode.workspace.onDidSaveNotebookDocument((notebook) => {
         if (notebook.notebookType !== 'sql-notebook') {
           return;
         }
-
         const uriKey = notebook.uri.toString();
         if (!this._explicitSaveRequests.has(uriKey)) {
           return;
         }
         this._explicitSaveRequests.delete(uriKey);
-
         if (this._activeUri !== uriKey) {
           return;
         }
-
         this._view?.webview.postMessage({
           type: 'save_now_result',
           payload: { message: 'Saved' }
         });
       })
     );
-
     this._context.subscriptions.push(
       vscode.workspace.onDidCloseNotebookDocument((notebook) => {
         if (notebook.notebookType !== 'sql-notebook') {
           return;
         }
-
         const uriKey = notebook.uri.toString();
         this._runtimeParamsByUri.delete(uriKey);
         this._explicitSaveRequests.delete(uriKey);
-
         if (this._activeUri === uriKey) {
           this._activeUri = null;
           this._refreshWebviewWithEmpty();
         }
       })
     );
-
     this._context.subscriptions.push(
       vscode.window.onDidChangeActiveNotebookEditor(editor => {
         this._updateWebviewForEditor(editor);
       })
     );
   }
-
   public resolveWebviewView(
     webviewView: vscode.WebviewView,
     context: vscode.WebviewViewResolveContext,
@@ -100,13 +89,11 @@ export class ParameterProvider implements vscode.WebviewViewProvider {
             }
           }
         }
-
         if (targetUri) {
           this._activeUri = targetUri;
           this._runtimeParamsByUri.set(targetUri, parameters);
         }
       }
-
       if (data.type === 'save_now') {
         let targetUri = this._activeUri;
         if (!targetUri) {
@@ -119,7 +106,6 @@ export class ParameterProvider implements vscode.WebviewViewProvider {
             }
           }
         }
-
         if (targetUri) {
           const notebook = vscode.workspace.notebookDocuments.find(nb => nb.uri.toString() === targetUri);
           if (notebook) {
@@ -137,17 +123,13 @@ export class ParameterProvider implements vscode.WebviewViewProvider {
                 await vscode.workspace.applyEdit(edit);
               }
             }
-            // Force VS Code to trigger the serializer and migrate to JSON format
             await vscode.commands.executeCommand('workbench.action.files.save');
           }
         }
       }
     });
-
-    // Forzar sincronización al abrir el panel
     this._updateWebviewForEditor(vscode.window.activeNotebookEditor);
   }
-
   private _refreshWebviewWithEmpty() {
     this._view?.webview.postMessage({
       type: 'set_parameters',
@@ -158,27 +140,15 @@ export class ParameterProvider implements vscode.WebviewViewProvider {
       }
     });
   }
-
-  /**
-   * Updates the webview state (dirty/saved) without full refresh
-   */
   public updateWebviewState(state: { isDirty?: boolean; hasActiveFile?: boolean }) {
     this._view?.webview.postMessage({
       type: 'update_state',
       payload: state
     });
   }
-
-  /**
-   * Forces a refresh based on the active editor
-   */
   public refresh() {
     this._updateWebviewForEditor(vscode.window.activeNotebookEditor);
   }
-
-  /**
-   * Notifies the webview that a save operation was completed externally (e.g. Ctrl+S)
-   */
   public onExternalSave(uri: string) {
     if (this._activeUri === uri) {
       this._view?.webview.postMessage({
@@ -187,7 +157,6 @@ export class ParameterProvider implements vscode.WebviewViewProvider {
       });
     }
   }
-
   private _updateWebviewForEditor(editor: vscode.NotebookEditor | undefined) {
     if (editor && editor.notebook.notebookType === 'sql-notebook') {
       this._activeUri = editor.notebook.uri.toString();
@@ -195,7 +164,6 @@ export class ParameterProvider implements vscode.WebviewViewProvider {
       const runtimeParams = this._runtimeParamsByUri.get(this._activeUri);
       const displayParams = runtimeParams || savedParams || {};
       const isDirty = runtimeParams ? !areParamsEqual(savedParams || {}, runtimeParams) : false;
-
       this._view?.webview.postMessage({
         type: 'set_parameters',
         payload: {
@@ -208,12 +176,10 @@ export class ParameterProvider implements vscode.WebviewViewProvider {
       if (this._activeUri && vscode.window.visibleNotebookEditors.some(ne => ne.notebook.uri.toString() === this._activeUri)) {
         return;
       }
-
       this._activeUri = null;
       this._refreshWebviewWithEmpty();
     }
   }
-
   public getParameters(uri?: string): Record<string, StoredParameter> {
     if (uri) {
       const runtime = this._runtimeParamsByUri.get(uri);
@@ -227,7 +193,6 @@ export class ParameterProvider implements vscode.WebviewViewProvider {
     }
     return {};
   }
-
   public notifyQueryExecutionStart(): void {
     if (this._view?.webview) {
       this._view.webview.postMessage({
@@ -236,7 +201,6 @@ export class ParameterProvider implements vscode.WebviewViewProvider {
       });
     }
   }
-
   private _getHtmlForWebview(webview: vscode.Webview) {
     const scriptUri = webview.asWebviewUri(
       vscode.Uri.joinPath(this._extensionUri, 'dist', 'webview', 'parameters-bundle.js')
@@ -258,7 +222,6 @@ export class ParameterProvider implements vscode.WebviewViewProvider {
       </html>`;
   }
 }
-
 function getNonce() {
   const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
   let value = '';
@@ -267,7 +230,6 @@ function getNonce() {
   }
   return value;
 }
-
 function areParamsEqual(a: Record<string, StoredParameter>, b: Record<string, StoredParameter>): boolean {
   const aKeys = Object.keys(a).sort();
   const bKeys = Object.keys(b).sort();
@@ -287,9 +249,7 @@ function areParamsEqual(a: Record<string, StoredParameter>, b: Record<string, St
   }
   return true;
 }
-
 type ParameterType = 'text' | 'checkbox' | 'select';
-
 type StoredParameter = string | {
   value: string;
   raw?: boolean;
@@ -300,7 +260,6 @@ type StoredParameter = string | {
   uncheckedValue?: string;
   required?: boolean;
 };
-
 function normalizeParam(param: StoredParameter): {
   value: string;
   raw: boolean;

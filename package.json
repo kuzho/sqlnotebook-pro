@@ -7,7 +7,7 @@
   "repository": {
     "url": "https://github.com/kuzho/sqlnotebook-pro.git"
   },
-  "version": "3.3.6",
+  "version": "3.4.0",
   "preview": false,
   "engines": {
     "vscode": "^1.94.0",
@@ -127,12 +127,31 @@
           "command": "sqlnotebook.showERDiagram",
           "when": "view == sqlnotebook-connections && (viewItem == database || viewItem == schema)",
           "group": "1_modification"
+        },
+        {
+          "command": "sqlnotebook.editReport",
+          "when": "view == sqlnotebook-reports && viewItem == report",
+          "group": "1_modification"
+        },
+        {
+          "command": "sqlnotebook.duplicateReport",
+          "when": "view == sqlnotebook-reports && viewItem == report",
+          "group": "1_modification"
+        },
+        {
+          "command": "sqlnotebook.deleteReport",
+          "when": "view == sqlnotebook-reports && viewItem == report"
         }
       ],
       "view/title": [
         {
           "command": "sqlnotebook.refreshConnectionPanel",
           "when": "view == sqlnotebook-connections",
+          "group": "navigation"
+        },
+        {
+          "command": "sqlnotebook.addReport",
+          "when": "view == sqlnotebook-reports",
           "group": "navigation"
         }
       ]
@@ -155,6 +174,26 @@
         "command": "sqlnotebook.showERDiagram",
         "title": "Show ER Diagram",
         "icon": "$(type-hierarchy)"
+      },
+      {
+        "command": "sqlnotebook.editReport",
+        "title": "Edit Report",
+        "icon": "$(edit)"
+      },
+      {
+        "command": "sqlnotebook.duplicateReport",
+        "title": "Duplicate Report",
+        "icon": "$(copy)"
+      },
+      {
+        "command": "sqlnotebook.addReport",
+        "title": "Add New Report",
+        "icon": "$(add)"
+      },
+      {
+        "command": "sqlnotebook.deleteReport",
+        "title": "Delete Report",
+        "icon": "$(trash)"
       },
       {
         "command": "sqlnotebook.refreshConnectionPanel",
@@ -275,6 +314,36 @@
           "default": true,
           "description": "Automatically fetch database schema in the background for Intellisense and AI context. Disable this if your database has a massive schema (like Trino) that causes performance issues or freezes."
         },
+        "sqlnotebook.reports": {
+          "type": "array",
+          "default": [],
+          "description": "List of saved report configurations.",
+          "items": {
+            "type": "object",
+            "properties": {
+              "name": { "type": "string", "description": "Report title." },
+              "datasets": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "name": { "type": "string", "description": "Dataset name (e.g. Server 1)." },
+                    "connectionName": { "type": "string", "description": "Connection to use for this dataset." },
+                    "query": { "type": "string", "description": "SQL query." }
+                  },
+                  "required": ["name", "connectionName", "query"]
+                }
+              }
+            },
+            "required": ["name", "datasets"]
+          },
+          "scope": "resource"
+        },
+        "sqlnotebook.reports.enableAnimations": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable or disable animations in dashboard charts."
+        },
         "sqlnotebook.ai.executionMode": {
           "type": "string",
           "enum": ["manual", "strict", "free"],
@@ -291,6 +360,13 @@
           "visibility": "visible",
           "icon": "media/logo.svg",
           "contextualTitle": "Connections"
+        },
+        {
+          "id": "sqlnotebook-reports",
+          "name": "SQL Reports",
+          "visibility": "visible",
+          "icon": "media/logo.svg",
+          "contextualTitle": "Reports"
         },
         {
           "type": "webview",

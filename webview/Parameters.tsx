@@ -1,23 +1,14 @@
 import * as React from 'react';
 import flatpickr from 'flatpickr';
 import 'flatpickr/dist/themes/dark.css';
-import {
-  VSCodeTextField,
-  VSCodeButton,
-  VSCodeCheckbox,
-  VSCodeDropdown,
-  VSCodeOption
-} from '@vscode/webview-ui-toolkit/react';
-
+import { VSCodeTextField, VSCodeButton, VSCodeCheckbox, VSCodeDropdown, VSCodeOption } from '@vscode/webview-ui-toolkit/react';
 declare const acquireVsCodeApi: () => {
   postMessage: (message: { type: string; payload: any }) => void;
   getState: () => any;
   setState: (state: any) => void;
 };
-
 const vscode = acquireVsCodeApi();
 const LIST_BATCH_SIZE = 40;
-
 interface Parameter {
   id: number;
   name: string;

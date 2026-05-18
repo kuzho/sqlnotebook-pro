@@ -6,12 +6,9 @@ import * as fs from 'fs/promises';
 import type { Database as SqliteDatabase } from 'sql.js';
 import * as path from 'path';
 import * as vscode from 'vscode';
-
 const trinoLib = require('trino-client');
-
 const supportedDrivers = ['mysql', 'postgres', 'mssql', 'sqlite', 'trino'] as const;
 export type DriverKey = typeof supportedDrivers[number];
-
 export type TableSchema = {
   table: string;
   columns: string[];
@@ -20,7 +17,6 @@ export type TableSchema = {
   foreignKeys?: ForeignKey[];
   primaryKeys?: string[];
 };
-
 export type ForeignKey = {
   table: string;
   column: string;
@@ -29,37 +25,29 @@ export type ForeignKey = {
   schema?: string;
   referencedSchema?: string;
 };
-
 export interface Pool {
   getConnection: () => Promise<Conn>;
   end: () => void;
   getSchema: () => Promise<TableSchema[]>;
 }
-
 export type ExecutionResult = TabularResult[];
-
 export type TableData = {
   rows: Row[] | any[][];
   columns?: string[];
 };
-
 export type TabularResult = Row[] | TableData;
-
 export type Row = { [key: string]: any };
-
 interface Conn {
   release: () => void;
   query: (q: string) => Promise<ExecutionResult>;
   destroy: () => void;
 }
-
 export type PoolConfig =
   | SqliteConfig
   | MySQLConfig
   | MSSQLConfig
   | PostgresConfig
   | TrinoConfig;
-
 export async function getPool(c: PoolConfig): Promise<Pool> {
   switch (c.driver) {
     case 'mysql':
@@ -76,7 +64,6 @@ export async function getPool(c: PoolConfig): Promise<Pool> {
       throw Error('invalid driver key');
   }
 }
-
 interface BaseConfig {
   driver: DriverKey;
   host: string;
@@ -84,15 +71,12 @@ interface BaseConfig {
   user: string;
   password?: string;
   database?: string;
-
   queryTimeout: number;
 }
-
 interface SqliteConfig {
   driver: 'sqlite';
   path: string;
 }
-
 async function createSqLitePool({
   path: filepath,
 }: SqliteConfig): Promise<Pool> {
@@ -103,19 +87,15 @@ async function createSqLitePool({
   if (filepath === ':memory:') {
     return sqlitePool(new sqlite.Database());
   }
-
   const fullPath = path.resolve(workspaceRoot(), filepath);
   const buff = await fs.readFile(fullPath);
   const db = new sqlite.Database(buff);
-
   return sqlitePool(db, fullPath);
 }
-
 const workspaceRoot = () =>
   (vscode.workspace.workspaceFolders &&
     vscode.workspace.workspaceFolders[0]?.uri.fsPath) ||
   '';
-
 function sqlitePool(pool: SqliteDatabase, dbFile?: string): Pool {
   return {
     async getConnection(): Promise<Conn> {
@@ -154,24 +134,20 @@ function sqlitePool(pool: SqliteDatabase, dbFile?: string): Pool {
     }
   };
 }
-
 function sqliteConn(conn: SqliteDatabase, dbFile?: string): Conn {
   return {
         async query(q: string): Promise<ExecutionResult> {
           const execResults = conn.exec(q);
           let affectedRows = 0;
           try { affectedRows = conn.getRowsModified(); } catch (e) {}
-
           if (dbFile) {
             const data = conn.export();
             const buffer = Buffer.from(data);
             await fs.writeFile(dbFile, buffer);
           }
-
           if (execResults.length === 0) {
             return [[{ Status: 'Success', RowsAffected: affectedRows, Message: 'Command executed successfully.' }]];
           }
-
           return execResults.map(res => ({
             columns: res.columns,
             rows: res.values
@@ -181,12 +157,10 @@ function sqliteConn(conn: SqliteDatabase, dbFile?: string): Conn {
     release: () => {},
   };
 }
-
 interface MySQLConfig extends BaseConfig {
   driver: 'mysql';
   multipleStatements: boolean;
 }
-
 async function createMySQLPool({
   host,
   port,
@@ -218,7 +192,6 @@ async function createMySQLPool({
     queryTimeout
   );
 }
-
 function mysqlPool(pool: mysql.Pool, queryTimeout: number): Pool {
   return {
     async getConnection(): Promise<Conn> {
@@ -234,13 +207,11 @@ function mysqlPool(pool: mysql.Pool, queryTimeout: number): Pool {
           FROM INFORMATION_SCHEMA.COLUMNS
           WHERE TABLE_SCHEMA = DATABASE()
         `) as unknown as [any[], any];
-
         const [fkRows] = await pool.query(`
           SELECT TABLE_NAME, COLUMN_NAME, REFERENCED_TABLE_NAME, REFERENCED_COLUMN_NAME, TABLE_SCHEMA, REFERENCED_TABLE_SCHEMA
           FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE
           WHERE TABLE_SCHEMA = DATABASE() AND REFERENCED_TABLE_NAME IS NOT NULL
         `) as unknown as [any[], any];
-
         const map = new Map<string, string[]>();
         const typeMap = new Map<string, Record<string, string>>();
         const schemaMap = new Map<string, string>();
@@ -256,7 +227,6 @@ function mysqlPool(pool: mysql.Pool, queryTimeout: number): Pool {
             schemaMap.set(r.TABLE_NAME, r.TABLE_SCHEMA);
           }
         });
-
         fkRows.forEach((r: any) => {
           const entry: ForeignKey = {
             table: r.TABLE_NAME,
@@ -271,7 +241,6 @@ function mysqlPool(pool: mysql.Pool, queryTimeout: number): Pool {
           }
           fkMap.get(r.TABLE_NAME)?.push(entry);
         });
-
         return Array.from(map.entries()).map(([table, columns]) => ({
           table,
           columns,
@@ -286,7 +255,6 @@ function mysqlPool(pool: mysql.Pool, queryTimeout: number): Pool {
     }
   };
 }
-
 function mysqlConn(conn: mysql.PoolConnection, queryTimeout: number): Conn {
   return {
     destroy() {
@@ -298,7 +266,6 @@ function mysqlConn(conn: mysql.PoolConnection, queryTimeout: number): Conn {
         timeout: queryTimeout,
         rowsAsArray: true,
       })) as unknown as [unknown[], any];
-
       const normalizeRows = (rows: unknown, fields: any): TabularResult => {
         if (!Array.isArray(rows)) {
           return [rows as Row];
@@ -308,15 +275,12 @@ function mysqlConn(conn: mysql.PoolConnection, queryTimeout: number): Conn {
           : undefined;
         return { rows, columns } as TableData;
       };
-
       if (!Array.isArray(result)) {
         return [[result as Row]];
       }
-
       if (!result.length) {
         return [normalizeRows(result, ok)];
       }
-
       const hasMultipleResults =
         Array.isArray(ok) && ok.length > 1 && ok.some((a: any) => a?.length);
       if (hasMultipleResults) {
@@ -325,7 +289,6 @@ function mysqlConn(conn: mysql.PoolConnection, queryTimeout: number): Conn {
           return res.length !== undefined ? normalizeRows(res, fields) : [res as Row];
         }) as ExecutionResult;
       }
-
       return [normalizeRows(result, ok)];
     },
     release() {
@@ -333,13 +296,10 @@ function mysqlConn(conn: mysql.PoolConnection, queryTimeout: number): Conn {
     },
   };
 }
-
 interface PostgresConfig extends BaseConfig {
   driver: 'postgres';
 }
-
 const identity = <T>(input: T) => input;
-
 async function createPostgresPool({
   host,
   port,
@@ -373,7 +333,6 @@ async function createPostgresPool({
   });
   return postgresPool(pool);
 }
-
 function postgresPool(pool: pg.Pool): Pool {
   return {
     async getConnection(): Promise<Conn> {
@@ -390,7 +349,6 @@ function postgresPool(pool: pg.Pool): Pool {
           FROM information_schema.columns
           WHERE table_schema NOT IN ('pg_catalog', 'information_schema')
         `);
-
         const pkRes = await pool.query(`
           SELECT kcu.table_schema, kcu.table_name, kcu.column_name
           FROM information_schema.table_constraints tc
@@ -400,7 +358,6 @@ function postgresPool(pool: pg.Pool): Pool {
           WHERE tc.constraint_type = 'PRIMARY KEY'
             AND tc.table_schema NOT IN ('pg_catalog', 'information_schema')
         `);
-
         const map = new Map<string, TableSchema>();
         res.rows.forEach(r => {
           const key = `${r.table_schema}.${r.table_name}`;
@@ -417,7 +374,6 @@ function postgresPool(pool: pg.Pool): Pool {
           schemaObj.columns.push(r.column_name);
           schemaObj.columnTypes![r.column_name] = r.data_type;
         });
-
         pkRes.rows.forEach(r => {
           const key = `${r.table_schema}.${r.table_name}`;
           if (map.has(key)) {
@@ -432,21 +388,17 @@ function postgresPool(pool: pg.Pool): Pool {
     }
   };
 }
-
 function postgresConn(conn: pg.PoolClient): Conn {
   return {
     async query(q: string): Promise<ExecutionResult> {
       const response = (await conn.query({ text: q, rowMode: 'array' })) as unknown as pg.QueryResult<any>[];
-
       const maybeResponses = response.length
         ? response
         : ([response] as unknown as pg.QueryResult<any>[]);
-
       return maybeResponses.map(({ rows, rowCount, fields }) => {
         if (!rows.length) {
           return rowCount !== null ? [{ rowCount: rowCount }] : [];
         }
-
         const columns = Array.isArray(fields) && fields.length > 0
           ? fields.map(f => f?.name ?? '')
           : undefined;
@@ -460,19 +412,16 @@ function postgresConn(conn: pg.PoolClient): Conn {
     },
   };
 }
-
 interface MSSQLConfig extends BaseConfig {
   driver: 'mssql';
   encrypt?: boolean;
   trustServerCertificate?: boolean;
   legacyTls10?: boolean;
 }
-
 async function createMSSQLPool(config: MSSQLConfig): Promise<Pool> {
   const encrypt = config.encrypt !== false;
   const trustServerCertificate = config.trustServerCertificate === true;
   const minVersion = config.legacyTls10 ? 'TLSv1' : 'TLSv1.2';
-
   const pool = new mssql.ConnectionPool({
     server: config.host,
     port: config.port,
@@ -488,11 +437,9 @@ async function createMSSQLPool(config: MSSQLConfig): Promise<Pool> {
       }
     } as any,
   });
-
   await pool.connect();
   return mssqlPool(pool);
 }
-
 function mssqlPool(pool: mssql.ConnectionPool): Pool {
   return {
     async getConnection(): Promise<Conn> {
@@ -508,7 +455,6 @@ function mssqlPool(pool: mssql.ConnectionPool): Pool {
           SELECT TABLE_NAME, COLUMN_NAME, DATA_TYPE, TABLE_SCHEMA
           FROM INFORMATION_SCHEMA.COLUMNS
         `);
-
         const fkRes = await pool.query(`
           SELECT
             sch.name AS table_schema,
@@ -538,7 +484,6 @@ function mssqlPool(pool: mssql.ConnectionPool): Pool {
           JOIN sys.schemas sch ON t.schema_id = sch.schema_id
           WHERE i.is_primary_key = 1
         `);
-
         const map = new Map<string, string[]>();
         const typeMap = new Map<string, Record<string, string>>();
         const schemaMap = new Map<string, string>();
@@ -555,7 +500,6 @@ function mssqlPool(pool: mssql.ConnectionPool): Pool {
             schemaMap.set(r.TABLE_NAME, r.TABLE_SCHEMA);
           }
         });
-
         fkRes.recordset.forEach((r: any) => {
           const entry: ForeignKey = {
             table: r.table_name,
@@ -570,14 +514,12 @@ function mssqlPool(pool: mssql.ConnectionPool): Pool {
           }
           fkMap.get(r.table_name)?.push(entry);
         });
-
         pkRes.recordset.forEach((r: any) => {
           if (!pkMap.has(r.table_name)) {
             pkMap.set(r.table_name, []);
           }
           pkMap.get(r.table_name)?.push(r.column_name);
         });
-
         return Array.from(map.entries()).map(([table, columns]) => ({
           table,
           columns,
@@ -593,7 +535,6 @@ function mssqlPool(pool: mssql.ConnectionPool): Pool {
     }
   };
 }
-
 function mssqlConn(req: mssql.Request): Conn {
   return {
     destroy() {
@@ -609,7 +550,6 @@ function mssqlConn(req: mssql.Request): Conn {
           result?.columnMetadata,
           result?.meta
         ];
-
         for (const meta of sources) {
           if (!meta) {
             continue;
@@ -637,17 +577,14 @@ function mssqlConn(req: mssql.Request): Conn {
         }
         return undefined;
       };
-
       (req as unknown as { arrayRowMode: boolean }).arrayRowMode = true;
       const res = await req.query(q) as any;
-
         if (res.recordsets && res.recordsets.length > 0) {
           return res.recordsets.map((rs: any) => {
             const columns = getColumnsFromResult(res, rs);
             return { rows: rs, columns: columns && columns.length > 0 ? columns : undefined };
           });
         }
-
         if (res.rowsAffected) {
           const statementInfos = getStatementInfos(q);
           if (Array.isArray(res.rowsAffected) && res.rowsAffected.length > 1) {
@@ -666,11 +603,9 @@ function mssqlConn(req: mssql.Request): Conn {
               });
               return [details];
           }
-
           const val = Array.isArray(res.rowsAffected)
             ? res.rowsAffected[0]
             : res.rowsAffected;
-
           return [[{
             Status: 'Success',
             RowsAffected: val,
@@ -679,7 +614,6 @@ function mssqlConn(req: mssql.Request): Conn {
             Message: 'Query executed successfully.'
           }]];
       }
-
       return [[{
         Status: 'Success',
         Message: 'Command executed successfully.'
@@ -689,12 +623,10 @@ function mssqlConn(req: mssql.Request): Conn {
     },
   };
 }
-
 export function getStatementInfos(sql: string): Array<{ type: string; label: string }> {
   const statements = splitSqlStatements(sql);
   return statements.map(s => getStatementInfo(s));
 }
-
 export function splitSqlStatements(sql: string): string[] {
   const statements: string[] = [];
   let current = '';
@@ -704,11 +636,9 @@ export function splitSqlStatements(sql: string): string[] {
   let inBacktick = false;
   let inLineComment = false;
   let inBlockComment = false;
-
   for (let i = 0; i < sql.length; i++) {
     const ch = sql[i];
     const next = sql[i + 1];
-
     if (inLineComment) {
       if (ch === '\n') {
         inLineComment = false;
@@ -716,7 +646,6 @@ export function splitSqlStatements(sql: string): string[] {
       }
       continue;
     }
-
     if (inBlockComment) {
       if (ch === '*' && next === '/') {
         inBlockComment = false;
@@ -724,7 +653,6 @@ export function splitSqlStatements(sql: string): string[] {
       }
       continue;
     }
-
     if (!inSingle && !inDouble && !inBracket && !inBacktick) {
       if (ch === '-' && next === '-') {
         inLineComment = true;
@@ -737,7 +665,6 @@ export function splitSqlStatements(sql: string): string[] {
         continue;
       }
     }
-
     if (!inDouble && !inBracket && !inBacktick && ch === "'") {
       if (inSingle && next === "'") {
         current += "''";
@@ -748,13 +675,11 @@ export function splitSqlStatements(sql: string): string[] {
       current += ch;
       continue;
     }
-
     if (!inSingle && !inBracket && !inBacktick && ch === '"') {
       inDouble = !inDouble;
       current += ch;
       continue;
     }
-
     if (!inSingle && !inDouble && !inBacktick && ch === '[') {
       inBracket = true;
       current += ch;
@@ -769,7 +694,6 @@ export function splitSqlStatements(sql: string): string[] {
       current += ch;
       continue;
     }
-
     if (ch === ';' && !inSingle && !inDouble && !inBracket && !inBacktick) {
       const trimmed = current.trim();
       if (trimmed.length > 0) {
@@ -778,126 +702,100 @@ export function splitSqlStatements(sql: string): string[] {
       current = '';
       continue;
     }
-
     current += ch;
   }
-
   const finalTrimmed = current.trim();
   if (finalTrimmed.length > 0) {
     statements.push(finalTrimmed);
   }
   return statements;
 }
-
 function getStatementInfo(statement: string): { type: string; label: string } {
   const cleaned = statement.trim();
   if (!cleaned) {
     return { type: 'Statement', label: 'Operation' };
   }
-
   const namePat = "([#\\w.\\[\\]\"`]+)";
-
   const useMatch = cleaned.match(new RegExp(`\\bUSE\\s+${namePat}`, 'i'));
   if (useMatch) {
     return { type: 'USE', label: `USE ${useMatch[1]}` };
   }
-
   const ddlMatch = cleaned.match(new RegExp(`\\b(CREATE|ALTER|DROP|TRUNCATE)\\s+(?:TEMPORARY\\s+)?TABLE\\s+(?:IF\\s+(?:NOT\\s+)?EXISTS\\s+)?${namePat}`, 'i'));
   if (ddlMatch) {
     const type = `${ddlMatch[1].toUpperCase()} TABLE`;
     const target = ddlMatch[2];
     return { type, label: `${type} ${target}` };
   }
-
   const insertMatch = cleaned.match(new RegExp(`\\bINSERT\\s+INTO\\s+${namePat}`, 'i'));
   if (insertMatch) {
     return { type: 'INSERT', label: `INSERT ${insertMatch[1]}` };
   }
-
   const updateMatch = cleaned.match(new RegExp(`\\bUPDATE\\s+${namePat}`, 'i'));
   if (updateMatch) {
     return { type: 'UPDATE', label: `UPDATE ${updateMatch[1]}` };
   }
-
   const deleteMatch = cleaned.match(new RegExp(`\\bDELETE\\s+FROM\\s+${namePat}`, 'i'));
   if (deleteMatch) {
     return { type: 'DELETE', label: `DELETE ${deleteMatch[1]}` };
   }
-
   const mergeMatch = cleaned.match(new RegExp(`\\bMERGE\\s+INTO\\s+${namePat}`, 'i'));
   if (mergeMatch) {
     return { type: 'MERGE', label: `MERGE ${mergeMatch[1]}` };
   }
-
   const execMatch = cleaned.match(new RegExp(`\\bEXEC(?:UTE)?\\s+${namePat}`, 'i'));
   if (execMatch) {
     return { type: 'EXEC', label: `EXEC ${execMatch[1]}` };
   }
-
   const selectMatch = cleaned.match(/\bSELECT\b/i);
   if (selectMatch) {
     return { type: 'SELECT', label: 'SELECT' };
   }
-
   const keywordMatch = cleaned.match(/\b(INSERT|UPDATE|DELETE|MERGE|CREATE|ALTER|DROP|TRUNCATE|EXEC|EXECUTE|SELECT|SHOW|DESCRIBE|EXPLAIN|PRAGMA)\b/i);
   if (keywordMatch) {
     const keyword = keywordMatch[1].toUpperCase();
     return { type: keyword, label: keyword };
   }
-
   return { type: 'Statement', label: 'Operation' };
 }
-
 interface TrinoConfig extends BaseConfig {
   driver: 'trino';
 }
-
 function parseTrinoCatalogSchema(database?: string): { catalog?: string; schema?: string } {
   const raw = (database || '').trim();
   if (!raw || raw === '*' || raw.toLowerCase() === 'all') {
     return {};
   }
-
   if (raw.includes('/')) {
     const [catalog, schema] = raw.split('/').map(v => v.trim());
     return { catalog: catalog || undefined, schema: schema || undefined };
   }
-
   if (raw.includes('.')) {
     const [catalog, schema] = raw.split('.').map(v => v.trim());
     return { catalog: catalog || undefined, schema: schema || undefined };
   }
-
   return { catalog: raw };
 }
-
 function buildTrinoServer(hostInput: string, port: number): string {
   const trimmedHost = (hostInput || '').trim();
   const defaultProtocol = port === 443 ? 'https' : 'http';
   const hasScheme = /^https?:\/\//i.test(trimmedHost);
   const parsed = new URL(hasScheme ? trimmedHost : `${defaultProtocol}://${trimmedHost}`);
-
   if (!parsed.port && Number.isFinite(port) && port > 0) {
     parsed.port = String(port);
   }
-
   let basePath = parsed.pathname || '';
   if (basePath.endsWith('/v1/statement')) {
     basePath = basePath.slice(0, -('/v1/statement'.length));
   }
   basePath = basePath.replace(/\/+$/, '');
-
   return `${parsed.protocol}//${parsed.host}${basePath}`;
 }
-
 function quoteTrinoIdentifier(identifier: string): string {
   return `"${identifier.replace(/"/g, '""')}"`;
 }
-
 async function createTrinoPool(config: TrinoConfig): Promise<Pool> {
   return trinoPool(config);
 }
-
 function trinoPool(config: TrinoConfig): Pool {
   return {
     async getConnection(): Promise<Conn> {
@@ -913,18 +811,15 @@ function trinoPool(config: TrinoConfig): Pool {
           catalogsTabular && typeof catalogsTabular === 'object' && 'rows' in catalogsTabular && Array.isArray(catalogsTabular.rows)
             ? catalogsTabular.rows.map((r: any[]) => String(r[0]))
             : [];
-
         const configured = parseTrinoCatalogSchema(config.database);
         const catalogsToScan = configured.catalog
           ? [configured.catalog]
           : discoveredCatalogs;
-
         const map = new Map<string, TableSchema>();
         for (const catalog of catalogsToScan) {
           const query = `SELECT table_schema, table_name, column_name, data_type
                         FROM ${quoteTrinoIdentifier(catalog)}.information_schema.columns
                         WHERE table_schema NOT IN ('information_schema', 'sys')`;
-
           try {
             const result = await runTrinoQuery(discoveryClient, query);
             const tabular = result[0] as any;
@@ -932,7 +827,6 @@ function trinoPool(config: TrinoConfig): Pool {
               tabular && typeof tabular === 'object' && 'rows' in tabular && Array.isArray(tabular.rows)
                 ? tabular.rows
                 : [];
-
             rows.forEach((r: any) => {
               const schemaName = String(r[0]);
               const tableName = String(r[1]);
@@ -950,7 +844,6 @@ function trinoPool(config: TrinoConfig): Pool {
             console.warn(`Skipping Trino catalog '${catalog}' during schema load`, catalogError);
           }
         }
-
         return Array.from(map.values());
       } catch (e) {
         console.error('Error fetching trino schema', e);
@@ -959,10 +852,8 @@ function trinoPool(config: TrinoConfig): Pool {
     }
   };
 }
-
 function trinoConn(config: TrinoConfig): Conn {
   const client = resolveTrinoClient(config);
-
   return {
     async query(q: string): Promise<ExecutionResult> {
       return runTrinoQuery(client, q);
@@ -971,7 +862,6 @@ function trinoConn(config: TrinoConfig): Conn {
     destroy() {},
   };
 }
-
 function resolveTrinoClient(config: TrinoConfig, schemaOverride?: string): any {
   const parsed = parseTrinoCatalogSchema(config.database);
   const catalog = parsed.catalog || 'system';
@@ -984,17 +874,14 @@ function resolveTrinoClient(config: TrinoConfig, schemaOverride?: string): any {
     schema: schema,
     auth: new trinoLib.BasicAuth(config.user, config.password || ''),
   };
-
   if (trinoLib.Trino && typeof trinoLib.Trino.create === 'function') {
     return trinoLib.Trino.create(opts);
   }
   throw new Error("No se pudo encontrar el constructor Trino o el método create en la librería.");
 }
-
 async function runTrinoQuery(client: any, q: string): Promise<ExecutionResult> {
   const rows: any[] = [];
   let columns: string[] = [];
-
   try {
     if (!client || typeof client.query !== 'function') {
       console.error('Trino client object:', client);

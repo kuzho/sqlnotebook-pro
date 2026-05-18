@@ -11,6 +11,8 @@ import * as XLSX from 'xlsx';
 import * as path from 'path';
 import * as fs from 'fs';
 import * as os from 'os';
+import { SQLNotebookReports, ReportData, ReportItem } from './reports';
+import { ConnData } from './connections';
 import { format as formatSql } from 'sql-formatter';
 import { embedImagesAsBase64 } from './embed-base64';
 import { extractAttachmentsFromMarkdown } from './attachments-util';
@@ -190,6 +192,8 @@ const formatterLanguageByDriver: Record<string, string> = {
   trino: 'trino'
 };
 
+let lastOpenedReportPanel: vscode.WebviewPanel | undefined = undefined;
+
 export function activate(context: vscode.ExtensionContext) {
   context.subscriptions.push(
     vscode.workspace.registerNotebookSerializer(notebookType, new SQLSerializer())
@@ -198,6 +202,11 @@ export function activate(context: vscode.ExtensionContext) {
   const connectionsSidepanel = new SQLNotebookConnections(context);
   context.subscriptions.push(
     vscode.window.registerTreeDataProvider('sqlnotebook-connections', connectionsSidepanel)
+  );
+
+  const reportsSidepanel = new SQLNotebookReports();
+  context.subscriptions.push(
+    vscode.window.registerTreeDataProvider('sqlnotebook-reports', reportsSidepanel)
   );
 
   vscode.commands.executeCommand('setContext', 'sqlnotebook.allCollapsed', false);
@@ -225,6 +234,38 @@ export function activate(context: vscode.ExtensionContext) {
     vscode.commands.registerCommand('sqlnotebook.openParameters', () => {
       vscode.commands.executeCommand('sqlnotebook.parameters.focus');
     })
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand('sqlnotebook.openReport', async (report: ReportData) => {
+      await handleOpenReport(report, context, kernelManager);
+    })
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand('sqlnotebook.printActiveReport', async () => {
+      if (lastOpenedReportPanel) {
+        lastOpenedReportPanel.reveal(vscode.ViewColumn.One);
+        await new Promise(r => setTimeout(r, 100));
+        await vscode.commands.executeCommand('workbench.action.files.print');
+      }
+    })
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand('sqlnotebook.addReport', () => handleAddReport(context, kernelManager))
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand('sqlnotebook.editReport', (item: ReportItem) => handleEditReport(item, context, kernelManager))
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand('sqlnotebook.duplicateReport', (item: ReportItem) => handleDuplicateReport(item))
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand('sqlnotebook.deleteReport', (item: ReportItem) => handleDeleteReport(item))
   );
 
   context.subscriptions.push(
@@ -490,9 +531,6 @@ export function activate(context: vscode.ExtensionContext) {
       'sqlnotebook.expandCell',
       async (cell: vscode.NotebookCell) => {
         const editor = vscode.window.activeNotebookEditor;
-        if (!editor || !cell) {
-          return;
-        }
         if (!editor || !cell) {
           return;
         }
@@ -783,6 +821,753 @@ async function handleExport({ data, columns, rows, format }: { data?: any[], col
         vscode.window.showErrorMessage(`Export failed: ${err.message}`);
     }
   }
+}
+
+async function handleDeleteReport(item: ReportItem) {
+  const confirm = await vscode.window.showWarningMessage(
+    `Are you sure you want to delete the report "${item.report.name}"?`,
+    { modal: true },
+    'Delete'
+  );
+  if (confirm === 'Delete') {
+    const config = vscode.workspace.getConfiguration('sqlnotebook');
+    const reports = config.get<ReportData[]>('reports') || [];
+    const filtered = reports.filter(r => r.name !== item.report.name);
+    await config.update('reports', filtered, vscode.ConfigurationTarget.Global);
+  }
+}
+
+async function handleEditReport(item: ReportItem, context: vscode.ExtensionContext, kernelManager: KernelManager) {
+  await openReportBuilder(context, kernelManager, item.report);
+}
+
+async function handleDuplicateReport(item: ReportItem) {
+  const config = vscode.workspace.getConfiguration('sqlnotebook');
+  const reports = config.get<ReportData[]>('reports') || [];
+  const newReport = JSON.parse(JSON.stringify(item.report));
+  newReport.name = `${newReport.name} (Copy)`;
+  reports.push(newReport);
+  await config.update('reports', reports, vscode.ConfigurationTarget.Global);
+}
+
+async function handleAddReport(context: vscode.ExtensionContext, kernelManager: KernelManager) {
+  await openReportBuilder(context, kernelManager);
+}
+
+async function openReportBuilder(context: vscode.ExtensionContext, kernelManager: KernelManager, existingReport?: ReportData) {
+  const connections = vscode.workspace.getConfiguration('sqlnotebook').get<ConnData[]>('connections') || [];
+  if (connections.length === 0) {
+    vscode.window.showErrorMessage("You need at least one SQL connection to create a report.");
+    return;
+  }
+
+  const panel = vscode.window.createWebviewPanel(
+    'reportBuilder',
+    existingReport ? `Edit Report: ${existingReport.name}` : 'Create New Report',
+    vscode.ViewColumn.One,
+    {
+      enableScripts: true,
+      retainContextWhenHidden: true
+    }
+  );
+
+  const activeConnName = vscode.window.activeNotebookEditor?.notebook.uri.toString().includes('sql-notebook') ? kernelManager.getKernelForNotebook(vscode.window.activeNotebookEditor?.notebook)?.id.replace('sql-notebook-', '') : '';
+  const connectionOptions = connections.map(c => `<option value="${c.name}">${c.name} (${c.driver})</option>`).join('');
+
+  panel.webview.html = `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <style>
+        body { font-family: var(--vscode-font-family); color: var(--vscode-foreground); padding: 15px; margin: 0; box-sizing: border-box; background: var(--vscode-editor-background); }
+        * { box-sizing: border-box; }
+        h2 { margin-top: 0; margin-bottom: 15px; font-size: 16px; font-weight: 600; color: var(--vscode-textLink-activeForeground); }
+
+        .form-group { margin-bottom: 10px; display: flex; flex-direction: column; gap: 4px; }
+        label { font-size: 10px; font-weight: 600; opacity: 0.8; text-transform: uppercase; letter-spacing: 0.5px; }
+
+        input, select, textarea {
+          background: var(--vscode-input-background);
+          color: var(--vscode-input-foreground);
+          border: 1px solid var(--vscode-input-border);
+          padding: 5px 8px;
+          font-size: 12px;
+          border-radius: 3px;
+          height: 28px;
+        }
+        textarea { height: auto; }
+        input:focus, select:focus, textarea:focus { border-color: var(--vscode-focusBorder); outline: none; }
+
+        .dataset {
+          border: 1px solid var(--vscode-widget-border);
+          padding: 12px;
+          margin-bottom: 12px;
+          position: relative;
+          border-radius: 4px;
+          background: rgba(128,128,128,0.03);
+        }
+
+        .parameter-row { display: flex; gap: 8px; margin-bottom: 6px; align-items: center; }
+        .parameter-row input, .parameter-row select { height: 26px; padding: 3px 6px; }
+
+        .conn-selector-container {
+          position: relative;
+          display: flex;
+          flex-direction: column;
+        }
+        .conn-trigger-btn {
+          background: var(--vscode-input-background);
+          color: var(--vscode-input-foreground);
+          border: 1px solid var(--vscode-input-border);
+          padding: 5px 8px;
+          font-size: 12px;
+          border-radius: 3px;
+          cursor: pointer;
+          height: 28px;
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          text-align: left;
+        }
+        .conn-trigger-btn::after {
+          content: '▼';
+          font-size: 8px;
+          opacity: 0.7;
+        }
+        .conn-dropdown-box {
+          display: none;
+          position: absolute;
+          top: 30px;
+          left: 0;
+          right: 0;
+          z-index: 100;
+          border: 1px solid var(--vscode-focusBorder);
+          background: var(--vscode-input-background);
+          border-radius: 3px;
+          box-shadow: 0 4px 8px rgba(0,0,0,0.3);
+        }
+        .conn-dropdown-box.show { display: flex; flex-direction: column; }
+        .ds-conn-filter {
+          border: none !important;
+          border-bottom: 1px solid var(--vscode-widget-border) !important;
+          border-radius: 0 !important;
+          padding: 6px 8px !important;
+          height: 28px !important;
+          width: 100%;
+        }
+        .ds-conn-list {
+          max-height: 150px;
+          overflow-y: auto;
+          margin: 0;
+          padding: 0;
+          list-style: none;
+        }
+        .ds-conn-option {
+          padding: 6px 8px;
+          font-size: 12px;
+          cursor: pointer;
+          color: var(--vscode-input-foreground);
+        }
+        .ds-conn-option:hover, .ds-conn-option.selected {
+          background: var(--vscode-list-focusBackground);
+          color: var(--vscode-list-focusForeground);
+        }
+
+        .btn { cursor: pointer; padding: 4px 10px; border: none; border-radius: 2px; font-weight: 500; font-size: 11px; height: 26px; }
+        .btn-add { background: var(--vscode-button-secondaryBackground); color: var(--vscode-button-secondaryForeground); margin-bottom: 15px; }
+        .btn-add:hover { background: var(--vscode-button-secondaryHoverBackground); }
+        .btn-save { background: var(--vscode-button-background); color: var(--vscode-button-foreground); margin-top: 15px; width: 100%; height: 32px; font-size: 12px; font-weight: bold; }
+        .btn-save:hover { background: var(--vscode-button-hoverBackground); }
+        .btn-remove { background: #c42b2b; color: white; position: absolute; top: 10px; right: 10px; padding: 2px 6px; height: auto; font-size: 10px; }
+        .btn-remove:hover { background: #a32222; }
+
+        .section-title { font-size: 12px; font-weight: bold; margin: 15px 0 8px 0; border-bottom: 1px solid var(--vscode-widget-border); padding-bottom: 4px; display: flex; align-items: center; gap: 6px; }
+        .row { display: flex; gap: 10px; margin-bottom: 0; flex-wrap: wrap; }
+        .col { flex: 1; min-width: 150px; }
+        .kpi-hint { font-size: 10px; opacity: 0.5; margin-top: 2px; font-style: italic; }
+      </style>
+    </head>
+    <body>
+      <h2>📊 Report Builder</h2>
+      <div class="row">
+        <div class="form-group col" style="flex: 2">
+          <label>Report Name</label>
+          <input type="text" id="reportName" placeholder="e.g. Sales Dashboard" value="${existingReport?.name || ''}">
+        </div>
+        <div class="form-group col">
+          <label>Group (Optional)</label>
+          <input type="text" id="reportGroup" placeholder="e.g. Sales" value="${existingReport?.group || ''}">
+        </div>
+        <div class="form-group" style="width: 90px;">
+          <label>Auto-Refresh</label>
+          <input type="number" id="refreshInterval" placeholder="Secs" value="${existingReport?.refreshInterval || 0}">
+        </div>
+      </div>
+
+      <div class="section-title">🎯 Global Slicers (Parameters)</div>
+      <div id="paramsContainer"></div>
+      <button class="btn btn-add" onclick="addParameter()">+ Add Parameter</button>
+
+      <div class="section-title">🗄️ Datasets</div>
+      <div id="datasetsContainer"></div>
+      <button class="btn btn-add" onclick="addDataset()">+ Add Dataset</button>
+
+      <button class="btn btn-save" id="btnSave" onclick="saveReport()">${existingReport ? 'Update Dashboard' : 'Create Dashboard'}</button>
+
+      <script>
+        const vscode = acquireVsCodeApi();
+        const availableConnections = ${JSON.stringify(connections.map(c => ({ name: c.name, driver: c.driver })))};
+
+        const sqlPlaceholders = {
+          table: "SELECT * FROM users LIMIT 100;",
+          card: "SELECT COUNT(*) FROM orders;",
+          bar: "SELECT Status, COUNT(*) FROM tasks GROUP BY Status;",
+          line: "SELECT Date, SUM(Total) FROM sales GROUP BY Date;",
+          pie: "SELECT Category, COUNT(*) FROM products GROUP BY Category;"
+        };
+
+        function addDataset(data = { name: '', connectionName: '${activeConnName}', query: '', width: 'full', type: 'table' }) {
+          const container = document.getElementById('datasetsContainer');
+          const div = document.createElement('div');
+          div.className = 'dataset';
+
+          const initialConn = availableConnections.find(c => c.name === data.connectionName) || availableConnections[0] || { name: '', driver: '' };
+          const initialLabel = initialConn.name ? \`\${initialConn.name} (\${initialConn.driver})\` : 'Select Connection...';
+
+          div.innerHTML = \`
+            <button class="btn btn-remove" onclick="this.parentElement.remove()">X</button>
+            <div class="row">
+              <div class="form-group col">
+                <label>Dataset Title</label>
+                <input type="text" class="ds-name" placeholder="e.g. Total Revenue" value="\${data.name}">
+              </div>
+              <div class="form-group col">
+                <label>SQL Connection</label>
+                <div class="conn-selector-container">
+                  <div class="conn-trigger-btn" onclick="toggleDropdown(this)">\${initialLabel}</div>
+                  <div class="conn-dropdown-box">
+                    <input type="text" class="ds-conn-filter" placeholder="🔍 Search connection..." onclick="event.stopPropagation()" oninput="filterConnections(this)">
+                    <ul class="ds-conn-list">
+                      \${availableConnections.map(c => \`<li class="ds-conn-option \${c.name === data.connectionName ? 'selected' : ''}" data-value="\${c.name}" onclick="selectConnection(this, '\${c.name}', '\${c.driver}')">\${c.name} (\${c.driver})</li>\`).join('')}
+                    </ul>
+                  </div>
+                  <input type="hidden" class="ds-conn" value="\${data.connectionName || (availableConnections[0]?.name || '')}">
+                </div>
+              </div>
+            </div>
+            <div class="row" style="margin-top: 8px;">
+              <div class="form-group col">
+                <label>Size</label>
+                <select class="ds-width">
+                  <option value="full" \${data.width === 'full' ? 'selected' : ''}>Full Width (100%)</option>
+                  <option value="half" \${data.width === 'half' ? 'selected' : ''}>Half Width (50%)</option>
+                </select>
+              </div>
+              <div class="form-group col">
+                <label>Visualization</label>
+                <select class="ds-type" onchange="updateQueryPlaceholder(this)">
+                  <option value="table" \${data.type === 'table' ? 'selected' : ''}>📋 Table</option>
+                  <option value="bar" \${data.type === 'bar' ? 'selected' : ''}>📊 Bar Chart</option>
+                  <option value="line" \${data.type === 'line' ? 'selected' : ''}>📈 Line Chart</option>
+                  <option value="pie" \${data.type === 'pie' ? 'selected' : ''}>🍕 Pie Chart</option>
+                  <option value="card" \${data.type === 'card' ? 'selected' : ''}>🔢 KPI Card</option>
+                </select>
+              </div>
+            </div>
+            <div class="form-group" style="margin-top: 8px;">
+              <label>SQL Query</label>
+              <textarea class="ds-query" rows="4" style="font-family: var(--vscode-editor-font-family); font-size: 12px;" placeholder="\${sqlPlaceholders[data.type] || sqlPlaceholders.table}">\${data.query}</textarea>
+            </div>
+          \`;
+
+          container.appendChild(div);
+        }
+
+        function toggleDropdown(trigger) {
+          event.stopPropagation();
+          const box = trigger.nextElementSibling;
+          const isVisible = box.classList.contains('show');
+
+          document.querySelectorAll('.conn-dropdown-box').forEach(b => b.classList.remove('show'));
+
+          if (!isVisible) {
+            box.classList.add('show');
+            const searchInput = box.querySelector('.ds-conn-filter');
+            searchInput.value = '';
+            filterConnections(searchInput);
+            searchInput.focus();
+          }
+        }
+
+        function filterConnections(input) {
+          const filter = input.value.toLowerCase();
+          const options = input.nextElementSibling.querySelectorAll('.ds-conn-option');
+          options.forEach(opt => {
+            const text = opt.innerText.toLowerCase();
+            opt.style.display = text.includes(filter) ? '' : 'none';
+          });
+        }
+
+        function selectConnection(element, name, driver) {
+          const container = element.closest('.conn-selector-container');
+          container.querySelector('.conn-trigger-btn').innerText = name + ' (' + driver + ')';
+          container.querySelector('.ds-conn').value = name;
+
+          container.querySelectorAll('.ds-conn-option').forEach(o => o.classList.remove('selected'));
+          element.classList.add('selected');
+          container.querySelector('.conn-dropdown-box').classList.remove('show');
+        }
+
+        function updateQueryPlaceholder(selectEl) {
+          const textarea = selectEl.closest('.dataset').querySelector('.ds-query');
+          textarea.placeholder = sqlPlaceholders[selectEl.value] || sqlPlaceholders.table;
+        }
+
+        window.onclick = function() {
+          document.querySelectorAll('.conn-dropdown-box').forEach(b => b.classList.remove('show'));
+        }
+
+        function addParameter(data = { name: '', label: '', defaultValue: '', type: 'text', options: '' }) {
+          const container = document.getElementById('paramsContainer');
+          const div = document.createElement('div');
+          div.className = 'parameter-row';
+          div.innerHTML = \`
+            <div style="display:flex; align-items:center; gap:2px; flex:1;">
+              <span style="opacity:0.6; font-weight:bold; font-size:12px;">@</span>
+              <input type="text" class="p-name" placeholder="Var" value="\${data.name.replace(/^@/, '')}" style="width:100%">
+            </div>
+            <input type="text" class="p-label" placeholder="Label" value="\${data.label}" style="flex:1.5;">
+            <select class="p-type" style="width:85px" onchange="this.parentElement.querySelector('.p-options').style.display = this.value === 'select' ? 'block' : 'none'">
+              <option value="text" \${data.type === 'text' ? 'selected' : ''}>Text</option>
+              <option value="date" \${data.type === 'date' ? 'selected' : ''}>Date</option>
+              <option value="select" \${data.type === 'select' ? 'selected' : ''}>List</option>
+            </select>
+            <input type="text" class="p-default" placeholder="Default" value="\${data.defaultValue}" style="flex:1;">
+            <input type="text" class="p-options" placeholder="a,b,c" value="\${data.options || ''}" style="flex:1; display:\${data.type === 'select' ? 'block' : 'none'}">
+            <button class="btn" style="background:#c42b2b; color:white; padding: 0 8px; height:26px;" onclick="this.parentElement.remove()">X</button>
+          \`;
+          container.appendChild(div);
+        }
+
+        function saveReport() {
+          const name = document.getElementById('reportName').value;
+          const group = document.getElementById('reportGroup').value;
+          const refreshInterval = parseInt(document.getElementById('refreshInterval').value || '0');
+          const parameters = Array.from(document.querySelectorAll('.parameter-row')).map(el => ({
+            name: '@' + el.querySelector('.p-name').value.replace(/^@/, ''),
+            label: el.querySelector('.p-label').value,
+            defaultValue: el.querySelector('.p-default').value,
+            type: el.querySelector('.p-type').value,
+            options: el.querySelector('.p-options').value
+          }));
+          const datasets = Array.from(document.querySelectorAll('.dataset')).map(el => ({
+            name: el.querySelector('.ds-name').value,
+            connectionName: el.querySelector('.ds-conn').value,
+            query: el.querySelector('.ds-query').value,
+            width: el.querySelector('.ds-width').value,
+            type: el.querySelector('.ds-type').value
+          }));
+          if (!name || datasets.length === 0) return alert('Name and at least one dataset are required');
+          vscode.postMessage({ type: 'save', payload: { name, group, datasets, refreshInterval, parameters } });
+        }
+
+        const existing = ${JSON.stringify(existingReport || null)};
+        if (existing) {
+          existing.datasets.forEach(ds => addDataset(ds));
+          if (existing.parameters) existing.parameters.forEach(p => addParameter(p));
+        } else {
+          addDataset();
+        }
+      </script>
+    </body>
+    </html>
+  `;
+
+  panel.webview.onDidReceiveMessage(async (message) => {
+    if (message.type === 'save') {
+      const config = vscode.workspace.getConfiguration('sqlnotebook');
+      const reports = config.get<ReportData[]>('reports') || [];
+      const index = reports.findIndex(r => r.name === (existingReport?.name || message.payload.name));
+      if (index >= 0) {
+        reports[index] = message.payload;
+      } else {
+        reports.push(message.payload);
+      }
+      await config.update('reports', reports, vscode.ConfigurationTarget.Global);
+      panel.dispose();
+      vscode.window.showInformationMessage(`Dashboard "${message.payload.name}" saved!`);
+    }
+  });
+}
+
+async function handleExportReportExcel({ results, reportName }: { results: any[], reportName: string }) {
+  if (!results || results.length === 0) {return;}
+
+  const now = new Date();
+  const dateStr = now.toISOString().slice(0, 19).replace('T', '_').replace(/:/g, '-');
+  const defaultFilename = `${reportName.replace(/[^a-z0-9]/gi, '_')}_${dateStr}.xlsx`;
+
+  const uri = await vscode.window.showSaveDialog({
+    saveLabel: 'Export Full Report',
+    filters: { 'Excel files': ['xlsx'] },
+    defaultUri: vscode.workspace.workspaceFolders && vscode.workspace.workspaceFolders.length > 0
+      ? vscode.Uri.joinPath(vscode.workspace.workspaceFolders[0].uri, defaultFilename)
+      : vscode.Uri.file(path.join(os.homedir(), 'Downloads', defaultFilename))
+  });
+
+  if (!uri) {return;}
+
+  try {
+    const wb = XLSX.utils.book_new();
+    results.forEach(res => {
+      if (res.error) {return;}
+      const tableData = res.data[0];
+      let rows = Array.isArray(tableData) ? tableData : (tableData.rows || []);
+      const columns = Array.isArray(tableData) ? (rows.length > 0 && !Array.isArray(rows[0]) ? Object.keys(rows[0]) : []) : (tableData.columns || []);
+
+      let sheetRows = rows;
+      if (rows.length > 0 && Array.isArray(rows[0])) {
+        sheetRows = [columns, ...rows];
+      }
+
+      const ws = Array.isArray(rows[0])
+        ? XLSX.utils.aoa_to_sheet(sheetRows)
+        : XLSX.utils.json_to_sheet(rows);
+
+      XLSX.utils.book_append_sheet(wb, ws, (res.dsName || 'Data').substring(0, 30));
+    });
+
+    const buffer = XLSX.write(wb, { bookType: 'xlsx', type: 'buffer' });
+    fs.writeFileSync(uri.fsPath, buffer);
+
+    const openAfterExport = vscode.workspace.getConfiguration('sqlnotebook').get('openAfterExport');
+    if (openAfterExport) {
+      await vscode.env.openExternal(vscode.Uri.file(uri.fsPath));
+    } else {
+      vscode.window.showInformationMessage(`Dashboard exported to ${path.basename(uri.fsPath)}`);
+    }
+  } catch (err: any) {
+    vscode.window.showErrorMessage(`Excel Export failed: ${err.message}`);
+  }
+}
+
+async function handleOpenReport(report: ReportData, context: vscode.ExtensionContext, kernelManager: KernelManager) {
+  const panel = vscode.window.createWebviewPanel(
+    'sqlReport',
+    `Report: ${report.name}`,
+    vscode.ViewColumn.One,
+    { enableScripts: true, retainContextWhenHidden: true }
+  );
+
+  lastOpenedReportPanel = panel;
+
+  const runQuery = async (slicerValues: Record<string, string> = {}) => {
+    panel.webview.postMessage({ type: 'loading' });
+    const connections = vscode.workspace.getConfiguration('sqlnotebook').get<ConnData[]>('connections') || [];
+
+    try {
+      const results = await Promise.all(report.datasets.map(async (ds) => {
+        const connConfig = connections.find(c => c.name === ds.connectionName);
+        if (!connConfig) {
+          return { dsName: ds.name, error: `Connection '${ds.connectionName}' not found.` };
+        }
+
+        try {
+          let password = (connConfig as any).password;
+          if (!password && connConfig.driver !== 'sqlite') {
+            password = await context.secrets.get(connConfig.passwordKey);
+          }
+
+          let finalQuery = ds.query;
+          Object.entries(slicerValues).forEach(([name, val]) => {
+            const safeName = name.startsWith('@') ? name : `@${name}`;
+            const escapedVal = val.replace(/'/g, "''");
+            finalQuery = finalQuery.replace(new RegExp(safeName, 'g'), `'${escapedVal}'`);
+          });
+
+          const pool = await getPool({ ...connConfig, password, queryTimeout: 60000 } as any);
+          const conn = await pool.getConnection();
+          const data = await conn.query(finalQuery);
+          conn.release();
+          pool.end();
+
+          return {
+            dsName: ds.name,
+            data,
+            connection: ds.connectionName,
+            rowCount: Array.isArray(data[0]) ? data[0].length : (data[0] as any).rows?.length || 0,
+            width: ds.width || 'full',
+            type: ds.type || 'table'
+          };
+        } catch (err: any) {
+          return { dsName: ds.name, error: err.message, connection: ds.connectionName, width: ds.width || 'full', type: ds.type || 'table' };
+        }
+      }));
+
+      panel.webview.postMessage({
+        type: 'data',
+        payload: {
+          results,
+          reportName: report.name,
+          executionDate: new Date().toLocaleDateString(),
+          executionTime: new Date().toLocaleTimeString()
+        }
+      });
+    } catch (err: any) {
+      panel.webview.postMessage({ type: 'error', payload: 'Engine Error: ' + err.message });
+    }
+  };
+
+  panel.webview.onDidReceiveMessage(async (message) => {
+    if (message.type === 'refresh') {
+      runQuery(message.slicerValues);
+    } else if (message.type === 'export_report_excel') {
+      await handleExportReportExcel(message.payload);
+    } else if (message.type === 'print_report') {
+      await vscode.commands.executeCommand('sqlnotebook.printActiveReport');
+    }
+  });
+
+  panel.webview.html = `
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+      <meta charset="UTF-8">
+      <style>
+        html, body { background-color: var(--vscode-editor-background); margin: 0; padding: 0; }
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; padding: 30px; color: var(--vscode-foreground); }
+        .header { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 3px solid #0078d4; padding-bottom: 12px; margin-bottom: 25px; }
+        h1 { margin: 0; color: #0078d4; font-size: 26px; font-weight: 700; }
+        .meta { font-size: 11px; opacity: 0.8; text-align: right; line-height: 1.5; }
+        .slicer-bar { display: flex; flex-wrap: wrap; gap: 20px; background: rgba(128,128,128,0.05); padding: 15px; border-radius: 4px; margin-bottom: 25px; align-items: flex-end; border: 1px solid var(--vscode-widget-border); }
+        .slicer-item { display: flex; flex-direction: column; gap: 5px; }
+        .slicer-item label { font-size: 11px; font-weight: bold; opacity: 0.8; text-transform: uppercase; }
+        .slicer-item input { background: var(--vscode-input-background); color: var(--vscode-input-foreground); border: 1px solid var(--vscode-input-border); padding: 5px 10px; border-radius: 2px; min-width: 150px; }
+        .dashboard-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(400px, 1fr)); gap: 25px; align-items: start; }
+        .dataset-section { background: var(--vscode-editor-background); border: 1px solid var(--vscode-widget-border); padding: 15px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.15); overflow: hidden; display: flex; flex-direction: column; }
+        .dataset-section.width-full { grid-column: 1 / -1; }
+        .dataset-section.width-half { grid-column: span 1; }
+        .dataset-title { font-size: 16px; color: var(--vscode-foreground); border-left: 4px solid #0078d4; padding-left: 10px; margin-bottom: 15px; display: flex; justify-content: space-between; font-weight: 600; }
+        .dataset-title small { font-size: 12px; opacity: 0.6; font-weight: normal; }
+        .table-container { overflow-x: auto; max-height: 350px; }
+        .chart-container { position: relative; height: 300px; width: 100%; }
+        .card-container { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 150px; text-align: center; }
+        .card-value { font-size: 42px; font-weight: 800; color: #0078d4; }
+        table { width: 100%; border-collapse: collapse; margin-top: 10px; background: var(--vscode-editor-background); color: var(--vscode-foreground); font-size: 12px; }
+        th { background: var(--vscode-editorWidget-background) !important; color: var(--vscode-foreground) !important; border: 1px solid var(--vscode-widget-border) !important; padding: 10px; text-align: left; position: sticky; top: 0; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; }
+        td { border: 1px solid var(--vscode-widget-border); padding: 8px 10px; vertical-align: top; }
+        tr:nth-child(even) { background: rgba(128,128,128,0.05); }
+        .btn-refresh { background: #0078d4; color: white; border: none; padding: 7px 15px; border-radius: 3px; cursor: pointer; font-size: 11px; font-weight: bold; }
+        .loading { font-style: italic; opacity: 0.7; padding: 40px; text-align: center; font-size: 14px; }
+        .error { color: #d32f2f; padding: 15px; border: 1px solid #d32f2f; border-radius: 4px; background: rgba(211, 47, 47, 0.05); font-size: 12px; }
+        
+        @media print {
+          html, body { background: white !important; color: black !important; width: 100% !important; height: auto !important; margin: 0 !important; padding: 0 !important; overflow: visible !important; }
+          body { padding: 10mm !important; }
+          .header { display: flex !important; width: 100% !important; justify-content: space-between !important; border-bottom: 2px solid #0078d4 !important; margin-bottom: 20px !important; }
+          h1 { color: #0078d4 !important; font-size: 22px !important; margin: 0 !important; }
+          .meta { color: black !important; opacity: 1 !important; text-align: right !important; padding-right: 15px !important; font-size: 10px !important; line-height: 1.4 !important; }
+          .no-print { display: none !important; }
+          .dashboard-grid { display: block !important; width: 100% !important; }
+          .dataset-section {
+            margin-bottom: 25px !important;
+            page-break-inside: avoid !important;
+            page-break-after: auto !important;
+            box-shadow: none !important;
+            border: 1px solid #ddd !important;
+            background: white !important;
+            width: 100% !important;
+            display: block !important;
+          }
+          .table-container { max-height: none !important; overflow: visible !important; width: 100% !important; }
+          table { background: white !important; color: black !important; width: 100% !important; border: 1px solid #ddd !important; }
+          th { background: #f5f5f5 !important; color: black !important; border: 1px solid #ddd !important; }
+          td { border: 1px solid #ddd !important; color: black !important; }
+        }
+      </style>
+      <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    </head>
+    <body>
+      <div id="header-area"></div>
+      <div id="slicer-area"></div>
+      <div id="content"><div class="loading">📊 Generating Dashboard...</div></div>
+      <script>
+        const vscode = acquireVsCodeApi();
+        let charts = [];
+        let lastResults = [];
+        let refreshTimer = null;
+        const reportConfig = ${JSON.stringify(report)};
+        const enableAnimations = ${vscode.workspace.getConfiguration('sqlnotebook').get('reports.enableAnimations') ?? true};
+
+        function initAutoRefresh() {
+          if (refreshTimer) clearInterval(refreshTimer);
+          if (reportConfig.refreshInterval > 0) {
+            refreshTimer = setInterval(() => triggerRefresh(), reportConfig.refreshInterval * 1000);
+          }
+        }
+
+        function triggerRefresh() {
+          const slicerValues = {};
+          document.querySelectorAll('.slicer-input').forEach(input => {
+            slicerValues[input.dataset.name] = input.value;
+          });
+          vscode.postMessage({ type: 'refresh', slicerValues });
+        }
+
+        function exportExcel() {
+          vscode.postMessage({
+            type: 'export_report_excel',
+            payload: { results: lastResults, reportName: reportConfig.name }
+          });
+        }
+
+        function requestPDF() {
+          vscode.postMessage({ type: 'print_report' });
+        }
+
+        function generateTable(tableData) {
+          let rows = Array.isArray(tableData) ? tableData : (tableData.rows || []);
+          if (rows.length === 0) {
+            return '<i>No data to display.</i>';
+          }
+
+          let cols = [];
+          if (tableData && !Array.isArray(tableData) && tableData.columns) {
+            cols = tableData.columns;
+          } else if (rows.length > 0 && typeof rows[0] === 'object' && rows[0] !== null) {
+            cols = Object.keys(rows[0]);
+          } else if (rows.length > 0 && Array.isArray(rows[0])) {
+            cols = rows[0].map((_, i) => 'Col ' + (i + 1));
+          } else {
+            cols = ['Value'];
+          }
+
+          if (cols.length === 0 && rows.length > 0) {
+              cols = ['Value'];
+          }
+
+          return '<table><thead><tr>' + cols.map(c => '<th>' + c + '</th>').join('') + '</tr></thead><tbody>' +
+            rows.map(r => '<tr>' + (Array.isArray(r) ? r : cols.map(c => r[c])).map(v => '<td>' + (v === null || v === undefined ? '<i style="opacity:0.4">NULL</i>' : (typeof v === "object" ? JSON.stringify(v) : v)) + '</td>').join('') + '</tr>').join('') +
+            '</tbody></table>';
+        }
+
+        function renderChart(canvasId, type, tableData) {
+          const canvas = document.getElementById(canvasId);
+          if (!canvas) return;
+          const ctx = canvas.getContext('2d');
+          let rows = Array.isArray(tableData) ? tableData : (tableData.rows || []);
+          if (rows.length === 0) return;
+
+          const labels = rows.map(r => String(Array.isArray(r) ? r[0] : Object.values(r)[0]));
+          const data = rows.map(r => {
+            const val = Array.isArray(r) ? r[1] : Object.values(r)[1];
+            const num = parseFloat(val);
+            return isNaN(num) ? 0 : num;
+          });
+
+          const isDark = document.body.classList.contains('vscode-dark');
+          const textColor = isDark ? '#ccc' : '#333';
+
+          charts.push(new Chart(ctx, {
+            type: type === 'table' ? 'bar' : type,
+            data: {
+              labels: labels,
+              datasets: [{
+                label: 'Dataset Value',
+                data: data,
+                backgroundColor: ['#0078d4', '#28a745', '#ffc107', '#dc3545', '#6610f2', '#e83e8c'],
+                borderWidth: 1
+              }]
+            },
+            options: {
+              responsive: true,
+              maintainAspectRatio: false,
+              animation: enableAnimations ? {
+                duration: 1000,
+                easing: 'easeOutQuart',
+                from: 0
+              } : false,
+              plugins: { legend: { labels: { color: textColor } } }
+            }
+          }));
+        }
+
+        window.addEventListener('message', event => {
+          const { type, payload } = event.data;
+          const content = document.getElementById('content');
+          if (type === 'loading') { content.innerHTML = '<div class="loading">🔄 Refreshing Dashboard Data...</div>'; }
+          else if (type === 'error') { content.innerHTML = '<div class="error"><b>General Error:</b><br>' + payload + '</div>'; }
+          else if (type === 'data') {
+            const { results, reportName, executionDate, executionTime } = payload;
+            lastResults = results;
+
+            charts.forEach(c => c.destroy());
+            charts = [];
+
+            document.getElementById('header-area').innerHTML = '<div class="header"><div><h1>' + reportName + '</h1>' +
+              '<div class="no-print" style="margin-top:12px"><button class="btn-refresh" onclick="triggerRefresh()">🔄 Refresh All</button> ' +
+              '<button class="btn-refresh" style="background:#28a745" onclick="exportExcel()">📊 Export All to Excel</button> ' +
+              '<button class="btn-refresh" style="background:#555" onclick="requestPDF()">🖨️ Print / Save PDF</button></div></div>' +
+              '<div class="meta"><b>Run Date:</b> ' + executionDate + '<br><b>Run Time:</b> ' + executionTime + '</div></div>';
+
+            const slicerArea = document.getElementById('slicer-area');
+            if (slicerArea && !slicerArea.innerHTML && reportConfig.parameters && reportConfig.parameters.length > 0) {
+              let sHtml = '<div class="slicer-bar no-print">';
+              reportConfig.parameters.forEach(p => {
+                sHtml += '<div class="slicer-item"><label>' + p.label + '</label>';
+                if (p.type === 'date') {
+                  sHtml += '<input type="date" class="slicer-input" data-name="' + p.name + '" value="' + p.defaultValue + '" onchange="triggerRefresh()">';
+                } else if (p.type === 'select') {
+                  sHtml += '<select class="slicer-input" data-name="' + p.name + '" onchange="triggerRefresh()">';
+                  const opts = (p.options || "").split(',').map(o => o.trim());
+                  opts.forEach(o => {
+                    sHtml += '<option value="' + o + '" ' + (o === p.defaultValue ? 'selected' : '') + '>' + o + '</option>';
+                  });
+                  sHtml += '</select>';
+                } else {
+                  sHtml += '<input type="text" class="slicer-input" data-name="' + p.name + '" value="' + p.defaultValue + '" onchange="triggerRefresh()">';
+                }
+                sHtml += '</div>';
+              });
+              sHtml += '</div>';
+              slicerArea.innerHTML = sHtml;
+            }
+
+            let html = '<div class="dashboard-grid">';
+            results.forEach((res, idx) => {
+              html += '<div class="dataset-section width-' + (res.width || 'full') + '"><div class="dataset-title">' + (res.dsName || 'Dataset') +
+                      '<small>' + (res.connection || '') + ' (' + (res.rowCount || 0).toLocaleString() + ' rows)</small></div>';
+              if (res.error) {
+                html += '<div class="error"><b>Query Error:</b> ' + res.error + '</div>';
+              } else if (res.type === 'card') {
+                const rows = Array.isArray(res.data[0]) ? res.data[0] : (res.data[0].rows || []);
+                const val = rows.length > 0 ? (Array.isArray(rows[0]) ? rows[0][0] : Object.values(rows[0])[0]) : '0';
+                html += '<div class="card-container"><div class="card-value">' + (val !== null && val !== undefined ? val : 'NULL') + '</div></div>';
+              } else if (res.type === 'table') {
+                html += '<div class="table-container">' + generateTable(res.data[0]) + '</div>';
+              } else {
+                html += '<div class="chart-container"><canvas id="chart-' + idx + '"></canvas></div>';
+              }
+              html += '</div>';
+            });
+            html += '</div>';
+
+            content.innerHTML = html;
+            initAutoRefresh();
+
+            setTimeout(() => {
+              results.forEach((res, idx) => {
+                if (res.type !== 'table' && res.type !== 'card' && !res.error) {
+                  renderChart('chart-' + idx, res.type, res.data[0]);
+                }
+              });
+            }, 50);
+          }
+        });
+        triggerRefresh();
+      </script>
+    </body>
+    </html>`;
 }
 
 export function deactivate() {}

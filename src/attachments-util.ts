@@ -1,19 +1,13 @@
-/**
- * Extracts images from markdown as attachments and rewrites the markdown to use attachment links.
- * Returns: { markdown: string, attachments: { [filename: string]: { [mime: string]: string } } }
- */
 export function extractAttachmentsFromMarkdown(markdown: string): { markdown: string, attachments: Record<string, Record<string, string>> } {
   const regex = /!\[([^\]]*)\]\((data:image\/(png|jpeg|jpg|gif|webp);base64,([^\)]+))\)/g;
   let match: RegExpExecArray | null;
   let result = markdown;
   const attachments: Record<string, Record<string, string>> = {};
   let imgCount = 1;
-
   const sanitize = (name: string): string => {
     const cleaned = (name || 'image').replace(/[\\/:*?"<>|\s]+/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '');
     return cleaned || 'image';
   };
-
   const nextAvailableName = (baseName: string, ext: string): string => {
     let i = 1;
     let candidate = `${baseName}.${ext}`;
