@@ -22,7 +22,7 @@ Harness the power of AI directly in your workflow. Open the VS Code Chat view (`
 <br>
 <div align="center">
   <img src="media/demo-ia-sql.gif" width="85%" alt="Demostración de comandos de IA SQL">
-  <p><em>Usa <b>@sql</b> en el chat para generar y explicar queries con IA contextual</em></p>
+  <p><em>Use <b>@sql</b> in chat to generate and explain queries with contextual AI</em></p>
 </div>
 <br>
 
