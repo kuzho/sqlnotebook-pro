@@ -3,7 +3,7 @@ export interface ReportDataset {
   name: string;
   connectionName: string;
   query: string;
-  width: 'half' | 'full';
+  width: 'quarter' | 'half' | 'three-quarter' | 'full';
   type: 'table' | 'bar' | 'line' | 'pie' | 'card';
 }
 export interface ReportParameter {

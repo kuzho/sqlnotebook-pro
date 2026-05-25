@@ -1,5 +1,11 @@
 # Change Log
 
+## [3.4.1]
+### 🔒 Security & Stability
+- **Webview hardening:** Hardened report, dashboard, and ER diagram rendering paths to escape user-controlled content before inserting it into HTML.
+- **Regex safety:** Escaped parameter names before building report query regexes to avoid regex injection and malformed substitutions.
+- **Connection form state:** Preserved the connection editor webview state when hidden so edits and selections are not reset.
+
 ## [3.4.0]
 ### 📊 SQL Reports & Dashboards
 - **Report Builder:** New sidebar view to design complex reports with multiple datasets.

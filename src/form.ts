@@ -62,6 +62,7 @@ class SQLConfigurationViewProvider implements vscode.WebviewViewProvider {
       enableForms: true,
       localResourceRoots: [this.context.extensionUri],
     };
+    webviewView.description = "Connection Manager";
     webviewView.webview.html = await getWebviewContent(webviewView.webview, this.context.extensionUri);
     webviewView.webview.onDidReceiveMessage(async (message) => {
       switch (message.type) {
