@@ -18,8 +18,8 @@ export interface ReportData {
   group?: string;
   datasets: ReportDataset[];
   refreshInterval?: number;
-  parameters?: ReportParameter[];
 }
+
 export class SQLNotebookReports implements vscode.TreeDataProvider<vscode.TreeItem> {
   private _onDidChangeTreeData = new vscode.EventEmitter<vscode.TreeItem | undefined | void>();
   readonly onDidChangeTreeData = this._onDidChangeTreeData.event;

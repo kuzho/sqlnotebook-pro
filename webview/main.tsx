@@ -2,6 +2,7 @@ import * as React from 'react';
 import * as ReactDOM from 'react-dom';
 import Form from './Form';
 
+
 declare const acquireVsCodeApi: () => {
   postMessage: (message: { type: string; data: any }) => void;
   getState: () => any;
@@ -47,5 +48,8 @@ function handleTest(form: HTMLFormElement) {
 
 document.addEventListener('DOMContentLoaded', () => {
   const root = document.getElementById('root');
-  ReactDOM.render(<Form handleSubmit={handleSubmit} handleTest={handleTest} />, root);
+  ReactDOM.render(
+    <Form handleSubmit={handleSubmit} handleTest={handleTest} />,
+    root
+  );
 });

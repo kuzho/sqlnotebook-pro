@@ -16,6 +16,7 @@ export type TableSchema = {
   schema?: string;
   foreignKeys?: ForeignKey[];
   primaryKeys?: string[];
+  type?: 'table' | 'view' | 'procedure' | 'function';
 };
 export type ForeignKey = {
   table: string;
@@ -110,13 +111,13 @@ function sqlitePool(pool: SqliteDatabase, dbFile?: string): Pool {
       pool.close();
     },
     async getSchema(): Promise<TableSchema[]> {
-      const tables: TableSchema[] = [];
+      const objects: TableSchema[] = [];
       try {
         const resTables = pool.exec("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'");
         if (resTables.length && resTables[0].values) {
           for (const row of resTables[0].values) {
             const tableName = row[0] as string;
-            const resCols = pool.exec(`PRAGMA table_info("${tableName}")`);
+            const resCols = pool.exec(`PRAGMA table_info(\"${tableName}\")`);
             const columns: string[] = [];
             const columnTypes: Record<string, string> = {};
             const primaryKeys: string[] = [];
@@ -130,13 +131,29 @@ function sqlitePool(pool: SqliteDatabase, dbFile?: string): Pool {
                 }
               }
             }
-            tables.push({ table: tableName, columns, columnTypes, primaryKeys });
+            objects.push({ table: tableName, columns, columnTypes, primaryKeys, type: 'table' });
+          }
+        }
+        const resViews = pool.exec("SELECT name FROM sqlite_master WHERE type='view'");
+        if (resViews.length && resViews[0].values) {
+          for (const row of resViews[0].values) {
+            const viewName = row[0] as string;
+            const resCols = pool.exec(`PRAGMA table_info(\"${viewName}\")`);
+            const columns: string[] = [];
+            const columnTypes: Record<string, string> = {};
+            if (resCols.length && resCols[0].values) {
+              for (const c of resCols[0].values) {
+                columns.push(c[1] as string);
+                columnTypes[c[1] as string] = c[2] as string;
+              }
+            }
+            objects.push({ table: viewName, columns, columnTypes, type: 'view' });
           }
         }
       } catch (e) {
         console.error('Error fetching sqlite schema', e);
       }
-      return tables;
+      return objects;
     }
   };
 }
@@ -176,29 +193,28 @@ async function createMySQLPool({
   multipleStatements,
   queryTimeout,
 }: MySQLConfig): Promise<Pool> {
-  return mysqlPool(
-    mysql.createPool({
-      host,
-      port,
-      user,
-      password,
-      database,
-      multipleStatements,
-      typeCast(field, next) {
-        switch (field.type) {
-          case 'TIMESTAMP':
-          case 'DATE':
-          case 'DATETIME':
-            return field.string();
-          default:
-            return next();
-        }
-      },
-    }),
-    queryTimeout
-  );
+  const dbName = database;
+  const pool = mysql.createPool({
+    host,
+    port,
+    user,
+    password,
+    database,
+    multipleStatements,
+    typeCast(field, next) {
+      switch (field.type) {
+        case 'TIMESTAMP':
+        case 'DATE':
+        case 'DATETIME':
+          return field.string();
+        default:
+          return next();
+      }
+    },
+  });
+  return mysqlPool(pool, queryTimeout, dbName);
 }
-function mysqlPool(pool: mysql.Pool, queryTimeout: number): Pool {
+function mysqlPool(pool: mysql.Pool, queryTimeout: number, dbName?: string): Pool {
   return {
     async getConnection(): Promise<Conn> {
       return mysqlConn(await pool.getConnection(), queryTimeout);
@@ -207,58 +223,97 @@ function mysqlPool(pool: mysql.Pool, queryTimeout: number): Pool {
       pool.end();
     },
     async getSchema(): Promise<TableSchema[]> {
+      let schemas: any[] = [];
+      let tablesAndViews: any[] = [];
+      let fkRows: any[] = [];
+      let procedures: any[] = [];
       try {
-        const [rows] = await pool.query(`
-          SELECT TABLE_NAME, COLUMN_NAME, DATA_TYPE, COLUMN_TYPE, TABLE_SCHEMA
-          FROM INFORMATION_SCHEMA.COLUMNS
-          WHERE TABLE_SCHEMA = DATABASE()
+        if (dbName) {
+          schemas = [{ SCHEMA_NAME: dbName }];
+        } else {
+          const [allSchemas] = await pool.query(`SELECT SCHEMA_NAME FROM INFORMATION_SCHEMA.SCHEMATA WHERE SCHEMA_NAME NOT IN ('mysql', 'information_schema', 'performance_schema', 'sys')`) as unknown as [any[], any];
+          schemas = allSchemas;
+        }
+        const dbFilter = dbName ? `= '${dbName.replace(/'/g, "''")}'` : `NOT IN ('mysql', 'information_schema', 'performance_schema', 'sys')`;
+        [tablesAndViews] = await pool.query(`
+          SELECT c.TABLE_NAME, c.COLUMN_NAME, c.DATA_TYPE, c.COLUMN_TYPE, c.TABLE_SCHEMA, t.TABLE_TYPE
+          FROM INFORMATION_SCHEMA.COLUMNS c
+          JOIN INFORMATION_SCHEMA.TABLES t ON c.TABLE_SCHEMA = t.TABLE_SCHEMA AND c.TABLE_NAME = t.TABLE_NAME
+          WHERE c.TABLE_SCHEMA ${dbFilter}
         `) as unknown as [any[], any];
-        const [fkRows] = await pool.query(`
+        [fkRows] = await pool.query(`
           SELECT TABLE_NAME, COLUMN_NAME, REFERENCED_TABLE_NAME, REFERENCED_COLUMN_NAME, TABLE_SCHEMA, REFERENCED_TABLE_SCHEMA
           FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE
-          WHERE TABLE_SCHEMA = DATABASE() AND REFERENCED_TABLE_NAME IS NOT NULL
+          WHERE REFERENCED_TABLE_NAME IS NOT NULL
+            AND TABLE_SCHEMA ${dbFilter}
         `) as unknown as [any[], any];
-        const map = new Map<string, string[]>();
-        const typeMap = new Map<string, Record<string, string>>();
-        const schemaMap = new Map<string, string>();
-        const fkMap = new Map<string, ForeignKey[]>();
-        rows.forEach((r: any) => {
-          if (!r || !r.TABLE_NAME) { return; }
-          if (!map.has(r.TABLE_NAME)) {
-            map.set(r.TABLE_NAME, []);
-            typeMap.set(r.TABLE_NAME, {});
-          }
-          map.get(r.TABLE_NAME)?.push(r.COLUMN_NAME);
-          typeMap.get(r.TABLE_NAME)![r.COLUMN_NAME] = r.COLUMN_TYPE || r.DATA_TYPE;
-          if (!schemaMap.has(r.TABLE_NAME)) {
-            schemaMap.set(r.TABLE_NAME, r.TABLE_SCHEMA);
-          }
-        });
-        fkRows.forEach((r: any) => {
-          const entry: ForeignKey = {
-            table: r.TABLE_NAME,
-            column: r.COLUMN_NAME,
-            referencedTable: r.REFERENCED_TABLE_NAME,
-            referencedColumn: r.REFERENCED_COLUMN_NAME,
-            schema: r.TABLE_SCHEMA,
-            referencedSchema: r.REFERENCED_TABLE_SCHEMA
-          };
-          if (!fkMap.has(r.TABLE_NAME)) {
-            fkMap.set(r.TABLE_NAME, []);
-          }
-          fkMap.get(r.TABLE_NAME)?.push(entry);
-        });
-        return Array.from(map.entries()).map(([table, columns]) => ({
-          table,
-          columns,
-          columnTypes: typeMap.get(table),
-          schema: schemaMap.get(table),
-          foreignKeys: fkMap.get(table) || []
-        }));
+        [procedures] = await pool.query(`
+          SELECT SPECIFIC_NAME, ROUTINE_TYPE, ROUTINE_SCHEMA
+          FROM INFORMATION_SCHEMA.ROUTINES
+          WHERE ROUTINE_SCHEMA ${dbFilter}
+        `) as unknown as [any[], any];
       } catch (e) {
         console.error('Error fetching mysql schema', e);
         return [];
       }
+      const map = new Map<string, TableSchema[]>();
+      tablesAndViews?.forEach((r: any) => {
+        if (!r || !r.TABLE_NAME) { return; }
+        const obj: TableSchema = {
+          table: r.TABLE_NAME,
+          columns: [r.COLUMN_NAME],
+          columnTypes: { [r.COLUMN_NAME]: r.COLUMN_TYPE || r.DATA_TYPE },
+          schema: r.TABLE_SCHEMA,
+          foreignKeys: [],
+          type: r.TABLE_TYPE === 'VIEW' ? 'view' : 'table',
+        };
+        if (!map.has(r.TABLE_SCHEMA)) { map.set(r.TABLE_SCHEMA, []); }
+        const arr = map.get(r.TABLE_SCHEMA)!;
+        const existing = arr.find(t => t.table === r.TABLE_NAME && t.type === obj.type);
+        if (existing) {
+          existing.columns.push(r.COLUMN_NAME);
+          existing.columnTypes![r.COLUMN_NAME] = r.COLUMN_TYPE || r.DATA_TYPE;
+        } else {
+          arr.push(obj);
+        }
+      });
+      fkRows?.forEach((r: any) => {
+        const arr = map.get(r.TABLE_SCHEMA);
+        if (!arr) { return; }
+        const obj = arr.find(t => t.table === r.TABLE_NAME);
+        if (!obj) { return; }
+        const entry: ForeignKey = {
+          table: r.TABLE_NAME,
+          column: r.COLUMN_NAME,
+          referencedTable: r.REFERENCED_TABLE_NAME,
+          referencedColumn: r.REFERENCED_COLUMN_NAME,
+          schema: r.TABLE_SCHEMA,
+          referencedSchema: r.REFERENCED_TABLE_SCHEMA
+        };
+        obj.foreignKeys = obj.foreignKeys || [];
+        obj.foreignKeys.push(entry);
+      });
+      procedures?.forEach((r: any) => {
+        if (!map.has(r.ROUTINE_SCHEMA)) { map.set(r.ROUTINE_SCHEMA, []); }
+        map.get(r.ROUTINE_SCHEMA)!.push({
+          table: r.SPECIFIC_NAME,
+          columns: [],
+          schema: r.ROUTINE_SCHEMA,
+          type: r.ROUTINE_TYPE === 'PROCEDURE' ? 'procedure' : 'function',
+        });
+      });
+      schemas?.forEach((s: any) => {
+        if (!map.has(s.SCHEMA_NAME)) { map.set(s.SCHEMA_NAME, []); }
+      });
+      const all: TableSchema[] = [];
+      for (const [schema, arr] of map.entries()) {
+        if (arr.length === 0) {
+          all.push({ table: '', columns: [], schema, type: undefined });
+        } else {
+          all.push(...arr);
+        }
+      }
+      return all;
     }
   };
 }
@@ -307,6 +362,7 @@ interface PostgresConfig extends BaseConfig {
   driver: 'postgres';
 }
 const identity = <T>(input: T) => input;
+
 async function createPostgresPool({
   host,
   port,
@@ -338,85 +394,133 @@ async function createPostgresPool({
       },
     },
   });
-  return postgresPool(pool);
+  return postgresPool(pool, queryTimeout);
 }
-function postgresPool(pool: pg.Pool): Pool {
+
+function postgresPool(pool: any, queryTimeout: number): Pool {
   return {
     async getConnection(): Promise<Conn> {
-      const conn = await pool.connect();
-      return postgresConn(conn);
+      const client = await pool.connect();
+      return {
+        async query(q: string): Promise<ExecutionResult> {
+          const res = await client.query({ text: q, rowMode: 'array', statement_timeout: queryTimeout });
+          if (Array.isArray(res.rows) && res.rows.length > 0) {
+            return [{ rows: res.rows, columns: res.fields?.map((f: any) => f.name) }];
+          }
+          if (res.command && ['INSERT', 'UPDATE', 'DELETE'].includes(res.command)) {
+            return [[{ Status: 'Success', RowsAffected: res.rowCount, Message: 'Command executed successfully.' }]];
+          }
+          return [[{ Status: 'Success', Message: 'Command executed successfully.' }]];
+        },
+        destroy() {
+          client.release();
+        },
+        release() {
+          client.release();
+        },
+      };
     },
     end() {
       pool.end();
     },
     async getSchema(): Promise<TableSchema[]> {
       try {
-        const res = await pool.query(`
+        const schemasRes = await pool.query(`SELECT schema_name FROM information_schema.schemata WHERE schema_name NOT IN ('pg_catalog', 'information_schema')`);
+        const schemas = schemasRes.rows.map((r: any) => r.schema_name);
+        const tablesRes = await pool.query(`
+          SELECT table_schema, table_name, table_type
+          FROM information_schema.tables
+          WHERE table_schema NOT IN ('pg_catalog', 'information_schema')
+        `);
+        const columnsRes = await pool.query(`
           SELECT table_schema, table_name, column_name, data_type
           FROM information_schema.columns
           WHERE table_schema NOT IN ('pg_catalog', 'information_schema')
         `);
+        const fkRes = await pool.query(`
+          SELECT
+            tc.table_schema, tc.table_name, kcu.column_name,
+            ccu.table_schema AS referenced_table_schema,
+            ccu.table_name AS referenced_table,
+            ccu.column_name AS referenced_column
+          FROM information_schema.table_constraints AS tc
+          JOIN information_schema.key_column_usage AS kcu
+            ON tc.constraint_name = kcu.constraint_name AND tc.table_schema = kcu.table_schema
+          JOIN information_schema.constraint_column_usage AS ccu
+            ON ccu.constraint_name = tc.constraint_name AND ccu.table_schema = tc.table_schema
+          WHERE tc.constraint_type = 'FOREIGN KEY'
+        `);
         const pkRes = await pool.query(`
-          SELECT kcu.table_schema, kcu.table_name, kcu.column_name
-          FROM information_schema.table_constraints tc
-          JOIN information_schema.key_column_usage kcu
-            ON tc.constraint_name = kcu.constraint_name
-            AND tc.table_schema = kcu.table_schema
+          SELECT
+            tc.table_schema, tc.table_name, kcu.column_name
+          FROM information_schema.table_constraints AS tc
+          JOIN information_schema.key_column_usage AS kcu
+            ON tc.constraint_name = kcu.constraint_name AND tc.table_schema = kcu.table_schema
           WHERE tc.constraint_type = 'PRIMARY KEY'
-            AND tc.table_schema NOT IN ('pg_catalog', 'information_schema')
+        `);
+        const routinesRes = await pool.query(`
+          SELECT routine_schema, routine_name, routine_type
+          FROM information_schema.routines
+          WHERE routine_schema NOT IN ('pg_catalog', 'information_schema')
         `);
         const map = new Map<string, TableSchema>();
-        res.rows.forEach(r => {
-          const key = `${r.table_schema}.${r.table_name}`;
-          if (!map.has(key)) {
-            map.set(key, {
-              table: r.table_name,
-              schema: r.table_schema,
-              columns: [],
-              columnTypes: {},
-              primaryKeys: []
+        tablesRes.rows.forEach((t: any) => {
+          const key = `${t.table_schema}.${t.table_name}`;
+          map.set(key, {
+            table: t.table_name,
+            columns: [],
+            columnTypes: {},
+            schema: t.table_schema,
+            foreignKeys: [],
+            primaryKeys: [],
+            type: t.table_type === 'VIEW' ? 'view' : 'table',
+          });
+        });
+        columnsRes.rows.forEach((c: any) => {
+          const key = `${c.table_schema}.${c.table_name}`;
+          const obj = map.get(key);
+          if (obj) {
+            obj.columns.push(c.column_name);
+            obj.columnTypes![c.column_name] = c.data_type;
+          }
+        });
+        fkRes.rows.forEach((fk: any) => {
+          const key = `${fk.table_schema}.${fk.table_name}`;
+          const obj = map.get(key);
+          if (obj) {
+            obj.foreignKeys = obj.foreignKeys || [];
+            obj.foreignKeys.push({
+              table: fk.table_name,
+              column: fk.column_name,
+              referencedTable: fk.referenced_table,
+              referencedColumn: fk.referenced_column,
+              schema: fk.table_schema,
+              referencedSchema: fk.referenced_table_schema
             });
           }
-          const schemaObj = map.get(key)!;
-          schemaObj.columns.push(r.column_name);
-          schemaObj.columnTypes![r.column_name] = r.data_type;
         });
-        pkRes.rows.forEach(r => {
-          const key = `${r.table_schema}.${r.table_name}`;
-          if (map.has(key)) {
-            map.get(key)!.primaryKeys!.push(r.column_name);
+        pkRes.rows.forEach((pk: any) => {
+          const key = `${pk.table_schema}.${pk.table_name}`;
+          const obj = map.get(key);
+          if (obj) {
+            obj.primaryKeys = obj.primaryKeys || [];
+            obj.primaryKeys.push(pk.column_name);
           }
+        });
+        routinesRes.rows.forEach((r: any) => {
+          map.set(`${r.routine_schema}.${r.routine_name}`, {
+            table: r.routine_name,
+            columns: [],
+            schema: r.routine_schema,
+            type: r.routine_type === 'PROCEDURE' ? 'procedure' : 'function',
+          });
         });
         return Array.from(map.values());
       } catch (e) {
-        console.error('Error fetching pg schema', e);
+        console.error('Error fetching postgres schema', e);
         return [];
       }
     }
-  };
-}
-function postgresConn(conn: pg.PoolClient): Conn {
-  return {
-    async query(q: string): Promise<ExecutionResult> {
-      const response = (await conn.query({ text: q, rowMode: 'array' })) as unknown as pg.QueryResult<any>[];
-      const maybeResponses = response.length
-        ? response
-        : ([response] as unknown as pg.QueryResult<any>[]);
-      return maybeResponses.map(({ rows, rowCount, fields }) => {
-        if (!rows.length) {
-          return rowCount !== null ? [{ rowCount: rowCount }] : [];
-        }
-        const columns = Array.isArray(fields) && fields.length > 0
-          ? fields.map(f => f?.name ?? '')
-          : undefined;
-        return { rows, columns } as TableData;
-      });
-    },
-    destroy() {
-    },
-    release() {
-      conn.release();
-    },
   };
 }
 interface MSSQLConfig extends BaseConfig {
@@ -458,10 +562,13 @@ function mssqlPool(pool: mssql.ConnectionPool): Pool {
     },
     async getSchema(): Promise<TableSchema[]> {
       try {
+        // Tables and Views
         const res = await pool.query(`
-          SELECT TABLE_NAME, COLUMN_NAME, DATA_TYPE, TABLE_SCHEMA
-          FROM INFORMATION_SCHEMA.COLUMNS
+          SELECT t.TABLE_NAME, c.COLUMN_NAME, c.DATA_TYPE, t.TABLE_SCHEMA, t.TABLE_TYPE
+          FROM INFORMATION_SCHEMA.COLUMNS c
+          JOIN INFORMATION_SCHEMA.TABLES t ON c.TABLE_SCHEMA = t.TABLE_SCHEMA AND c.TABLE_NAME = t.TABLE_NAME
         `);
+        // Foreign Keys
         const fkRes = await pool.query(`
           SELECT
             sch.name AS table_schema,
@@ -478,7 +585,7 @@ function mssqlPool(pool: mssql.ConnectionPool): Pool {
           JOIN sys.schemas ref_sch ON rt.schema_id = ref_sch.schema_id
           JOIN sys.columns rc ON fkc.referenced_object_id = rc.object_id AND fkc.referenced_column_id = rc.column_id
         `);
-
+        // Primary Keys
         const pkRes = await pool.query(`
           SELECT
             sch.name AS table_schema,
@@ -491,21 +598,28 @@ function mssqlPool(pool: mssql.ConnectionPool): Pool {
           JOIN sys.schemas sch ON t.schema_id = sch.schema_id
           WHERE i.is_primary_key = 1
         `);
-        const map = new Map<string, string[]>();
-        const typeMap = new Map<string, Record<string, string>>();
-        const schemaMap = new Map<string, string>();
-        const fkMap = new Map<string, ForeignKey[]>();
-        const pkMap = new Map<string, string[]>();
+        // Procedures and Functions
+        const routinesRes = await pool.query(`
+          SELECT SPECIFIC_NAME, ROUTINE_TYPE, ROUTINE_SCHEMA
+          FROM INFORMATION_SCHEMA.ROUTINES
+        `);
+        const map = new Map<string, TableSchema>();
         res.recordset.forEach((r: any) => {
-          if (!map.has(r.TABLE_NAME)) {
-            map.set(r.TABLE_NAME, []);
-            typeMap.set(r.TABLE_NAME, {});
+          const key = r.TABLE_NAME;
+          if (!map.has(key)) {
+            map.set(key, {
+              table: r.TABLE_NAME,
+              columns: [],
+              columnTypes: {},
+              schema: r.TABLE_SCHEMA,
+              foreignKeys: [],
+              primaryKeys: [],
+              type: r.TABLE_TYPE === 'VIEW' ? 'view' : 'table',
+            });
           }
-          map.get(r.TABLE_NAME)?.push(r.COLUMN_NAME);
-          typeMap.get(r.TABLE_NAME)![r.COLUMN_NAME] = r.DATA_TYPE;
-          if (!schemaMap.has(r.TABLE_NAME)) {
-            schemaMap.set(r.TABLE_NAME, r.TABLE_SCHEMA);
-          }
+          const obj = map.get(key)!;
+          obj.columns.push(r.COLUMN_NAME);
+          obj.columnTypes![r.COLUMN_NAME] = r.DATA_TYPE;
         });
         fkRes.recordset.forEach((r: any) => {
           const entry: ForeignKey = {
@@ -516,25 +630,26 @@ function mssqlPool(pool: mssql.ConnectionPool): Pool {
             schema: r.table_schema,
             referencedSchema: r.referenced_table_schema
           };
-          if (!fkMap.has(r.table_name)) {
-            fkMap.set(r.table_name, []);
+          if (map.has(r.table_name)) {
+            map.get(r.table_name)!.foreignKeys = map.get(r.table_name)!.foreignKeys || [];
+            map.get(r.table_name)!.foreignKeys!.push(entry);
           }
-          fkMap.get(r.table_name)?.push(entry);
         });
         pkRes.recordset.forEach((r: any) => {
-          if (!pkMap.has(r.table_name)) {
-            pkMap.set(r.table_name, []);
+          if (map.has(r.table_name)) {
+            map.get(r.table_name)!.primaryKeys = map.get(r.table_name)!.primaryKeys || [];
+            map.get(r.table_name)!.primaryKeys!.push(r.column_name);
           }
-          pkMap.get(r.table_name)?.push(r.column_name);
         });
-        return Array.from(map.entries()).map(([table, columns]) => ({
-          table,
-          columns,
-          columnTypes: typeMap.get(table),
-          schema: schemaMap.get(table),
-          foreignKeys: fkMap.get(table) || [],
-          primaryKeys: pkMap.get(table) || []
-        }));
+        routinesRes.recordset.forEach((r: any) => {
+          map.set(r.SPECIFIC_NAME, {
+            table: r.SPECIFIC_NAME,
+            columns: [],
+            schema: r.ROUTINE_SCHEMA,
+            type: r.ROUTINE_TYPE === 'PROCEDURE' ? 'procedure' : 'function',
+          });
+        });
+        return Array.from(map.values());
       } catch(e) {
         console.error('Error fetching mssql schema', e);
         return [];
@@ -811,47 +926,83 @@ function trinoPool(config: TrinoConfig): Pool {
     end() {},
     async getSchema(): Promise<TableSchema[]> {
       try {
-        const discoveryClient = resolveTrinoClient(config, 'information_schema');
-        const catalogsResult = await runTrinoQuery(discoveryClient, 'SHOW CATALOGS');
-        const catalogsTabular = catalogsResult[0] as any;
-        const discoveredCatalogs: string[] =
-          catalogsTabular && typeof catalogsTabular === 'object' && 'rows' in catalogsTabular && Array.isArray(catalogsTabular.rows)
+        const configured = parseTrinoCatalogSchema(config.database);
+        let catalogsToScan: string[] = [];
+        if (configured.catalog) {
+          catalogsToScan = [configured.catalog];
+        } else {
+          const discoveryClient = resolveTrinoClient(config, 'information_schema');
+          const catalogsResult = await runTrinoQuery(discoveryClient, 'SHOW CATALOGS');
+          const catalogsTabular = catalogsResult[0] as any;
+          catalogsToScan = catalogsTabular && typeof catalogsTabular === 'object' && 'rows' in catalogsTabular && Array.isArray(catalogsTabular.rows)
             ? catalogsTabular.rows.map((r: any[]) => String(r[0]))
             : [];
-        const configured = parseTrinoCatalogSchema(config.database);
-        const catalogsToScan = configured.catalog
-          ? [configured.catalog]
-          : discoveredCatalogs;
-        const map = new Map<string, TableSchema>();
+        }
+        const map = new Map<string, TableSchema[]>();
         for (const catalog of catalogsToScan) {
-          const query = `SELECT table_schema, table_name, column_name, data_type
-                        FROM ${quoteTrinoIdentifier(catalog)}.information_schema.columns
-                        WHERE table_schema NOT IN ('information_schema', 'sys')`;
-          try {
-            const result = await runTrinoQuery(discoveryClient, query);
-            const tabular = result[0] as any;
-            const rows: any[] =
-              tabular && typeof tabular === 'object' && 'rows' in tabular && Array.isArray(tabular.rows)
-                ? tabular.rows
+          let schemas: string[] = [];
+          if (configured.schema) {
+            schemas = [configured.schema];
+          } else {
+            const discoveryClient = resolveTrinoClient(config, 'information_schema');
+            try {
+              const schemasResult = await runTrinoQuery(discoveryClient, `SHOW SCHEMAS FROM ${quoteTrinoIdentifier(catalog)}`);
+              const schemasTabular = schemasResult[0] as any;
+              schemas = schemasTabular && typeof schemasTabular === 'object' && 'rows' in schemasTabular && Array.isArray(schemasTabular.rows)
+                ? schemasTabular.rows.map((r: any[]) => String(r[0]))
                 : [];
-            rows.forEach((r: any) => {
-              const schemaName = String(r[0]);
-              const tableName = String(r[1]);
-              const columnName = String(r[2]);
-              const dataType = String(r[3]);
-              const key = `${catalog}.${schemaName}.${tableName}`;
-              if (!map.has(key)) {
-                map.set(key, { table: tableName, schema: `${catalog}.${schemaName}`, columns: [], columnTypes: {} });
-              }
-              const schemaObj = map.get(key)!;
-              schemaObj.columns.push(columnName);
-              schemaObj.columnTypes![columnName] = dataType;
-            });
+            } catch (e) {
+              continue;
+            }
+          }
+          const schemaFilter = schemas.length === 1 ? `= '${schemas[0].replace(/'/g, "''")}'` : `NOT IN ('information_schema', 'sys')`;
+          const discoveryClient2 = resolveTrinoClient(config, catalog + '.information_schema');
+          const query = `SELECT table_schema, table_name, column_name, data_type, table_type FROM ${quoteTrinoIdentifier(catalog)}.information_schema.columns c JOIN ${quoteTrinoIdentifier(catalog)}.information_schema.tables t ON c.table_schema = t.table_schema AND c.table_name = t.table_name WHERE c.table_schema ${schemaFilter}`;
+          let rows: any[] = [];
+          try {
+            const result = await runTrinoQuery(discoveryClient2, query);
+            const tabular = result[0] as any;
+            rows = tabular && typeof tabular === 'object' && 'rows' in tabular && Array.isArray(tabular.rows)
+              ? tabular.rows
+              : [];
           } catch (catalogError) {
-            console.warn(`Skipping Trino catalog '${catalog}' during schema load`, catalogError);
+            continue;
+          }
+          rows.forEach((r: any) => {
+            const schemaName = String(r[0]);
+            const tableName = String(r[1]);
+            const columnName = String(r[2]);
+            const dataType = String(r[3]);
+            const tableType = String(r[4] || '').toUpperCase();
+            if (!map.has(`${catalog}.${schemaName}`)) {map.set(`${catalog}.${schemaName}`, []);}
+            const arr = map.get(`${catalog}.${schemaName}`)!;
+            let obj = arr.find(t => t.table === tableName && t.type === (tableType === 'VIEW' ? 'view' : 'table'));
+            if (!obj) {
+              obj = {
+                table: tableName,
+                schema: `${catalog}.${schemaName}`,
+                columns: [],
+                columnTypes: {},
+                type: tableType === 'VIEW' ? 'view' : 'table',
+              };
+              arr.push(obj);
+            }
+            obj.columns.push(columnName);
+            obj.columnTypes![columnName] = dataType;
+          });
+          schemas.forEach((schemaName: string) => {
+            if (!map.has(`${catalog}.${schemaName}`)) {map.set(`${catalog}.${schemaName}`, []);}
+          });
+        }
+        const all: TableSchema[] = [];
+        for (const [schema, arr] of map.entries()) {
+          if (arr.length === 0) {
+            all.push({ table: '', columns: [], schema, type: undefined });
+          } else {
+            all.push(...arr);
           }
         }
-        return Array.from(map.values());
+        return all;
       } catch (e) {
         console.error('Error fetching trino schema', e);
         return [];

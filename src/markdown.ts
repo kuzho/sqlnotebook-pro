@@ -17,8 +17,8 @@ export function resultToMarkdownTable(result: TabularResult): string {
     displayResult.push(dummyRow);
   }
   const header = markdownHeader(columns);
-  const rows = displayResult.map(row => markdownRow(row, columns)).join('\n');
-  return `${header}\n${rows}`;
+  const rowsStr = displayResult.map(row => markdownRow(row, columns)).join('\n');
+  return `${header}\n${rowsStr}`;
 }
 function normalizeTabularResult(result: TabularResult): { rows: Row[]; columns?: string[] } {
   if (result && typeof result === 'object' && 'rows' in result) {
