@@ -41,7 +41,7 @@ export function registerAiAssistant(context: vscode.ExtensionContext, kernelMana
                 }
             }
         }
-        if (activeKernel) {
+        if (activeKernel && activeKernel.getDriver()) {
             try {
                 const schema = await activeKernel.getSchemaOrLoad();
                 let historyText = chatContext.history.map(turn => {

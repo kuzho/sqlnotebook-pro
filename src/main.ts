@@ -656,22 +656,22 @@ export function activate(context: vscode.ExtensionContext) {
           let mermaidCode = 'erDiagram\n';
           const rels = new Set();
           for (const t of schema) {
-            mermaidCode += `  "${t.table}" {\n`;
+            const tableName = t.schema ? `${t.schema}_${t.table}` : t.table;
+            mermaidCode += `  "${tableName}" {\n`;
             for (const col of t.columns) {
-              const type = t.columnTypes?.[col] || 'string';
-              const safeType = type.replace(/[^a-zA-Z0-9_]/g, '_');
+              const type = t.columnTypes?.[col] || 'unknown';
+              const safeType = type.replace(/[^a-zA-Z0-9]/g, '');
               const safeCol = col.replace(/[^a-zA-Z0-9_]/g, '_');
               mermaidCode += `    ${safeType} ${safeCol}\n`;
             }
             mermaidCode += `  }\n`;
             if (t.foreignKeys) {
               for (const fk of t.foreignKeys) {
-                if (schema.some((st: any) => st.table === fk.referencedTable)) {
-                   const key = `${fk.referencedTable}-${t.table}`;
-                   if (!rels.has(key)) {
-                     mermaidCode += `  "${fk.referencedTable}" ||--o{ "${t.table}" : "references"\n`;
-                     rels.add(key);
-                   }
+                const refTable = fk.referencedSchema ? `${fk.referencedSchema}_${fk.referencedTable}` : fk.referencedTable;
+                const key = `${refTable}-${tableName}`;
+                if (!rels.has(key)) {
+                  mermaidCode += `  "${refTable}" ||--o{ "${tableName}" : "fk"\n`;
+                  rels.add(key);
                 }
               }
             }
@@ -911,7 +911,7 @@ async function openReportBuilder(context: vscode.ExtensionContext, kernelManager
 
   const activeConnName = vscode.window.activeNotebookEditor?.notebook.uri.toString().includes('sql-notebook') ? kernelManager.getKernelForNotebook(vscode.window.activeNotebookEditor?.notebook)?.id.replace('sql-notebook-', '') : '';
   const defaultConnectionName = activeConnName || '';
-  const availableConnectionsPayload = safeJson(connections.map(c => ({ name: c.name, driver: c.driver })));
+  const availableConnectionsPayload = safeJson(connections.map(c => ({ name: escapeHtml(c.name), driver: escapeHtml(c.driver) })));
   const nonce = getNonce();
 
   panel.webview.html = `
@@ -1049,18 +1049,19 @@ async function openReportBuilder(context: vscode.ExtensionContext, kernelManager
 
       <div class="section-title">🎯 Global Slicers (Parameters)</div>
       <div id="paramsContainer"></div>
-      <button class="btn btn-add" onclick="addParameter()">+ Add Parameter</button>
+      <button class="btn btn-add" id="addParameterBtn">+ Add Parameter</button>
 
       <div class="section-title">🗄️ Datasets</div>
       <div id="datasetsContainer"></div>
-      <button class="btn btn-add" onclick="addDataset()">+ Add Dataset</button>
+      <button class="btn btn-add" id="addDatasetBtn">+ Add Dataset</button>
 
-      <button class="btn btn-save" id="btnSave" onclick="saveReport()">${existingReport ? 'Update Dashboard' : 'Create Dashboard'}</button>
+      <button class="btn btn-save" id="btnSave">${existingReport ? 'Update Dashboard' : 'Create Dashboard'}</button>
 
       <script nonce="${nonce}">
         const vscode = acquireVsCodeApi();
         console.log('reportBuilder: webview script loaded', new Date().toISOString());
         const availableConnections = ${availableConnectionsPayload};
+        const defaultConnectionName = '${escapeHtml(defaultConnectionName)}';
 
         function escapeHtml(value) {
           return String(value ?? '')
@@ -1096,11 +1097,11 @@ async function openReportBuilder(context: vscode.ExtensionContext, kernelManager
               <div class="form-group col">
                 <label>SQL Connection</label>
                 <div class="conn-selector-container">
-                  <div class="conn-trigger-btn" onclick="toggleDropdown(this, event)">\${escapeHtml(initialLabel)}</div>
+                  <div class="conn-trigger-btn">\${escapeHtml(initialLabel)}</div>
                   <div class="conn-dropdown-box">
-                    <input type="text" class="ds-conn-filter" placeholder="🔍 Search connection..." onclick="event.stopPropagation()" oninput="filterConnections(this)">
+                    <input type="text" class="ds-conn-filter" placeholder="🔍 Search connection...">
                     <ul class="ds-conn-list">
-                      \${availableConnections.map(c => \`<li class="ds-conn-option \${c.name === data.connectionName ? 'selected' : ''}" data-value="\${escapeHtml(c.name)}" onclick="selectConnection(this, \${JSON.stringify(c.name)}, \${JSON.stringify(c.driver)})">\${escapeHtml(c.name + ' (' + c.driver + ')')}</li>\`).join('')}
+                      \${availableConnections.map(c => \`<li class="ds-conn-option \${c.name === data.connectionName ? 'selected' : ''}" data-value="\${escapeHtml(c.name)}" data-driver="\${escapeHtml(c.driver)}">\${escapeHtml(c.name + ' (' + c.driver + ')')}</li>\`).join('')}
                     </ul>
                   </div>
                   <input type="hidden" class="ds-conn" value="\${escapeHtml(data.connectionName || (availableConnections[0]?.name || ''))}">
@@ -1119,7 +1120,7 @@ async function openReportBuilder(context: vscode.ExtensionContext, kernelManager
               </div>
               <div class="form-group col">
                 <label>Visualization</label>
-                <select class="ds-type" onchange="updateQueryPlaceholder(this)">
+                <select class="ds-type">
                   <option value="table" \${data.type === 'table' ? 'selected' : ''}>📋 Table</option>
                   <option value="bar" \${data.type === 'bar' ? 'selected' : ''}>📊 Bar Chart</option>
                   <option value="line" \${data.type === 'line' ? 'selected' : ''}>📈 Line Chart</option>
@@ -1133,6 +1134,22 @@ async function openReportBuilder(context: vscode.ExtensionContext, kernelManager
               <textarea class="ds-query" rows="4" style="font-family: var(--vscode-editor-font-family); font-size: 12px;" placeholder="\${escapeHtml(sqlPlaceholders[data.type] || sqlPlaceholders.table)}">\${escapeHtml(data.query)}</textarea>
             </div>
           \`;
+
+          const trigger = div.querySelector('.conn-trigger-btn');
+          trigger?.addEventListener('click', (event) => toggleDropdown(trigger, event));
+
+          div.querySelectorAll('.ds-conn-option').forEach(option => {
+            option.addEventListener('click', () => {
+              selectConnection(option, option.dataset.value || '', option.dataset.driver || '');
+            });
+          });
+
+          const filterInput = div.querySelector('.ds-conn-filter');
+          filterInput?.addEventListener('input', () => filterConnections(filterInput));
+          filterInput?.addEventListener('click', (event) => event.stopPropagation());
+
+          const dsType = div.querySelector('.ds-type');
+          dsType?.addEventListener('change', () => updateQueryPlaceholder(dsType));
 
           const removeButton = document.createElement('button');
           removeButton.type = 'button';
@@ -1229,7 +1246,7 @@ async function openReportBuilder(context: vscode.ExtensionContext, kernelManager
               <input type="text" class="p-name" placeholder="Var" value="\${escapeHtml(data.name.replace(/^@/, ''))}" style="width:100%">
             </div>
             <input type="text" class="p-label" placeholder="Label" value="\${escapeHtml(data.label)}" style="flex:1.5;">
-            <select class="p-type" style="width:85px" onchange="this.parentElement.querySelector('.p-options').style.display = this.value === 'select' ? 'block' : 'none'">
+            <select class="p-type" style="width:85px">
               <option value="text" \${data.type === 'text' ? 'selected' : ''}>Text</option>
               <option value="date" \${data.type === 'date' ? 'selected' : ''}>Date</option>
               <option value="select" \${data.type === 'select' ? 'selected' : ''}>List</option>
@@ -1237,6 +1254,15 @@ async function openReportBuilder(context: vscode.ExtensionContext, kernelManager
             <input type="text" class="p-default" placeholder="Default" value="\${escapeHtml(data.defaultValue)}" style="flex:1;">
             <input type="text" class="p-options" placeholder="a,b,c" value="\${escapeHtml(data.options || '')}" style="flex:1; display:\${data.type === 'select' ? 'block' : 'none'}">
           \`;
+
+          const pType = div.querySelector('.p-type');
+          pType?.addEventListener('change', () => {
+            const optionsInput = div.querySelector('.p-options');
+            if (optionsInput) {
+              optionsInput.style.display = pType.value === 'select' ? 'block' : 'none';
+            }
+          });
+
           const removeParamButton = document.createElement('button');
           removeParamButton.type = 'button';
           removeParamButton.className = 'btn btn-param-remove';
@@ -1270,6 +1296,10 @@ async function openReportBuilder(context: vscode.ExtensionContext, kernelManager
           if (!name || datasets.length === 0) return alert('Name and at least one dataset are required');
           vscode.postMessage({ type: 'save', payload: { name, group, datasets, refreshInterval, parameters } });
         }
+
+        document.getElementById('addParameterBtn').addEventListener('click', () => addParameter());
+        document.getElementById('addDatasetBtn').addEventListener('click', () => addDataset());
+        document.getElementById('btnSave').addEventListener('click', () => saveReport());
 
         const existing = ${safeJson(existingReport || null)};
         if (existing) {
@@ -1630,9 +1660,9 @@ async function handleOpenReport(report: ReportData, context: vscode.ExtensionCon
             const safeValue = escapeHtml(currentValue);
             sHtml += '<div class="slicer-item"><label>' + safeLabel + '</label>';
             if (p.type === 'date') {
-              sHtml += '<input type="date" class="slicer-input" data-name="' + safeName + '" value="' + safeValue + '" onchange="triggerRefresh()">';
+              sHtml += '<input type="date" class="slicer-input" data-name="' + safeName + '" value="' + safeValue + '">';
             } else if (p.type === 'select') {
-              sHtml += '<select class="slicer-input" data-name="' + safeName + '" onchange="triggerRefresh()">';
+              sHtml += '<select class="slicer-input" data-name="' + safeName + '">';
               const opts = (p.options || '').split(',').map(o => o.trim());
               opts.forEach(o => {
                 const safeOption = escapeHtml(o);
@@ -1641,12 +1671,15 @@ async function handleOpenReport(report: ReportData, context: vscode.ExtensionCon
               });
               sHtml += '</select>';
             } else {
-              sHtml += '<input type="text" class="slicer-input" data-name="' + safeName + '" value="' + safeValue + '" onchange="triggerRefresh()">';
+              sHtml += '<input type="text" class="slicer-input" data-name="' + safeName + '" value="' + safeValue + '">';
             }
             sHtml += '</div>';
           });
           sHtml += '</div>';
           slicerArea.innerHTML = sHtml;
+          slicerArea.querySelectorAll('.slicer-input').forEach(input => {
+            input.addEventListener('change', triggerRefresh);
+          });
         }
 
         function generateTable(tableData) {
@@ -1737,8 +1770,10 @@ async function handleOpenReport(report: ReportData, context: vscode.ExtensionCon
             charts = [];
 
             document.getElementById('header-area').innerHTML = '<div class="header"><div><h1>' + escapeHtml(reportName) + '</h1>' +
-              '<div class="no-print" style="margin-top:12px"><button class="btn-refresh" onclick="triggerRefresh()">🔄 Refresh All</button></div></div>' +
+              '<div class="no-print" style="margin-top:12px"><button class="btn-refresh">🔄 Refresh All</button></div></div>' +
               '<div class="meta"><b>Run Date:</b> ' + escapeHtml(executionDate) + '<br><b>Run Time:</b> ' + escapeHtml(executionTime) + '</div></div>';
+            const refreshButton = document.querySelector('.btn-refresh');
+            refreshButton?.addEventListener('click', triggerRefresh);
 
             renderSlicers(reportConfig.parameters);
 

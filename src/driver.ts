@@ -88,6 +88,11 @@ async function createSqLitePool({
     return sqlitePool(new sqlite.Database());
   }
   const fullPath = path.resolve(workspaceRoot(), filepath);
+
+  if (!fullPath.startsWith(workspaceRoot()) && workspaceRoot() !== '') {
+    throw new Error("Security Error: SQLite path must be within the workspace folder.");
+  }
+
   const buff = await fs.readFile(fullPath);
   const db = new sqlite.Database(buff);
   return sqlitePool(db, fullPath);
@@ -115,6 +120,7 @@ function sqlitePool(pool: SqliteDatabase, dbFile?: string): Pool {
             const columns: string[] = [];
             const columnTypes: Record<string, string> = {};
             const primaryKeys: string[] = [];
+            if (!resCols || resCols.length === 0 || !resCols[0].values) { continue; }
             if (resCols.length && resCols[0].values) {
               for (const c of resCols[0].values) {
                 columns.push(c[1] as string);
@@ -217,6 +223,7 @@ function mysqlPool(pool: mysql.Pool, queryTimeout: number): Pool {
         const schemaMap = new Map<string, string>();
         const fkMap = new Map<string, ForeignKey[]>();
         rows.forEach((r: any) => {
+          if (!r || !r.TABLE_NAME) { return; }
           if (!map.has(r.TABLE_NAME)) {
             map.set(r.TABLE_NAME, []);
             typeMap.set(r.TABLE_NAME, {});
@@ -867,7 +874,7 @@ function resolveTrinoClient(config: TrinoConfig, schemaOverride?: string): any {
   const catalog = parsed.catalog || 'system';
   const schema = schemaOverride || parsed.schema || (catalog === 'system' ? 'runtime' : 'default');
   const server = buildTrinoServer(config.host, config.port);
-  
+
   const opts = {
     server,
     catalog,

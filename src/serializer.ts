@@ -46,10 +46,9 @@ function getCellAttachments(cell: vscode.NotebookCellData): Record<string, Recor
   }
   return {};
 }
-function getNotebookDirectoryForSerialization(): string | undefined {
-  const activeNotebook = vscode.window.activeNotebookEditor?.notebook;
-  if (activeNotebook && activeNotebook.notebookType === 'sql-notebook' && activeNotebook.uri.scheme === 'file') {
-    return path.dirname(activeNotebook.uri.fsPath);
+function getNotebookDirectoryForSerialization(notebookUri?: vscode.Uri): string | undefined {
+  if (notebookUri && notebookUri.scheme === 'file') {
+    return path.dirname(notebookUri.fsPath);
   }
   return vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
 }
@@ -142,7 +141,7 @@ function parseLegacyNotebook(contents: string): vscode.NotebookData {
         if (fullData.summary) {
           const normalizedSummary = normalizeExecutionSummary(fullData.summary);
           if (normalizedSummary) {
-            savedSummary = normalizedSummary;
+            savedSummary = { ...normalizedSummary };
           }
         }
         const item = vscode.NotebookCellOutputItem.json(
@@ -250,8 +249,8 @@ function normalizeExecutionSummary(summary: any): SerializedCell['executionSumma
   }
   return { executionOrder, success, timing };
 }
-async function serializeNotebookCells(data: vscode.NotebookData): Promise<SerializedCell[]> {
-  const notebookDir = getNotebookDirectoryForSerialization();
+async function serializeNotebookCells(data: vscode.NotebookData, notebookUri?: vscode.Uri): Promise<SerializedCell[]> {
+  const notebookDir = getNotebookDirectoryForSerialization(notebookUri);
   return Promise.all(data.cells.map(async (cell): Promise<SerializedCell> => {
     if (cell.kind === vscode.NotebookCellKind.Markup) {
       const existingAttachments = getCellAttachments(cell);
@@ -274,8 +273,8 @@ async function serializeNotebookCells(data: vscode.NotebookData): Promise<Serial
     };
   }));
 }
-export async function serializeNotebookAsLegacySql(data: vscode.NotebookData): Promise<string> {
-  const serializedCells = await serializeNotebookCells(data);
+export async function serializeNotebookAsLegacySql(data: vscode.NotebookData, notebookUri?: vscode.Uri): Promise<string> {
+  const serializedCells = await serializeNotebookCells(data, notebookUri);
   const parts: string[] = [];
   const params = data.metadata?.custom?.parameters;
   if (params && typeof params === 'object' && Object.keys(params).length > 0) {
@@ -326,7 +325,9 @@ export class SQLSerializer implements vscode.NotebookSerializer {
     data: vscode.NotebookData,
     _token: vscode.CancellationToken
   ): Promise<Uint8Array> {
-    const finalOutput = await serializeNotebookAsLegacySql(data);
+    // Intentamos obtener el URI del notebook desde los documentos abiertos que coincidan con la data
+    const notebookUri = vscode.workspace.notebookDocuments.find(nb => nb.cellAt(0).document.getText() === data.cells[0]?.value)?.uri;
+    const finalOutput = await serializeNotebookAsLegacySql(data, notebookUri);
     return new TextEncoder().encode(finalOutput);
   }
 }

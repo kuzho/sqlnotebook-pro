@@ -990,6 +990,11 @@ export class SqlCompletionItemProvider implements vscode.CompletionItemProvider 
     if (prev === signature) {
       return;
     }
+    
+    // Prevent memory bloat: Clear usage maps if they grow too large
+    if (this.usageByTable.size > 1000) { this.usageByTable.clear(); }
+    if (this.usageByColumn.size > 5000) { this.usageByColumn.clear(); }
+    
     this.lastStatementSignatureByDocument.set(documentKey, signature);
 
     const refs = this.getTableReferences(statement);

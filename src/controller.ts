@@ -238,7 +238,7 @@ export class SQLNotebookKernel {
           const { value, raw } = resolveParameter(param);
           const paramName = key.startsWith('@') ? key : `@${key}`;
           const searchPattern = new RegExp(`(?<!@)${paramName}\\b`, 'g');
-          if (raw) {
+          if (raw === true) {
             batch = batch.replace(searchPattern, value);
           } else {
             batch = batch.replace(searchPattern, formatParameterValue(value));
