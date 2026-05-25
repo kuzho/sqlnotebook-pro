@@ -1,5 +1,9 @@
 # Change Log
 
+## [3.4.3]
+### 🎨 Visual Consistency
+- **Charts adapt to theme:** All chart text (legend, axes, tooltips) now automatically adapts its color to match the current light or dark theme, just like tables. No more contrast issues or visibility problems!
+
 ## [3.4.1]
 ### 🔒 Security & Stability
 - **Webview hardening:** Hardened report, dashboard, and ER diagram rendering paths to escape user-controlled content before inserting it into HTML.

@@ -20,10 +20,10 @@ Harness the power of AI directly in your workflow. Open the VS Code Chat view (`
 * **Seamless Integration:** Works with your configured VS Code large language model (Copilot, Gemini, etc.).
 
 <br>
-<!-- <div align="center">
-  <img src="media/demo-ai.gif" width="85%" alt="GIF showing AI assistant usage">
-  <p><em>Use @sql in the chat to generate queries from natural language</em></p>
-</div> -->
+<div align="center">
+  <img src="media/demo-ia-sql.gif" width="85%" alt="Demostración de comandos de IA SQL">
+  <p><em>Usa <b>@sql</b> en el chat para generar y explicar queries con IA contextual</em></p>
+</div>
 <br>
 
 ### 2. 🧠 Smart Intellisense & Autocomplete
@@ -75,6 +75,7 @@ Create professional dashboards by combining multiple data sources in a single vi
 
 <br>
 <div align="center">
+  <img src="media/demo-rdl.gif" width="85%" alt="Demostración de reportes y dashboards">
   <p><em>Transform your SQL queries into executive reports in seconds.</em></p>
 </div>
 <br>

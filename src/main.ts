@@ -1716,26 +1716,148 @@ async function handleOpenReport(report: ReportData, context: vscode.ExtensionCon
           let rows = Array.isArray(tableData) ? tableData : (tableData.rows || []);
           if (rows.length === 0) return;
 
-          const labels = rows.map(r => String(Array.isArray(r) ? r[0] : Object.values(r)[0]));
-          const data = rows.map(r => {
-            const val = Array.isArray(r) ? r[1] : Object.values(r)[1];
-            const num = parseFloat(val);
-            return isNaN(num) ? 0 : num;
-          });
+          // Always use the computed color of .dataset-title (table header)
+          let textColor = '#222';
+          let bgColor = '#fff';
+          try {
+            const probe = document.querySelector('.dataset-title');
+            if (probe) {
+              textColor = window.getComputedStyle(probe).color;
+              bgColor = window.getComputedStyle(probe).backgroundColor;
+            } else {
+              textColor = window.getComputedStyle(document.body).color;
+              bgColor = window.getComputedStyle(document.body).backgroundColor;
+            }
+          } catch {}
 
-          const isDark = document.body.classList.contains('vscode-dark');
-          const textColor = isDark ? '#ccc' : '#333';
+          // Heuristic: if text is very light or background is very dark, treat as dark theme
+          function isColorDark(rgb) {
+            if (!rgb) return false;
+            let r=255,g=255,b=255;
+            if (rgb.startsWith('rgb')) {
+              const parts = rgb.match(/\d+/g);
+              if (parts && parts.length >= 3) {
+                r = parseInt(parts[0],10); g = parseInt(parts[1],10); b = parseInt(parts[2],10);
+              }
+            } else if (rgb.startsWith('#')) {
+              if (rgb.length === 7) {
+                r = parseInt(rgb.substr(1,2),16); g = parseInt(rgb.substr(3,2),16); b = parseInt(rgb.substr(5,2),16);
+              }
+            }
+            // Perceived brightness
+            return (r*0.299 + g*0.587 + b*0.114) < 140;
+          }
+          const darkTheme = isColorDark(bgColor) || !isColorDark(textColor);
+
+          // Vibrant palettes for both themes
+          const paletteLight = ['#0078d4', '#28a745', '#ffc107', '#dc3545', '#6610f2', '#e83e8c', '#17a2b8', '#6f42c1', '#fd7e14', '#20c997'];
+          const paletteDark  = ['#4fc3f7', '#81c784', '#ffd54f', '#ff8a65', '#ba68c8', '#f06292', '#4dd0e1', '#9575cd', '#ffb74d', '#aed581'];
+          const palette = darkTheme ? paletteDark : paletteLight;
+          const isDark = darkTheme;
+          const borderColorBarPie = isDark ? '#222' : '#fff';
+
+          // Auto multi-series detection for bar/line
+          let columns = [];
+          if (tableData && !Array.isArray(tableData) && tableData.columns) {
+            columns = tableData.columns;
+          } else if (rows.length > 0 && typeof rows[0] === 'object' && rows[0] !== null) {
+            columns = Object.keys(rows[0]);
+          } else if (rows.length > 0 && Array.isArray(rows[0])) {
+            columns = rows[0].map((_, i) => 'Col ' + (i + 1));
+          }
+
+          let chartLabels = [];
+          let datasets = [];
+
+          if (type === 'pie' && columns.length >= 2) {
+            // Pie: col0=label, col1=value
+            chartLabels = rows.map(r => String(Array.isArray(r) ? r[0] : (r[columns[0]])));
+            const data = rows.map(r => {
+              const val = Array.isArray(r) ? r[1] : r[columns[1]];
+              const num = parseFloat(val);
+              return isNaN(num) ? 0 : num;
+            });
+            datasets = [{
+              label: columns[1] || 'Value',
+              data,
+              backgroundColor: chartLabels.map((_, idx) => palette[idx % palette.length]),
+              borderColor: borderColorBarPie,
+              borderWidth: 2
+            }];
+          }
+          else if ((type === 'bar' || type === 'line') && columns.length >= 3) {
+            // Multi-series: col0=X, col1=series, col2=valor
+            const xCol = columns[0];
+            const seriesCol = columns[1];
+            const valueCol = columns[2];
+
+            // Build set of unique X and series values
+            const xVals = Array.from(new Set(rows.map(r => Array.isArray(r) ? r[0] : r[xCol])));
+            const seriesVals = Array.from(new Set(rows.map(r => Array.isArray(r) ? r[1] : r[seriesCol])));
+            chartLabels = xVals.map(String);
+
+            // Build a map: {serie: {x: valor}}
+            const dataMap = {};
+            rows.forEach(r => {
+              const x = Array.isArray(r) ? r[0] : r[xCol];
+              const serie = Array.isArray(r) ? r[1] : r[seriesCol];
+              const val = parseFloat(Array.isArray(r) ? r[2] : r[valueCol]);
+              if (!dataMap[serie]) dataMap[serie] = {};
+              dataMap[serie][x] = isNaN(val) ? 0 : val;
+            });
+
+            datasets = seriesVals.map((serie, idx) => {
+              const color = palette[idx % palette.length];
+              const data = xVals.map(x => dataMap[serie][x] ?? 0);
+              let ds = {
+                label: String(serie),
+                data,
+                backgroundColor: color,
+                borderColor: type === 'bar' ? borderColorBarPie : color,
+                borderWidth: 2
+              };
+              if (type === 'line') {
+                ds = {
+                  ...ds,
+                  pointBackgroundColor: color,
+                  pointBorderColor: color,
+                  fill: false
+                };
+              }
+              return ds;
+            });
+          } else {
+            // Single series fallback
+            let valueCol = columns[1] || 'Value';
+            chartLabels = rows.map(r => String(Array.isArray(r) ? r[0] : Object.values(r)[0]));
+            const data = rows.map(r => {
+              const val = Array.isArray(r) ? r[1] : Object.values(r)[1];
+              const num = parseFloat(val);
+              return isNaN(num) ? 0 : num;
+            });
+            let ds = {
+              label: valueCol,
+              data: data,
+              backgroundColor: palette[0],
+              borderColor: type === 'bar' ? borderColorBarPie : palette[0],
+              borderWidth: 2
+            };
+            if (type === 'line') {
+              ds = {
+                ...ds,
+                pointBackgroundColor: palette[0],
+                pointBorderColor: palette[0],
+                fill: false
+              };
+            }
+            datasets = [ds];
+          }
 
           charts.push(new Chart(ctx, {
             type: type === 'table' ? 'bar' : type,
             data: {
-              labels: labels,
-              datasets: [{
-                label: 'Dataset Value',
-                data: data,
-                backgroundColor: ['#0078d4', '#28a745', '#ffc107', '#dc3545', '#6610f2', '#e83e8c'],
-                borderWidth: 1
-              }]
+              labels: chartLabels,
+              datasets: datasets
             },
             options: {
               responsive: true,
@@ -1745,9 +1867,37 @@ async function handleOpenReport(report: ReportData, context: vscode.ExtensionCon
                 easing: 'easeOutQuart',
                 from: 0
               } : false,
-              plugins: { legend: { labels: { color: textColor } } }
+              plugins: {
+                legend: {
+                  labels: {
+                    color: textColor
+                  }
+                },
+                tooltip: {
+                  titleColor: textColor,
+                  bodyColor: textColor,
+                  footerColor: textColor
+                }
+              },
+              scales: type !== 'pie' ? {
+                x: { ticks: { color: textColor } },
+                y: { ticks: { color: textColor } }
+              } : undefined
             }
           }));
+
+          // Inject CSS for legend strikethrough color inversion
+          setTimeout(() => {
+            let styleTag = document.getElementById('chartjs-legend-strike-style');
+            if (!styleTag) {
+              styleTag = document.createElement('style');
+              styleTag.id = 'chartjs-legend-strike-style';
+              document.head.appendChild(styleTag);
+            }
+            styleTag.innerHTML = isDark
+              ? '.chartjs-legend li span { text-decoration-color: #fff !important; }'
+              : '.chartjs-legend li span { text-decoration-color: #000 !important; }';
+          }, 100);
         }
 
         window.addEventListener('message', event => {
