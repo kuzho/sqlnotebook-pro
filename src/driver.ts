@@ -6,7 +6,7 @@ import * as fs from 'fs/promises';
 import type { Database as SqliteDatabase } from 'sql.js';
 import * as path from 'path';
 import * as vscode from 'vscode';
-const trinoLib = require('trino-client');
+const trinoLib = require('@trinodb/trino-js-client');
 const supportedDrivers = ['mysql', 'postgres', 'mssql', 'sqlite', 'trino'] as const;
 export type DriverKey = typeof supportedDrivers[number];
 export type TableSchema = {
@@ -1043,7 +1043,7 @@ async function runTrinoQuery(client: any, q: string): Promise<ExecutionResult> {
   try {
     if (!client || typeof client.query !== 'function') {
       console.error('Trino client object:', client);
-      throw new Error('Trino client does not have a query method. Check trino-client version and usage.');
+      throw new Error('Trino client does not have a query method. Check @trinodb/trino-js-client version and usage.');
     }
     const iterator = await client.query(q);
     if (!iterator || typeof iterator[Symbol.asyncIterator] !== 'function') {
