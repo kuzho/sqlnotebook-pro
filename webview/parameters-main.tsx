@@ -1,10 +1,11 @@
 import * as React from 'react';
-import * as ReactDOM from 'react-dom';
+import { createRoot } from 'react-dom/client';
 import Parameters from './Parameters';
 
 document.addEventListener('DOMContentLoaded', () => {
-  const root = document.getElementById('root');
-  if (root) {
-    ReactDOM.render(<Parameters />, root);
+  const container = document.getElementById('root');
+  if (container) {
+    const root = createRoot(container);
+    root.render(<Parameters />);
   }
 });

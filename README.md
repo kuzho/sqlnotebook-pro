@@ -10,14 +10,15 @@
 
 ## ✨ Key Features
 
-### 1.  AI Assistant (@sql)
+### 1. AI Assistant (@sql)
+
 Harness the power of AI directly in your workflow. Open the VS Code Chat view (`Ctrl+Shift+P` -> `Chat: Focus on Chat View`) and mention `@sql` to get help from an assistant that understands your database schema.
 
-* **Context-Aware:** The AI automatically knows which tables you're talking about and their relationships (foreign keys).
-* **Query Generation:** Ask for queries in natural language. _"Get me the top 10 users with the most orders."_
-* **Code Optimization:** Paste a query and ask the AI to _"optimize this"_.
-* **Explanation:** Ask the AI to _"explain what this query does"_.
-* **Seamless Integration:** Works with your configured VS Code large language model (Copilot, Gemini, etc.).
+- **Context-Aware:** The AI automatically knows which tables you're talking about and their relationships (foreign keys).
+- **Query Generation:** Ask for queries in natural language. _"Get me the top 10 users with the most orders."_
+- **Code Optimization:** Paste a query and ask the AI to _"optimize this"_.
+- **Explanation:** Ask the AI to _"explain what this query does"_.
+- **Seamless Integration:** Works with your configured VS Code large language model (Copilot, Gemini, etc.).
 
 <br>
 <div align="center">
@@ -27,14 +28,16 @@ Harness the power of AI directly in your workflow. Open the VS Code Chat view (`
 <br>
 
 ### 2. 🧠 Smart Intellisense & Autocomplete
+
 Write SQL faster with our native Intellisense engine. The extension automatically reads your database schema to provide context-aware suggestions.
 
-* **Global Search:** If a table isn't found in the current connection, the extension smartly scans all your active connections to find it.
-* **Case-Insensitive:** Type `test_users` or `TEST_USERS` — we find it either way.
-* **Columns:** Type a table name followed by a dot (e.g., `users.`) to instantly see that table's columns.
-* **Keywords:** Full support for standard SQL keywords (SELECT, WHERE, JOIN, etc.).
+- **Global Search:** If a table isn't found in the current connection, the extension smartly scans all your active connections to find it.
+- **Case-Insensitive:** Type `test_users` or `TEST_USERS` — we find it either way.
+- **Columns:** Type a table name followed by a dot (e.g., `users.`) to instantly see that table's columns.
+- **Keywords:** Full support for standard SQL keywords (SELECT, WHERE, JOIN, etc.).
 
 ### 3. ⚙️ SQL Parameters Panel
+
 Define reusable variables and run parameterized queries with a dedicated side panel. Save per-file when needed, or keep them temporary for quick testing.
 
 <br>
@@ -45,19 +48,21 @@ Define reusable variables and run parameterized queries with a dedicated side pa
 <br>
 
 #### 💡 Pro Tip: Universal Parameter Logic & Validation
-* **Save (💾):** By default, saves your notebook as plain `.sql` with `-- %%` separators and embedded metadata blocks so it stays readable in text editors and Git views.
+
+- **Save (💾):** By default, saves your notebook as plain `.sql` with `-- %%` separators and embedded metadata blocks so it stays readable in text editors and Git views.
 
 Define your parameters in the **Parameters Panel** (sidebar). List values like `Active, Pending` are automatically formatted as `'Active','Pending'` when substituted into the query.
 
 **Required vs Optional Parameters:**
-* **Required (REQ):** Edit any parameter (✏️) and check the **Required** box. If this parameter is used in your query but left empty, the extension will automatically block execution and show a validation error. This keeps your queries clean:
+
+- **Required (REQ):** Edit any parameter (✏️) and check the **Required** box. If this parameter is used in your query but left empty, the extension will automatically block execution and show a validation error. This keeps your queries clean:
 
 ```sql
 SELECT * FROM users
 WHERE status_column IN (@Status) -- Safe: Extension blocks execution if @Status is empty!
 ```
 
-* **Optional:** For parameters that aren't required, they resolve to `''` (an empty string) when left blank. You can handle this gracefully to skip the filter:
+- **Optional:** For parameters that aren't required, they resolve to `''` (an empty string) when left blank. You can handle this gracefully to skip the filter:
 
 ```sql
 SELECT * FROM users
@@ -65,13 +70,16 @@ WHERE (@Country = '' OR country_code = @Country)
 ```
 
 ### 3. Interactive Data Grid (Excel-Style)
+
 Filter, sort, and analyze your data without writing extra queries.
 
 ### 4. 📊 SQL Reports & Dashboards (New!)
+
 Create professional dashboards by combining multiple data sources in a single view.
-* **Report Builder:** Visually design dashboards with Chart.js charts and interactive tables.
-* **Smart Filters:** Add Slicers to dynamically filter dates or categories.
-* **PDF Pro:** Generate print-ready reports with automatic pagination and high-quality rendering.
+
+- **Report Builder:** Visually design dashboards with Chart.js charts and interactive tables.
+- **Smart Filters:** Add Slicers to dynamically filter dates or categories.
+- **PDF Pro:** Generate print-ready reports with automatic pagination and high-quality rendering.
 
 <br>
 <div align="center">
@@ -80,12 +88,12 @@ Create professional dashboards by combining multiple data sources in a single vi
 </div>
 <br>
 
-* **Column Resizing:** Drag column headers to resize them. **Double-click** the edge to auto-fit to content.
-* **Filtering:** Use the funnel icon to search, select, or exclude specific values.
-* **Multi-Select:** Hold **Ctrl/Cmd** to select multiple columns, rows, or cell ranges at once.
-  * Select multiple columns by Ctrl+clicking headers.
-  * Select multiple rows by clicking and dragging on the row numbers.
-  * Select multiple cell ranges by Ctrl+dragging in different areas.
+- **Column Resizing:** Drag column headers to resize them. **Double-click** the edge to auto-fit to content.
+- **Filtering:** Use the funnel icon to search, select, or exclude specific values.
+- **Multi-Select:** Hold **Ctrl/Cmd** to select multiple columns, rows, or cell ranges at once.
+  - Select multiple columns by Ctrl+clicking headers.
+  - Select multiple rows by clicking and dragging on the row numbers.
+  - Select multiple cell ranges by Ctrl+dragging in different areas.
 
 <br>
 <div align="center">
@@ -94,7 +102,7 @@ Create professional dashboards by combining multiple data sources in a single vi
 </div>
 <br>
 
-* **Smart Export:** Export to **Excel (XLSX)** or **CSV** using native save dialogs with auto-generated timestamps.
+- **Smart Export:** Export to **Excel (XLSX)** or **CSV** using native save dialogs with auto-generated timestamps.
 
 <br>
 <div align="center">
@@ -103,6 +111,7 @@ Create professional dashboards by combining multiple data sources in a single vi
 <br>
 
 ### 4. Connection Groups & Editing
+
 Organize your database chaos. Group connections by environment (Dev, Prod, Staging) or project. Right-click any connection to **Edit** details instantly without re-entering passwords.
 
 <br>
@@ -112,32 +121,35 @@ Organize your database chaos. Group connections by environment (Dev, Prod, Stagi
 <br>
 
 ### 5. Smart Connection Form
+
 Create connections safely. Includes a **Test Connection** button to verify credentials before saving.
-* **Auto-Ports:** Automatically sets the default port (e.g., 5432 for Postgres) when selecting a driver.
-* **Secure Storage:** Passwords are stored securely in the system keychain.
+
+- **Auto-Ports:** Automatically sets the default port (e.g., 5432 for Postgres) when selecting a driver.
+- **Secure Storage:** Passwords are stored securely in the system keychain.
 
 <br>
 <br>
 
 ### 6. Recommended VS Code Settings
+
 For the best visual experience (matching the look & feel of Azure Data Studio), we recommend these settings:
 
-* **Show Line Numbers:** Essential for debugging large SQL queries.
-  * Go to **Settings** (`Ctrl+,`) -> Search for **"Notebook: Line Numbers"** -> Select **"on"**.
-  * *(Or add this to your JSON: `"notebook.lineNumbers": "on"`)*
+- **Show Line Numbers:** Essential for debugging large SQL queries.
+  - Go to **Settings** (`Ctrl+,`) -> Search for **"Notebook: Line Numbers"** -> Select **"on"**.
+  - _(Or add this to your JSON: `"notebook.lineNumbers": "on"`)_
 
-* **Move Toolbar to Left:** To have the cell actions (Run, Move, Collapse) on the left side:
-  * Go to **Settings** -> Search for **"Notebook: Cell Toolbar Location"** -> Select **"left"**.
+- **Move Toolbar to Left:** To have the cell actions (Run, Move, Collapse) on the left side:
+  - Go to **Settings** -> Search for **"Notebook: Cell Toolbar Location"** -> Select **"left"**.
 
-* **Clean Up the Toolbar:** To remove extra native buttons and keep only the essentials:
-  * Open any SQL file.
-  * **Right-click** on the cell toolbar.
-  * **Uncheck** options like *"Execute Above Cells"* to leave only your SQL Notebook Pro controls.
+- **Clean Up the Toolbar:** To remove extra native buttons and keep only the essentials:
+  - Open any SQL file.
+  - **Right-click** on the cell toolbar.
+  - **Uncheck** options like _"Execute Above Cells"_ to leave only your SQL Notebook Pro controls.
 
-* **Remove Vertical Gap:** To avoid unnecessary empty space below small result tables:
-  * Go to **Settings** -> Search for **"Scroll Beyond Last Line"** -> **Uncheck** it.
+- **Remove Vertical Gap:** To avoid unnecessary empty space below small result tables:
+  - Go to **Settings** -> Search for **"Scroll Beyond Last Line"** -> **Uncheck** it.
 
-* **(Optional) Hacker UI Colors:** To get the exact "Pro" look (Pink borders & Dark background), add this to your `settings.json`:
+- **(Optional) Hacker UI Colors:** To get the exact "Pro" look (Pink borders & Dark background), add this to your `settings.json`:
 
 ```json
 "workbench.colorCustomizations": {
@@ -150,9 +162,11 @@ For the best visual experience (matching the look & feel of Azure Data Studio), 
     "scrollbarSlider.activeBackground": "#F92672"
 }
 ```
+
 <br>
 
 ## 🚀 What's in the Box
+
 - **🧠 Intellisense:** Schema-aware autocomplete for tables, columns, and SQL keywords across all your connections.
 - **🎛️ Parameters Panel:** Define `@Name` variables (text, dropdown, date, or checkbox) from the sidebar. Mark them as **Required** for automatic pre-execution validation. Values are substituted at run time and can be saved per file.
 - **� Interactive Grid:** Filter, sort, resize columns (double-click to auto-fit), and multi-select (Ctrl+Click or drag) columns, rows, and cell ranges. Export to Excel/XLSX or CSV with one click.
@@ -168,6 +182,7 @@ For the best visual experience (matching the look & feel of Azure Data Studio), 
 ## Parameter Casting Recommendations (MySQL, MSSQL, SQLite, Postgres, Trino)
 
 Parameters are substituted as SQL string literals.
+
 - Single value: `'text'`
 - List value: `'1','2','3'` (best used with `IN (@Param)`)
 
@@ -216,6 +231,7 @@ SQL Notebook Pro uses an explicit separator to split a `.sql` file into notebook
 ```
 
 Rules:
+
 - Put `-- %%` on its own line.
 - Everything between separators becomes one notebook cell.
 - No separator means the whole file is treated as a single cell.
@@ -239,27 +255,28 @@ This is a markdown cell.
 ```
 
 Tip:
+
 - If you open an old file without separators, it may appear as one block. Add `-- %%` where you want cell boundaries.
 
 ## Usage
 
 1. **Open a SQL File as a Notebook:** Right-click any `.sql` file in the Explorer → **Open With** → **SQL Notebook**. If the file is already open in the text editor, right-click the tab → **Reopen Editor With** → **SQL Notebook**.
 2. **Add Cells:** Use the **+ SQL** or **+ Markdown** buttons at the bottom of the notebook to add new cells. Each SQL cell runs independently.
-   > *Already have a plain `.sql` file with `-- %%` separators? It migrates automatically — each block becomes a separate cell.*
+   > _Already have a plain `.sql` file with `-- %%` separators? It migrates automatically — each block becomes a separate cell._
 3. **Create a Connection:** Use the **SQL Notebook** sidebar panel to add a database connection. Enter a **Group Name** to organize it into a folder automatically.
 4. **Select Connection:** Click the connection name in the top-right of the editor (or the **Select Kernel** button) to choose which database to run against.
-5. **Define Parameters *(optional)*:** Click the **Parameters** icon in the notebook toolbar to open the panel. Add `@Name` variables with text, dropdown, or checkbox types — substituted at run time, saveable per file.
+5. **Define Parameters _(optional)_:** Click the **Parameters** icon in the notebook toolbar to open the panel. Add `@Name` variables with text, dropdown, or checkbox types — substituted at run time, saveable per file.
 6. **Run Queries:** Click the **▶** button on a cell, or use **Run All** from the toolbar.
 
 ## Configuration
 
 You can customize the extension in VS Code Settings:
 
-* **SQL Notebook: Max Result Rows:** (Default: 10000) Limits the rows returned from the database to prevent UI freezes on massive queries.
-* **SQL Notebook: Query Timeout:** (Default: 60) Cancels queries that take too long, in seconds.
-* **SQL Notebook: Open After Export:** (Default: true) Automatically opens the Excel/CSV file after exporting.
-* **SQL Notebook: Safe Delete:** (Default: true) Prevent execution of DELETE and UPDATE statements without a WHERE clause.
-* **SQL Notebook: Badge Keywords (Danger, Warning, etc.):** Five settings to customize the keywords that trigger automatic cell highlighting badges (e.g., making cells with "Failed" appear red).
+- **SQL Notebook: Max Result Rows:** (Default: 10000) Limits the rows returned from the database to prevent UI freezes on massive queries.
+- **SQL Notebook: Query Timeout:** (Default: 60) Cancels queries that take too long, in seconds.
+- **SQL Notebook: Open After Export:** (Default: true) Automatically opens the Excel/CSV file after exporting.
+- **SQL Notebook: Safe Delete:** (Default: true) Prevent execution of DELETE and UPDATE statements without a WHERE clause.
+- **SQL Notebook: Badge Keywords (Danger, Warning, etc.):** Five settings to customize the keywords that trigger automatic cell highlighting badges (e.g., making cells with "Failed" appear red).
 
 ## FAQ
 
@@ -273,4 +290,5 @@ Click the small funnel icon (Filter) next to any column header to search or sele
 Yes! Since connection details (Host, User, DB) are stored in `settings.json`, they sync automatically if you use VS Code Settings Sync. You will only need to re-enter passwords on the new machine for security.
 
 ---
-*Based on the original work by cmoog.*
+
+_Based on the original work by cmoog._

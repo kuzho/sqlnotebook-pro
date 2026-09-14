@@ -6,9 +6,11 @@ export type EmbedImagesResult = {
 };
 const embeddedImageCache = new Map<string, string>();
 function shouldSkipPath(imagePath: string): boolean {
-  return /^data:image\//i.test(imagePath)
-    || /^attachment:/i.test(imagePath)
-    || /^(https?:|vscode-|file:)/i.test(imagePath);
+  return (
+    /^data:image\//i.test(imagePath) ||
+    /^attachment:/i.test(imagePath) ||
+    /^(https?:|vscode-|file:)/i.test(imagePath)
+  );
 }
 function getMimeFromFilePath(filePath: string): string {
   const ext = (filePath.split('.').pop() || 'png').toLowerCase();
@@ -17,7 +19,10 @@ function getMimeFromFilePath(filePath: string): string {
   }
   return ext;
 }
-export async function embedImagesAsBase64(markdown: string, notebookDir?: string): Promise<EmbedImagesResult> {
+export async function embedImagesAsBase64(
+  markdown: string,
+  notebookDir?: string,
+): Promise<EmbedImagesResult> {
   const regex = /!\[([^\]]*)\]\(([^)]+)\)/g;
   const uniqueLocalPaths = new Set<string>();
   const resolvedDataByInputPath = new Map<string, string>();
@@ -47,8 +52,7 @@ export async function embedImagesAsBase64(markdown: string, notebookDir?: string
       resolvedDataByInputPath.set(imagePath, base64);
       embeddedImageCache.set(absolutePath, base64);
       embeddedFiles.add(absolutePath);
-    } catch {
-    }
+    } catch {}
   });
   await Promise.all(readPromises);
   const result = markdown.replace(regex, (full, alt, rawPath) => {
@@ -61,6 +65,6 @@ export async function embedImagesAsBase64(markdown: string, notebookDir?: string
   });
   return {
     markdown: result,
-    embeddedFiles: [...embeddedFiles]
+    embeddedFiles: [...embeddedFiles],
   };
 }

@@ -1,16 +1,34 @@
 /// <reference lib="dom" />
-import React, { useState, useMemo, useEffect, useLayoutEffect, useRef, useCallback } from 'react';
-function injectAttachmentsIntoMarkdown(markdown: string, attachments: Record<string, Record<string, string>>) {
-  if (!attachments) {return markdown;}
-  return markdown.replace(/!\[([^\]]*)\]\(attachment:([^\)]+)\)/g, (full: string, alt: string, filename: string) => {
-    const att = attachments[filename];
-    if (!att) {return full;}
-    const mime = Object.keys(att)[0];
-    const base64 = att[mime];
-    return `![${alt}](data:${mime};base64,${base64})`;
-  });
+import React, {
+  useState,
+  useMemo,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useCallback,
+} from 'react';
+function injectAttachmentsIntoMarkdown(
+  markdown: string,
+  attachments: Record<string, Record<string, string>>,
+) {
+  if (!attachments) {
+    return markdown;
+  }
+  return markdown.replace(
+    /!\[([^\]]*)\]\(attachment:([^\)]+)\)/g,
+    (full: string, alt: string, filename: string) => {
+      const att = attachments[filename];
+      if (!att) {
+        return full;
+      }
+      const mime = Object.keys(att)[0];
+      const base64 = att[mime];
+      return `![${alt}](data:${mime};base64,${base64})`;
+    },
+  );
 }
-import ReactDOM from 'react-dom';
+import { createPortal } from 'react-dom';
+import { createRoot, Root } from 'react-dom/client';
 import type { ActivationFunction } from 'vscode-notebook-renderer';
 import {
   useReactTable,
@@ -25,7 +43,7 @@ import {
   ColumnSizingState,
 } from '@tanstack/react-table';
 const Portal = ({ children }: { children: React.ReactNode }) =>
-  ReactDOM.createPortal(children, window.document.body);
+  createPortal(children, window.document.body);
 const styles = `
   :root {
     --grid-border: var(--vscode-panel-border, #454545);
@@ -297,14 +315,14 @@ const FilterMenu = ({
   column,
   isOpen,
   onToggle,
-  onClose
+  onClose,
 }: {
-  column: any,
-  isOpen: boolean,
-  onToggle: (e: React.MouseEvent) => void,
-  onClose: () => void
+  column: any;
+  isOpen: boolean;
+  onToggle: (e: React.MouseEvent) => void;
+  onClose: () => void;
 }) => {
-  const [search, setSearch] = useState("");
+  const [search, setSearch] = useState('');
   const triggerRef = useRef<HTMLDivElement>(null);
   const [coords, setCoords] = useState({ x: 0, y: 0, alignTop: false });
   const { uniqueValues, totalUniqueValues, isCapped } = useMemo(() => {
@@ -315,29 +333,31 @@ const FilterMenu = ({
     const allValues = Array.from(unique.keys());
     const cappedValues = allValues.slice(0, MAX_FILTER_OPTIONS);
     return {
-      uniqueValues: cappedValues.map(val => {
-        const label =
-          val === null || val === undefined
-            ? '(Empty)'
-            : String(val);
-        return { raw: val, label };
-      }).sort((a, b) => a.label.localeCompare(b.label)),
+      uniqueValues: cappedValues
+        .map((val) => {
+          const label =
+            val === null || val === undefined ? '(Empty)' : String(val);
+          return { raw: val, label };
+        })
+        .sort((a, b) => a.label.localeCompare(b.label)),
       totalUniqueValues: allValues.length,
-      isCapped: allValues.length > MAX_FILTER_OPTIONS
+      isCapped: allValues.length > MAX_FILTER_OPTIONS,
     };
   }, [column]);
-  const filteredList = uniqueValues.filter(v => v.label.toLowerCase().includes(search.toLowerCase()));
+  const filteredList = uniqueValues.filter((v) =>
+    v.label.toLowerCase().includes(search.toLowerCase()),
+  );
   const currentFilter = (column.getFilterValue() as any[]) || [];
   const handleCheckbox = (val: any) => {
     let newFilter = currentFilter.includes(val)
-      ? currentFilter.filter(i => i !== val)
+      ? currentFilter.filter((i) => i !== val)
       : [...currentFilter, val];
     column.setFilterValue(newFilter.length ? newFilter : undefined);
   };
-  const selectAll = () => column.setFilterValue(filteredList.map(v => v.raw));
+  const selectAll = () => column.setFilterValue(filteredList.map((v) => v.raw));
   const clearFilter = () => {
     column.setFilterValue(undefined);
-    setSearch("");
+    setSearch('');
   };
   useEffect(() => {
     if (isOpen && triggerRef.current) {
@@ -346,27 +366,34 @@ const FilterMenu = ({
       const spaceBelow = (window.innerHeight || 0) - rect.bottom;
       const showAbove = spaceBelow < MENU_HEIGHT;
       let left = rect.right - 240;
-      if (left < 0) {left = rect.left;}
+      if (left < 0) {
+        left = rect.left;
+      }
       setCoords({
         x: left,
         y: showAbove ? rect.top : rect.bottom,
-        alignTop: showAbove
+        alignTop: showAbove,
       });
-      setSearch("");
+      setSearch('');
     }
   }, [isOpen]);
   useEffect(() => {
-    if (!isOpen) {return;}
+    if (!isOpen) {
+      return;
+    }
     const close = (e: MouseEvent) => {
-      if (triggerRef.current && !(triggerRef.current as HTMLElement).contains(e.target as Node)) {
-         onClose();
+      if (
+        triggerRef.current &&
+        !(triggerRef.current as HTMLElement).contains(e.target as Node)
+      ) {
+        onClose();
       }
     };
     window.addEventListener('mousedown', close as any);
     return () => window.removeEventListener('mousedown', close);
   }, [isOpen, onClose]);
   return (
-    <div className="filter-wrapper" onClick={e => e.stopPropagation()}>
+    <div className="filter-wrapper" onClick={(e) => e.stopPropagation()}>
       <div
         ref={triggerRef}
         className={`filter-trigger ${currentFilter.length ? 'active' : ''}`}
@@ -374,21 +401,25 @@ const FilterMenu = ({
         title="Filtrar"
       >
         <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor">
-          <path d="M6 12l4-4V2H6v10z"/>
-          <path fillRule="evenodd" clipRule="evenodd" d="M1.5 2h13l-5 5v5l-3 3V7l-5-5z"/>
+          <path d="M6 12l4-4V2H6v10z" />
+          <path
+            fillRule="evenodd"
+            clipRule="evenodd"
+            d="M1.5 2h13l-5 5v5l-3 3V7l-5-5z"
+          />
         </svg>
       </div>
       {isOpen && (
         <Portal>
           <div
             className="filter-menu-floating"
-            onMouseDown={e => e.stopPropagation()}
+            onMouseDown={(e) => e.stopPropagation()}
             style={{
               top: coords.y,
               left: coords.x,
               transform: coords.alignTop ? 'translateY(-100%)' : 'none',
               marginTop: coords.alignTop ? -4 : 4,
-              marginBottom: coords.alignTop ? 4 : 0
+              marginBottom: coords.alignTop ? 4 : 0,
             }}
           >
             <div className="popup-search">
@@ -396,17 +427,24 @@ const FilterMenu = ({
                 placeholder="Search.."
                 value={search}
                 onChange={(e: any) => setSearch(e.target.value)}
-                onKeyDown={e => e.stopPropagation()}
+                onKeyDown={(e) => e.stopPropagation()}
                 autoFocus
               />
             </div>
             <div className="popup-list">
-              <div className="popup-item" onClick={clearFilter} style={{fontStyle:'italic', color:'#0078d4'}}>
+              <div
+                className="popup-item"
+                onClick={clearFilter}
+                style={{ fontStyle: 'italic', color: '#0078d4' }}
+              >
                 Clear
               </div>
               {isCapped && (
-                <div style={{ padding: '4px 8px', color: '#d7ba7d', fontSize: 11 }}>
-                  Showing first {MAX_FILTER_OPTIONS.toLocaleString()} of {totalUniqueValues.toLocaleString()} values
+                <div
+                  style={{ padding: '4px 8px', color: '#d7ba7d', fontSize: 11 }}
+                >
+                  Showing first {MAX_FILTER_OPTIONS.toLocaleString()} of{' '}
+                  {totalUniqueValues.toLocaleString()} values
                 </div>
               )}
               {filteredList.map((item, idx) => (
@@ -419,11 +457,19 @@ const FilterMenu = ({
                   <span>{item.label}</span>
                 </label>
               ))}
-              {filteredList.length === 0 && <div style={{padding:8, textAlign:'center', color:'#888'}}>0 Rows</div>}
+              {filteredList.length === 0 && (
+                <div style={{ padding: 8, textAlign: 'center', color: '#888' }}>
+                  0 Rows
+                </div>
+              )}
             </div>
             <div className="popup-actions">
-              <button className="btn-secondary" onClick={selectAll}>All</button>
-              <button className="btn-primary" onClick={onClose}>Close</button>
+              <button className="btn-secondary" onClick={selectAll}>
+                All
+              </button>
+              <button className="btn-primary" onClick={onClose}>
+                Close
+              </button>
             </div>
           </div>
         </Portal>
@@ -432,154 +478,325 @@ const FilterMenu = ({
   );
 };
 const BADGE_STYLES: Record<string, React.CSSProperties> = {
-  danger: { backgroundColor: '#4a1818', color: '#ff9999', border: '1px solid #752525' },
-  warning: { backgroundColor: '#4d4100', color: '#ffeb80', border: '1px solid #6e5d00' },
-  success: { backgroundColor: '#103d10', color: '#99ff99', border: '1px solid #1a5e1a' },
-  inactive: { backgroundColor: '#2d2d2d', color: '#cccccc', border: '1px solid #454545' },
-  processing: { backgroundColor: '#003366', color: '#99ccff', border: '1px solid #004488' }
+  danger: {
+    backgroundColor: '#4a1818',
+    color: '#ff9999',
+    border: '1px solid #752525',
+  },
+  warning: {
+    backgroundColor: '#4d4100',
+    color: '#ffeb80',
+    border: '1px solid #6e5d00',
+  },
+  success: {
+    backgroundColor: '#103d10',
+    color: '#99ff99',
+    border: '1px solid #1a5e1a',
+  },
+  inactive: {
+    backgroundColor: '#2d2d2d',
+    color: '#cccccc',
+    border: '1px solid #454545',
+  },
+  processing: {
+    backgroundColor: '#003366',
+    color: '#99ccff',
+    border: '1px solid #004488',
+  },
 };
-const SmartCell = React.memo(({ value, badgeKeywords }: { value: unknown, badgeKeywords?: any }) => {
-  if (value === null || value === undefined) {
-    return <span style={{ opacity: 0.5, fontStyle: 'italic' }}>NULL</span>;
-  }
-  if (typeof value === 'object') {
-    return <span style={{ fontFamily: 'monospace', fontSize: '0.9em' }}>{JSON.stringify(value)}</span>;
-  }
-  const str = String(value);
-  if (str.startsWith('http://') || str.startsWith('https://')) {
-    return (
-      <a
-        href={str}
-        target="_blank"
-        rel="noopener noreferrer"
-        style={{ color: '#3794ff', textDecoration: 'none' } as React.CSSProperties}
-        onClick={(e) => e.stopPropagation()}
-        onMouseEnter={(e) => (e.currentTarget as HTMLAnchorElement).style.textDecoration = 'underline'}
-        onMouseLeave={(e) => (e.currentTarget as HTMLAnchorElement).style.textDecoration = 'none'}
-      >
-        {str}
-      </a>
-    );
-  }
-  const lower = str.toLowerCase();
-  let style: React.CSSProperties | null = null;
-  const kw = badgeKeywords || {
-    danger: ['🔴', 'atrasada', 'failed', 'fail', 'error', 'critical', 'cancelado', 'cancelled', 'rechazado', 'rejected', 'timeout'],
-    warning: ['🟡', 'urgente', 'warning', 'pending', 'en pausa', 'paused', 'en espera', 'waiting', 'delayed', 'demorado'],
-    success: ['🟢', 'a tiempo', 'success', 'ready', 'ok', 'completed', 'done', 'activo', 'active', 'terminado', 'finished', 'aprobado', 'approved', 'entregado'],
-    inactive: ['⚪', 'sin fecha', 'inactive', 'null', 'none', 'cerrado', 'closed', 'disabled', 'desactivado', 'archived', 'archivado', 'n/a', 'empty'],
-    processing: ['🔵', 'processing', 'running', 'en progreso', 'in progress', 'en proceso', 'started', 'iniciado', 'cargando', 'loading']
-  };
-  if (kw.danger.some((w: string) => lower.includes(w.toLowerCase()))) {
-    style = BADGE_STYLES.danger;
-  } else if (kw.warning.some((w: string) => lower.includes(w.toLowerCase()))) {
-    style = BADGE_STYLES.warning;
-  } else if (kw.success.some((w: string) => lower.includes(w.toLowerCase()))) {
-    style = BADGE_STYLES.success;
-  } else if (kw.inactive.some((w: string) => lower.includes(w.toLowerCase()))) {
-    style = BADGE_STYLES.inactive;
-  } else if (kw.processing.some((w: string) => lower.includes(w.toLowerCase()))) {
-    style = BADGE_STYLES.processing;
-  }
-  if (style) {
-    return <span style={{ ...style, padding: '1px 8px', borderRadius: '10px', fontSize: '11px', display: 'inline-block', lineHeight: '1.4', fontWeight: 500 }}>{str}</span>;
-  }
-  return <span>{str}</span>;
-});
-const EditableCell = React.memo(({ initialValue, row, column, updateData, isEdited, badgeKeywords }: any) => {
-  const [value, setValue] = useState(initialValue);
-  const [isEditing, setIsEditing] = useState(false);
-  useEffect(() => { setValue(initialValue); }, [initialValue]);
-  const onBlur = () => {
-    setIsEditing(false);
-    if (value !== initialValue) {
-      updateData(row.index, column.id, value);
+const SmartCell = React.memo(
+  ({ value, badgeKeywords }: { value: unknown; badgeKeywords?: any }) => {
+    if (value === null || value === undefined) {
+      return <span style={{ opacity: 0.5, fontStyle: 'italic' }}>NULL</span>;
     }
-  };
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter') {
-      onBlur();
-    } else if (e.key === 'Escape') {
+    if (typeof value === 'object') {
+      return (
+        <span style={{ fontFamily: 'monospace', fontSize: '0.9em' }}>
+          {JSON.stringify(value)}
+        </span>
+      );
+    }
+    const str = String(value);
+    if (str.startsWith('http://') || str.startsWith('https://')) {
+      return (
+        <a
+          href={str}
+          target="_blank"
+          rel="noopener noreferrer"
+          style={
+            { color: '#3794ff', textDecoration: 'none' } as React.CSSProperties
+          }
+          onClick={(e) => e.stopPropagation()}
+          onMouseEnter={(e) =>
+            ((e.currentTarget as HTMLAnchorElement).style.textDecoration =
+              'underline')
+          }
+          onMouseLeave={(e) =>
+            ((e.currentTarget as HTMLAnchorElement).style.textDecoration =
+              'none')
+          }
+        >
+          {str}
+        </a>
+      );
+    }
+    const lower = str.toLowerCase();
+    let style: React.CSSProperties | null = null;
+    const kw = badgeKeywords || {
+      danger: [
+        '🔴',
+        'atrasada',
+        'failed',
+        'fail',
+        'error',
+        'critical',
+        'cancelado',
+        'cancelled',
+        'rechazado',
+        'rejected',
+        'timeout',
+      ],
+      warning: [
+        '🟡',
+        'urgente',
+        'warning',
+        'pending',
+        'en pausa',
+        'paused',
+        'en espera',
+        'waiting',
+        'delayed',
+        'demorado',
+      ],
+      success: [
+        '🟢',
+        'a tiempo',
+        'success',
+        'ready',
+        'ok',
+        'completed',
+        'done',
+        'activo',
+        'active',
+        'terminado',
+        'finished',
+        'aprobado',
+        'approved',
+        'entregado',
+      ],
+      inactive: [
+        '⚪',
+        'sin fecha',
+        'inactive',
+        'null',
+        'none',
+        'cerrado',
+        'closed',
+        'disabled',
+        'desactivado',
+        'archived',
+        'archivado',
+        'n/a',
+        'empty',
+      ],
+      processing: [
+        '🔵',
+        'processing',
+        'running',
+        'en progreso',
+        'in progress',
+        'en proceso',
+        'started',
+        'iniciado',
+        'cargando',
+        'loading',
+      ],
+    };
+    if (kw.danger.some((w: string) => lower.includes(w.toLowerCase()))) {
+      style = BADGE_STYLES.danger;
+    } else if (
+      kw.warning.some((w: string) => lower.includes(w.toLowerCase()))
+    ) {
+      style = BADGE_STYLES.warning;
+    } else if (
+      kw.success.some((w: string) => lower.includes(w.toLowerCase()))
+    ) {
+      style = BADGE_STYLES.success;
+    } else if (
+      kw.inactive.some((w: string) => lower.includes(w.toLowerCase()))
+    ) {
+      style = BADGE_STYLES.inactive;
+    } else if (
+      kw.processing.some((w: string) => lower.includes(w.toLowerCase()))
+    ) {
+      style = BADGE_STYLES.processing;
+    }
+    if (style) {
+      return (
+        <span
+          style={{
+            ...style,
+            padding: '1px 8px',
+            borderRadius: '10px',
+            fontSize: '11px',
+            display: 'inline-block',
+            lineHeight: '1.4',
+            fontWeight: 500,
+          }}
+        >
+          {str}
+        </span>
+      );
+    }
+    return <span>{str}</span>;
+  },
+);
+const EditableCell = React.memo(
+  ({ initialValue, row, column, updateData, isEdited, badgeKeywords }: any) => {
+    const [value, setValue] = useState(initialValue);
+    const [isEditing, setIsEditing] = useState(false);
+    useEffect(() => {
       setValue(initialValue);
+    }, [initialValue]);
+    const onBlur = () => {
       setIsEditing(false);
+      if (value !== initialValue) {
+        updateData(row.index, column.id, value);
+      }
+    };
+    const handleKeyDown = (e: React.KeyboardEvent) => {
+      if (e.key === 'Enter') {
+        onBlur();
+      } else if (e.key === 'Escape') {
+        setValue(initialValue);
+        setIsEditing(false);
+      }
+    };
+    if (isEditing) {
+      return (
+        <input
+          autoFocus
+          value={value ?? ''}
+          onChange={(e: any) => setValue(e.target.value)}
+          onBlur={onBlur}
+          onKeyDown={handleKeyDown}
+          style={{
+            width: '100%',
+            height: '100%',
+            boxSizing: 'border-box',
+            background: 'var(--vscode-input-background, #1e1e1e)',
+            color: 'var(--vscode-input-foreground, white)',
+            border: '1px solid var(--selection-border, #0078d4)',
+            outline: 'none',
+            padding: '0 4px',
+          }}
+        />
+      );
     }
-  };
-  if (isEditing) {
+
     return (
-      <input
-        autoFocus
-        value={value ?? ''}
-        onChange={(e: any) => setValue(e.target.value)}
-        onBlur={onBlur}
-        onKeyDown={handleKeyDown}
+      <div
+        onDoubleClick={() => setIsEditing(true)}
+        title="Double click to edit"
         style={{
-          width: '100%', height: '100%', boxSizing: 'border-box',
-          background: 'var(--vscode-input-background, #1e1e1e)', color: 'var(--vscode-input-foreground, white)', border: '1px solid var(--selection-border, #0078d4)', outline: 'none', padding: '0 4px'
+          width: '100%',
+          height: '100%',
+          backgroundColor: isEdited
+            ? 'rgba(215, 186, 125, 0.2)'
+            : 'transparent',
+          cursor: 'text',
+          display: 'flex',
+          alignItems: 'center',
+        }}
+      >
+        <SmartCell value={value} badgeKeywords={badgeKeywords} />
+      </div>
+    );
+  },
+);
+const ThemeColorPicker = React.memo(
+  ({
+    color,
+    onChange,
+  }: {
+    color: string;
+    onChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
+  }) => (
+    <span className="toolbar-time" title="Color del Selector">
+      <input
+        type="color"
+        value={color}
+        onChange={onChange}
+        style={{
+          width: '14px',
+          height: '14px',
+          padding: 0,
+          border: '1px solid #555',
+          borderRadius: '2px',
+          cursor: 'pointer',
+          background: 'transparent',
         }}
       />
-    );
-  }
-
-  return (
-    <div
-      onDoubleClick={() => setIsEditing(true)}
-      title="Double click to edit"
-      style={{
-        width: '100%', height: '100%',
-        backgroundColor: isEdited ? 'rgba(215, 186, 125, 0.2)' : 'transparent',
-        cursor: 'text',
-        display: 'flex', alignItems: 'center'
-      }}
-    >
-      <SmartCell value={value} badgeKeywords={badgeKeywords} />
-    </div>
-  );
-});
-const ThemeColorPicker = React.memo(({ color, onChange }: { color: string, onChange: (e: React.ChangeEvent<HTMLInputElement>) => void }) => (
-  <span className="toolbar-time" title="Color del Selector">
-    <input
-      type="color"
-      value={color}
-      onChange={onChange}
-      style={{ width: '14px', height: '14px', padding: 0, border: '1px solid #555', borderRadius: '2px', cursor: 'pointer', background: 'transparent' }}
-    />
-  </span>
-));
-const MemoTd = React.memo(({ cell, rIndex, cIndex, colId, customWidth, selectionStyle, isEdited }: any) => {
-  return (
-    <td
+    </span>
+  ),
+);
+const MemoTd = React.memo(
+  ({
+    cell,
+    rIndex,
+    cIndex,
+    colId,
+    customWidth,
+    selectionStyle,
+    isEdited,
+  }: any) => {
+    return (
+      <td
         data-r={rIndex}
         data-c={cIndex}
         style={{
-           ...selectionStyle,
-           width: customWidth,
-           minWidth: customWidth,
+          ...selectionStyle,
+          width: customWidth,
+          minWidth: customWidth,
         }}
-    >
-      {flexRender(cell.column.columnDef.cell, cell.getContext())}
-    </td>
-  );
-}, (prev, next) => {
-  return prev.rIndex === next.rIndex &&
-         prev.cIndex === next.cIndex &&
-         prev.customWidth === next.customWidth &&
-         prev.isEdited === next.isEdited &&
-         prev.selectionStyle?.backgroundColor === next.selectionStyle?.backgroundColor &&
-         prev.selectionStyle?.boxShadow === next.selectionStyle?.boxShadow &&
-         prev.colId === next.colId &&
-         prev.cell === next.cell;
-});
-const MemoRowIndex = React.memo(({ rIndex, isSelected }: any) => {
-   return (
-      <td className={`row-index ${isSelected ? 'selected-bg' : ''}`}
-          data-row-index={rIndex}>
-          {rIndex + 1}
+      >
+        {flexRender(cell.column.columnDef.cell, cell.getContext())}
       </td>
-   );
-}, (prev, next) => prev.rIndex === next.rIndex && prev.isSelected === next.isSelected);
+    );
+  },
+  (prev, next) => {
+    return (
+      prev.rIndex === next.rIndex &&
+      prev.cIndex === next.cIndex &&
+      prev.customWidth === next.customWidth &&
+      prev.isEdited === next.isEdited &&
+      prev.selectionStyle?.backgroundColor ===
+        next.selectionStyle?.backgroundColor &&
+      prev.selectionStyle?.boxShadow === next.selectionStyle?.boxShadow &&
+      prev.colId === next.colId &&
+      prev.cell === next.cell
+    );
+  },
+);
+const MemoRowIndex = React.memo(
+  ({ rIndex, isSelected }: any) => {
+    return (
+      <td
+        className={`row-index ${isSelected ? 'selected-bg' : ''}`}
+        data-row-index={rIndex}
+      >
+        {rIndex + 1}
+      </td>
+    );
+  },
+  (prev, next) =>
+    prev.rIndex === next.rIndex && prev.isSelected === next.isSelected,
+);
 const normalizeRows = (rows: unknown[], columnOrder: string[] | null) => {
-  if (!columnOrder || !Array.isArray(rows)) {return rows;}
-  return rows.map(row => {
+  if (!columnOrder || !Array.isArray(rows)) {
+    return rows;
+  }
+  return rows.map((row) => {
     if (Array.isArray(row)) {
       const obj: Record<string, unknown> = {};
       columnOrder.forEach((_, idx) => {
@@ -625,14 +842,22 @@ interface OutputPayload {
     };
   };
 }
-const TableApp = ({ data, postMessage }: { data: OutputPayload | any[], postMessage?: (msg: any) => void }) => {
+const TableApp = ({
+  data,
+  postMessage,
+}: {
+  data: OutputPayload | any[];
+  postMessage?: (msg: any) => void;
+}) => {
   const tableWrapperRef = useRef<HTMLDivElement>(null);
   const scrollRafRef = useRef<number | null>(null);
   const [scrollTop, setScrollTop] = useState(0);
   const [scrollLeft, setScrollLeft] = useState(0);
   const [containerWidth, setContainerWidth] = useState(0);
   useLayoutEffect(() => {
-    if (!tableWrapperRef.current) {return;}
+    if (!tableWrapperRef.current) {
+      return;
+    }
     setContainerWidth((tableWrapperRef.current as HTMLElement).clientWidth);
     const observer = new (window as any).ResizeObserver((entries: any[]) => {
       for (const entry of entries) {
@@ -642,209 +867,373 @@ const TableApp = ({ data, postMessage }: { data: OutputPayload | any[], postMess
     observer.observe(tableWrapperRef.current);
     return () => observer.disconnect();
   }, []);
-  const rawRows = Array.isArray(data) ? data : (data.rows || []);
-  const columnOrder = !Array.isArray(data) && Array.isArray(data.columns) ? data.columns : null;
-  const normalizedRows = useMemo(() => normalizeRows(rawRows, columnOrder), [rawRows, columnOrder]);
+  const rawRows = Array.isArray(data) ? data : data.rows || [];
+  const columnOrder =
+    !Array.isArray(data) && Array.isArray(data.columns) ? data.columns : null;
+  const normalizedRows = useMemo(
+    () => normalizeRows(rawRows, columnOrder),
+    [rawRows, columnOrder],
+  );
   const [rows, setRows] = useState(normalizedRows);
   useLayoutEffect(() => {
     setRows(normalizedRows);
   }, [normalizedRows]);
-  const executionTimeFromBackend = !Array.isArray(data) && data.info?.executionTime;
-  const executionDateFromBackend = !Array.isArray(data) && data.info?.executionDate;
+  const executionTimeFromBackend =
+    !Array.isArray(data) && data.info?.executionTime;
+  const executionDateFromBackend =
+    !Array.isArray(data) && data.info?.executionDate;
   const isTruncated = Boolean(!Array.isArray(data) && data.info?.truncated);
-  const totalRowsFromBackend = !Array.isArray(data) && typeof data.info?.originalLength === 'number'
-    ? data.info.originalLength
-    : rows.length;
+  const totalRowsFromBackend =
+    !Array.isArray(data) && typeof data.info?.originalLength === 'number'
+      ? data.info.originalLength
+      : rows.length;
   const fallbackTime = useMemo(() => formatExecutionTime(new Date()), []);
   const fallbackDate = useMemo(() => formatExecutionDate(new Date()), []);
   const runTime = executionTimeFromBackend || fallbackTime;
   const runDate = executionDateFromBackend || fallbackDate;
-  const tableNameFromBackend = !Array.isArray(data) && data.info?.tableName ? data.info.tableName : 'TargetTable';
-  const primaryKeysFromBackend = !Array.isArray(data) && data.info?.primaryKeys ? data.info.primaryKeys : [];
-  const executionId = !Array.isArray(data) && data.info?.executionId ? data.info.executionId : 'fallback';
-  
+  const tableNameFromBackend =
+    !Array.isArray(data) && data.info?.tableName
+      ? data.info.tableName
+      : 'TargetTable';
+  const primaryKeysFromBackend =
+    !Array.isArray(data) && data.info?.primaryKeys ? data.info.primaryKeys : [];
+  const executionId =
+    !Array.isArray(data) && data.info?.executionId
+      ? data.info.executionId
+      : 'fallback';
+
   const badgeKeywords = useMemo(() => {
-    return !Array.isArray(data) && data.info?.badgeKeywords ? data.info.badgeKeywords : {
-      danger: ['🔴', 'atrasada', 'failed', 'fail', 'error', 'critical', 'cancelado', 'cancelled', 'rechazado', 'rejected', 'timeout'],
-      warning: ['🟡', 'urgente', 'warning', 'pending', 'en pausa', 'paused', 'en espera', 'waiting', 'delayed', 'demorado'],
-      success: ['🟢', 'a tiempo', 'success', 'ready', 'ok', 'completed', 'done', 'activo', 'active', 'terminado', 'finished', 'aprobado', 'approved', 'entregado'],
-      inactive: ['⚪', 'sin fecha', 'inactive', 'null', 'none', 'cerrado', 'closed', 'disabled', 'desactivado', 'archived', 'archivado', 'n/a', 'empty'],
-      processing: ['🔵', 'processing', 'running', 'en progreso', 'in progress', 'en proceso', 'started', 'iniciado', 'cargando', 'loading']
-    };
+    return !Array.isArray(data) && data.info?.badgeKeywords
+      ? data.info.badgeKeywords
+      : {
+          danger: [
+            '🔴',
+            'atrasada',
+            'failed',
+            'fail',
+            'error',
+            'critical',
+            'cancelado',
+            'cancelled',
+            'rechazado',
+            'rejected',
+            'timeout',
+          ],
+          warning: [
+            '🟡',
+            'urgente',
+            'warning',
+            'pending',
+            'en pausa',
+            'paused',
+            'en espera',
+            'waiting',
+            'delayed',
+            'demorado',
+          ],
+          success: [
+            '🟢',
+            'a tiempo',
+            'success',
+            'ready',
+            'ok',
+            'completed',
+            'done',
+            'activo',
+            'active',
+            'terminado',
+            'finished',
+            'aprobado',
+            'approved',
+            'entregado',
+          ],
+          inactive: [
+            '⚪',
+            'sin fecha',
+            'inactive',
+            'null',
+            'none',
+            'cerrado',
+            'closed',
+            'disabled',
+            'desactivado',
+            'archived',
+            'archivado',
+            'n/a',
+            'empty',
+          ],
+          processing: [
+            '🔵',
+            'processing',
+            'running',
+            'en progreso',
+            'in progress',
+            'en proceso',
+            'started',
+            'iniciado',
+            'cargando',
+            'loading',
+          ],
+        };
   }, [data]);
   const [sorting, setSorting] = useState<SortingState>([]);
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
   const [columnSizing, setColumnSizing] = useState<ColumnSizingState>({});
   const [activeMenuId, setActiveMenuId] = useState<string | null>(null);
   const [exportSqlText, setExportSqlText] = useState('📝 To Insert');
-  const [editedRows, setEditedRows] = useState<Record<number, Record<string, any>>>({});
+  const [editedRows, setEditedRows] = useState<
+    Record<number, Record<string, any>>
+  >({});
   const [saveBtnText, setSaveBtnText] = useState('💾 Save Changes');
   const [themeColor, setThemeColor] = useState(() => {
-    return window.localStorage.getItem('sqlnotebook-selection-color') || '#005a9e';
+    return (
+      window.localStorage.getItem('sqlnotebook-selection-color') || '#005a9e'
+    );
   });
-  const handleColorChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    const newColor = e.target.value;
-    setThemeColor(newColor);
-    window.localStorage.setItem('sqlnotebook-selection-color', newColor);
-  }, []);
+  const handleColorChange = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      const newColor = e.target.value;
+      setThemeColor(newColor);
+      window.localStorage.setItem('sqlnotebook-selection-color', newColor);
+    },
+    [],
+  );
   const themeBgDim = useMemo(() => {
     let hex = themeColor.replace(/^#/, '');
-    if (hex.length === 3) { hex = hex.split('').map(c => c + c).join(''); }
+    if (hex.length === 3) {
+      hex = hex
+        .split('')
+        .map((c) => c + c)
+        .join('');
+    }
     const num = parseInt(hex, 16);
     return `rgba(${(num >> 16) & 255}, ${(num >> 8) & 255}, ${num & 255}, 0.25)`;
   }, [themeColor]);
-  const updateData = useCallback((rowIndex: number, columnId: string, value: any) => {
-     setEditedRows(old => ({
+  const updateData = useCallback(
+    (rowIndex: number, columnId: string, value: any) => {
+      setEditedRows((old) => ({
         ...old,
         [rowIndex]: {
-           ...(old[rowIndex] || {}),
-           [columnId]: value
-        }
-     }));
-  }, []);
+          ...(old[rowIndex] || {}),
+          [columnId]: value,
+        },
+      }));
+    },
+    [],
+  );
   const [selection, setSelection] = useState<{
-    type: 'all' | 'row' | 'col' | 'range' | 'multi',
-    ids?: Set<any>,
-    range?: { r1: number, c1: number, r2: number, c2: number },
-    ranges?: Array<{ r1: number, c1: number, r2: number, c2: number }>
+    type: 'all' | 'row' | 'col' | 'range' | 'multi';
+    ids?: Set<any>;
+    range?: { r1: number; c1: number; r2: number; c2: number };
+    ranges?: Array<{ r1: number; c1: number; r2: number; c2: number }>;
   } | null>(null);
   const [dragMode, setDragMode] = useState<'none' | 'cell' | 'row'>('none');
-  const [dragStart, setDragStart] = useState<{r: number, c: number} | null>(null);
+  const [dragStart, setDragStart] = useState<{ r: number; c: number } | null>(
+    null,
+  );
   const [dragStartRow, setDragStartRow] = useState<number | null>(null);
   const isSelectNoRows =
-  Array.isArray(rows) &&
-  (
-    rows.length === 0 ||
-    rows.every(
-      row =>
-        !row ||
-        (typeof row === 'object' &&
-         Object.values(row).every(
-           v => v === null || v === undefined
-         ))
-    )
-  );
+    Array.isArray(rows) &&
+    (rows.length === 0 ||
+      rows.every(
+        (row) =>
+          !row ||
+          (typeof row === 'object' &&
+            Object.values(row).every((v) => v === null || v === undefined)),
+      ));
   const statusData = isSelectNoRows
-  ? [{
-      rowsReturned: 0,
-      columnCount: 0,
-      message: 'No rows returned'
-    }]
-  : rows;
+    ? [
+        {
+          rowsReturned: 0,
+          columnCount: 0,
+          message: 'No rows returned',
+        },
+      ]
+    : rows;
   const columns = useMemo(() => {
-    const getColSize = (headerText: string, colKey?: string, subIndex?: number) => {
+    const getColSize = (
+      headerText: string,
+      colKey?: string,
+      subIndex?: number,
+    ) => {
       const headerLen = headerText ? String(headerText).length : 0;
-      const headerWidth = (headerLen * 8) + 60;
+      const headerWidth = headerLen * 8 + 60;
       let dataLen = 0;
       if (colKey) {
         const scanLimit = Math.min(rows.length, 50);
         for (let i = 0; i < scanLimit; i++) {
           const r = rows[i] as Record<string, any>;
-          if (!r) {continue;}
+          if (!r) {
+            continue;
+          }
           let val = r[colKey];
           if (subIndex !== undefined && Array.isArray(val)) {
             val = val[subIndex];
           }
           if (val !== null && val !== undefined) {
-            const strVal = typeof val === 'object' ? JSON.stringify(val) : String(val);
-            if (strVal.length > dataLen) {dataLen = strVal.length;}
+            const strVal =
+              typeof val === 'object' ? JSON.stringify(val) : String(val);
+            if (strVal.length > dataLen) {
+              dataLen = strVal.length;
+            }
           }
         }
       }
-      const dataWidth = (dataLen * 8) + 25;
+      const dataWidth = dataLen * 8 + 25;
       return Math.max(60, Math.min(500, Math.max(headerWidth, dataWidth)));
     };
     try {
       let rawCols: any[] = [];
       if (isSelectNoRows) {
         rawCols = [
-          { header: 'rowsReturned', accessorKey: 'rowsReturned', size: getColSize('rowsReturned') },
-          { header: 'columnCount', accessorKey: 'columnCount', size: getColSize('columnCount') },
-          { header: 'message', accessorKey: 'message', size: getColSize('message') + 100 }
+          {
+            header: 'rowsReturned',
+            accessorKey: 'rowsReturned',
+            size: getColSize('rowsReturned'),
+          },
+          {
+            header: 'columnCount',
+            accessorKey: 'columnCount',
+            size: getColSize('columnCount'),
+          },
+          {
+            header: 'message',
+            accessorKey: 'message',
+            size: getColSize('message') + 100,
+          },
         ];
       } else if (!rows || !Array.isArray(rows) || rows.length === 0) {
         return [];
       } else {
-        const firstRow = rows.find(row => row && typeof row === 'object') as Record<string, any>;
-        if (!firstRow) {return [];}
+        const firstRow = rows.find(
+          (row) => row && typeof row === 'object',
+        ) as Record<string, any>;
+        if (!firstRow) {
+          return [];
+        }
         if (columnOrder && Array.isArray(columnOrder)) {
           rawCols = columnOrder.map((header, index) => {
-          const safeHeader = header && String(header).trim().length > 0 ? String(header) : '(No column name)';
-          const colId = `col_${index}`;
-          return {
-            id: colId,
-            header: safeHeader,
-            size: getColSize(safeHeader, colId),
-            accessorFn: (row: any) => row[colId],
-            enableColumnFilter: true,
-            filterFn: (row: any, id: string, filterValue: any[]) => {
-              return filterValue.includes(row.original[colId]);
-            },
-            cell: (info: any) => {
-              const meta = info.table.options.meta as any;
-              const rowIndex = info.row.index;
-              const cId = info.column.id;
-              const isEdited = meta?.editedRows?.[rowIndex]?.[cId] !== undefined;
-              const val = isEdited ? meta.editedRows[rowIndex][cId] : info.getValue();
-              return <EditableCell initialValue={val} row={info.row} column={info.column} updateData={meta?.updateData} isEdited={isEdited} badgeKeywords={meta?.badgeKeywords} />;
-            }
-          };
-        });
+            const safeHeader =
+              header && String(header).trim().length > 0
+                ? String(header)
+                : '(No column name)';
+            const colId = `col_${index}`;
+            return {
+              id: colId,
+              header: safeHeader,
+              size: getColSize(safeHeader, colId),
+              accessorFn: (row: any) => row[colId],
+              enableColumnFilter: true,
+              filterFn: (row: any, id: string, filterValue: any[]) => {
+                return filterValue.includes(row.original[colId]);
+              },
+              cell: (info: any) => {
+                const meta = info.table.options.meta as any;
+                const rowIndex = info.row.index;
+                const cId = info.column.id;
+                const isEdited =
+                  meta?.editedRows?.[rowIndex]?.[cId] !== undefined;
+                const val = isEdited
+                  ? meta.editedRows[rowIndex][cId]
+                  : info.getValue();
+                return (
+                  <EditableCell
+                    initialValue={val}
+                    row={info.row}
+                    column={info.column}
+                    updateData={meta?.updateData}
+                    isEdited={isEdited}
+                    badgeKeywords={meta?.badgeKeywords}
+                  />
+                );
+              },
+            };
+          });
         } else {
           rawCols = Object.keys(firstRow).flatMap((key, index) => {
-        const isUnnamed = !key || key.trim() === '';
-        const sampleValue = firstRow[key];
-        if (Array.isArray(sampleValue)) {
-          const headerLabel = isUnnamed ? '(No column name)' : key;
-          return sampleValue.map((_, subIndex) => ({
-            id: isUnnamed ? `col_unnamed_${index}_${subIndex}` : `${key}__dup_${subIndex}`,
-            header: headerLabel,
-            size: getColSize(headerLabel, key, subIndex),
-            accessorFn: (row: any) => {
-              const val = row[key];
-              return Array.isArray(val) ? val[subIndex] : val;
-            },
-            enableColumnFilter: true,
-            filterFn: (row: any, id: string, filterValue: any[]) => {
-              const arr = row.original[key];
-              const val = Array.isArray(arr) ? arr[subIndex] : arr;
-              return filterValue.includes(val);
-            },
-            cell: (info: any) => {
-              const meta = info.table.options.meta as any;
-              const rowIndex = info.row.index;
-              const cId = info.column.id;
-              const isEdited = meta?.editedRows?.[rowIndex]?.[cId] !== undefined;
-              const val = isEdited ? meta.editedRows[rowIndex][cId] : info.getValue();
-              return <EditableCell initialValue={val} row={info.row} column={info.column} updateData={meta?.updateData} isEdited={isEdited} badgeKeywords={meta?.badgeKeywords} />;
+            const isUnnamed = !key || key.trim() === '';
+            const sampleValue = firstRow[key];
+            if (Array.isArray(sampleValue)) {
+              const headerLabel = isUnnamed ? '(No column name)' : key;
+              return sampleValue.map((_, subIndex) => ({
+                id: isUnnamed
+                  ? `col_unnamed_${index}_${subIndex}`
+                  : `${key}__dup_${subIndex}`,
+                header: headerLabel,
+                size: getColSize(headerLabel, key, subIndex),
+                accessorFn: (row: any) => {
+                  const val = row[key];
+                  return Array.isArray(val) ? val[subIndex] : val;
+                },
+                enableColumnFilter: true,
+                filterFn: (row: any, id: string, filterValue: any[]) => {
+                  const arr = row.original[key];
+                  const val = Array.isArray(arr) ? arr[subIndex] : arr;
+                  return filterValue.includes(val);
+                },
+                cell: (info: any) => {
+                  const meta = info.table.options.meta as any;
+                  const rowIndex = info.row.index;
+                  const cId = info.column.id;
+                  const isEdited =
+                    meta?.editedRows?.[rowIndex]?.[cId] !== undefined;
+                  const val = isEdited
+                    ? meta.editedRows[rowIndex][cId]
+                    : info.getValue();
+                  return (
+                    <EditableCell
+                      initialValue={val}
+                      row={info.row}
+                      column={info.column}
+                      updateData={meta?.updateData}
+                      isEdited={isEdited}
+                      badgeKeywords={meta?.badgeKeywords}
+                    />
+                  );
+                },
+              }));
             }
-          }));
-        }
-        const safeId = isUnnamed ? `col_unnamed_${index}` : key;
-        const safeHeader = isUnnamed ? '(No column name)' : key;
-        return [{
-          id: safeId,
-          header: safeHeader,
-          size: getColSize(safeHeader, key),
-          accessorFn: (row: any) => row[key],
-          enableColumnFilter: true,
-          filterFn: (row: any, id: string, filterValue: any[]) => {
-            return filterValue.includes(row.original[key]);
-          },
-          cell: (info: any) => {
-            const meta = info.table.options.meta as any;
-            const rowIndex = info.row.index;
-            const cId = info.column.id;
-            const isEdited = meta?.editedRows?.[rowIndex]?.[cId] !== undefined;
-            const val = isEdited ? meta.editedRows[rowIndex][cId] : info.getValue();
-            return <EditableCell initialValue={val} row={info.row} column={info.column} updateData={meta?.updateData} isEdited={isEdited} badgeKeywords={meta?.badgeKeywords} />;
-          }
-        }];
-      });
+            const safeId = isUnnamed ? `col_unnamed_${index}` : key;
+            const safeHeader = isUnnamed ? '(No column name)' : key;
+            return [
+              {
+                id: safeId,
+                header: safeHeader,
+                size: getColSize(safeHeader, key),
+                accessorFn: (row: any) => row[key],
+                enableColumnFilter: true,
+                filterFn: (row: any, id: string, filterValue: any[]) => {
+                  return filterValue.includes(row.original[key]);
+                },
+                cell: (info: any) => {
+                  const meta = info.table.options.meta as any;
+                  const rowIndex = info.row.index;
+                  const cId = info.column.id;
+                  const isEdited =
+                    meta?.editedRows?.[rowIndex]?.[cId] !== undefined;
+                  const val = isEdited
+                    ? meta.editedRows[rowIndex][cId]
+                    : info.getValue();
+                  return (
+                    <EditableCell
+                      initialValue={val}
+                      row={info.row}
+                      column={info.column}
+                      updateData={meta?.updateData}
+                      isEdited={isEdited}
+                      badgeKeywords={meta?.badgeKeywords}
+                    />
+                  );
+                },
+              },
+            ];
+          });
         }
       }
       let totalBaseSize = 0;
-      rawCols.forEach(c => { totalBaseSize += c.size; });
+      rawCols.forEach((c) => {
+        totalBaseSize += c.size;
+      });
       const idxW = String(totalRowsFromBackend).length * 8 + 8;
       const realIndexW = Math.max(28, idxW);
       let extraAvailable = 0;
@@ -856,17 +1245,20 @@ const TableApp = ({ data, postMessage }: { data: OutputPayload | any[], postMess
       }
       if (extraAvailable > 0 && totalBaseSize > 0) {
         const extraPerCol = Math.floor(extraAvailable / rawCols.length);
-        rawCols.forEach(c => {
+        rawCols.forEach((c) => {
           c.size += extraPerCol;
         });
       }
       return rawCols;
     } catch (error) {
-        console.error("Error generating columns:", error);
-        return [];
-      }
+      console.error('Error generating columns:', error);
+      return [];
+    }
   }, [rows, isSelectNoRows, columnOrder, containerWidth, totalRowsFromBackend]);
-  const tableMeta = useMemo(() => ({ editedRows, updateData, badgeKeywords }), [editedRows, updateData, badgeKeywords]);
+  const tableMeta = useMemo(
+    () => ({ editedRows, updateData, badgeKeywords }),
+    [editedRows, updateData, badgeKeywords],
+  );
   const table = useReactTable({
     data: statusData,
     columns: columns,
@@ -887,46 +1279,79 @@ const TableApp = ({ data, postMessage }: { data: OutputPayload | any[], postMess
   const tableRows = table.getRowModel().rows;
   const visibleColumns = table.getVisibleFlatColumns();
   const shouldVirtualize = tableRows.length > VIRTUALIZATION_THRESHOLD;
-  const shouldVirtualizeCols = visibleColumns.length > COL_VIRTUALIZATION_THRESHOLD;
+  const shouldVirtualizeCols =
+    visibleColumns.length > COL_VIRTUALIZATION_THRESHOLD;
   const viewportHeight = tableWrapperRef.current?.clientHeight ?? 390;
-  const visibleRowCount = Math.max(20, Math.ceil(viewportHeight / ROW_HEIGHT_PX) + (VIRTUAL_OVERSCAN * 2));
+  const visibleRowCount = Math.max(
+    20,
+    Math.ceil(viewportHeight / ROW_HEIGHT_PX) + VIRTUAL_OVERSCAN * 2,
+  );
   const startIndex = shouldVirtualize
     ? Math.max(0, Math.floor(scrollTop / ROW_HEIGHT_PX) - VIRTUAL_OVERSCAN)
     : 0;
   const endIndex = shouldVirtualize
     ? Math.min(tableRows.length, startIndex + visibleRowCount)
     : tableRows.length;
-  const renderedRows = shouldVirtualize ? tableRows.slice(startIndex, endIndex) : tableRows;
+  const renderedRows = shouldVirtualize
+    ? tableRows.slice(startIndex, endIndex)
+    : tableRows;
   const topSpacerHeight = shouldVirtualize ? startIndex * ROW_HEIGHT_PX : 0;
-  const bottomSpacerHeight = shouldVirtualize ? Math.max(0, (tableRows.length - endIndex) * ROW_HEIGHT_PX) : 0;
+  const bottomSpacerHeight = shouldVirtualize
+    ? Math.max(0, (tableRows.length - endIndex) * ROW_HEIGHT_PX)
+    : 0;
   const colPositions = useMemo(() => {
     let currentLeft = 0;
     return visibleColumns.map((c, index) => {
-       const width = c.getSize();
-       const pos = currentLeft;
-       currentLeft += width;
-       return { column: c, left: pos, width, index };
+      const width = c.getSize();
+      const pos = currentLeft;
+      currentLeft += width;
+      return { column: c, left: pos, width, index };
     });
   }, [visibleColumns, columnSizing]);
   let startColIdx = 0;
   let endColIdx = visibleColumns.length;
   if (shouldVirtualizeCols) {
-     const viewPortWidth = containerWidth || 1000;
-     while (startColIdx < colPositions.length && colPositions[startColIdx].left + colPositions[startColIdx].width < scrollLeft) {
-        startColIdx++;
-     }
-     startColIdx = Math.max(0, startColIdx - COL_OVERSCAN);
-     endColIdx = startColIdx;
-     while (endColIdx < colPositions.length && colPositions[endColIdx].left < scrollLeft + viewPortWidth) {
-        endColIdx++;
-     }
-     endColIdx = Math.min(colPositions.length, endColIdx + COL_OVERSCAN);
+    const viewPortWidth = containerWidth || 1000;
+    while (
+      startColIdx < colPositions.length &&
+      colPositions[startColIdx].left + colPositions[startColIdx].width <
+        scrollLeft
+    ) {
+      startColIdx++;
+    }
+    startColIdx = Math.max(0, startColIdx - COL_OVERSCAN);
+    endColIdx = startColIdx;
+    while (
+      endColIdx < colPositions.length &&
+      colPositions[endColIdx].left < scrollLeft + viewPortWidth
+    ) {
+      endColIdx++;
+    }
+    endColIdx = Math.min(colPositions.length, endColIdx + COL_OVERSCAN);
   }
-  const renderedColumnsInfo = shouldVirtualizeCols ? colPositions.slice(startColIdx, endColIdx) : colPositions;
-  const leftSpacerWidth = shouldVirtualizeCols && renderedColumnsInfo.length > 0 ? renderedColumnsInfo[0].left : 0;
-  const totalColsWidth = colPositions.length > 0 ? colPositions[colPositions.length - 1].left + colPositions[colPositions.length - 1].width : 0;
-  const rightSpacerWidth = shouldVirtualizeCols && renderedColumnsInfo.length > 0 ? totalColsWidth - (renderedColumnsInfo[renderedColumnsInfo.length - 1].left + renderedColumnsInfo[renderedColumnsInfo.length - 1].width) : 0;
-  const colSpanCount = renderedColumnsInfo.length + (leftSpacerWidth > 0 ? 1 : 0) + (rightSpacerWidth > 0 ? 1 : 0) + 1;
+  const renderedColumnsInfo = shouldVirtualizeCols
+    ? colPositions.slice(startColIdx, endColIdx)
+    : colPositions;
+  const leftSpacerWidth =
+    shouldVirtualizeCols && renderedColumnsInfo.length > 0
+      ? renderedColumnsInfo[0].left
+      : 0;
+  const totalColsWidth =
+    colPositions.length > 0
+      ? colPositions[colPositions.length - 1].left +
+        colPositions[colPositions.length - 1].width
+      : 0;
+  const rightSpacerWidth =
+    shouldVirtualizeCols && renderedColumnsInfo.length > 0
+      ? totalColsWidth -
+        (renderedColumnsInfo[renderedColumnsInfo.length - 1].left +
+          renderedColumnsInfo[renderedColumnsInfo.length - 1].width)
+      : 0;
+  const colSpanCount =
+    renderedColumnsInfo.length +
+    (leftSpacerWidth > 0 ? 1 : 0) +
+    (rightSpacerWidth > 0 ? 1 : 0) +
+    1;
   useEffect(() => {
     setScrollTop(0);
     setScrollLeft(0);
@@ -934,18 +1359,18 @@ const TableApp = ({ data, postMessage }: { data: OutputPayload | any[], postMess
       tableWrapperRef.current.scrollTop = 0;
       tableWrapperRef.current.scrollLeft = 0;
     }
-      setEditedRows({});
-      setSelection(null);
-      setSorting([]);
-      setColumnFilters([]);
-      setColumnSizing({});
-      setActiveMenuId(null);
-      setDragMode('none');
-      setDragStart(null);
-      setDragStartRow(null);
-      setExportSqlText('📝 To Insert');
-      setSaveBtnText('💾 Save Changes');
-    }, [executionId]);
+    setEditedRows({});
+    setSelection(null);
+    setSorting([]);
+    setColumnFilters([]);
+    setColumnSizing({});
+    setActiveMenuId(null);
+    setDragMode('none');
+    setDragStart(null);
+    setDragStartRow(null);
+    setExportSqlText('📝 To Insert');
+    setSaveBtnText('💾 Save Changes');
+  }, [executionId]);
   const handleSortClick = (column: any, e: React.MouseEvent) => {
     e.stopPropagation();
     const isSorted = column.getIsSorted();
@@ -958,7 +1383,9 @@ const TableApp = ({ data, postMessage }: { data: OutputPayload | any[], postMess
     }
   };
   const handleCopy = useCallback(() => {
-    if (!selection) {return;}
+    if (!selection) {
+      return;
+    }
     const getVal = (r: number, cIdx: number) => {
       const cell = tableRows[r]?.getVisibleCells()[cIdx];
       let v = cell?.getValue();
@@ -968,8 +1395,10 @@ const TableApp = ({ data, postMessage }: { data: OutputPayload | any[], postMess
     if (selection.type === 'multi' && Array.isArray(selection.ranges)) {
       selection.ranges.forEach((range, idx) => {
         const { r1, c1, r2, c2 } = range;
-        const minR = Math.min(r1, r2), maxR = Math.max(r1, r2);
-        const minC = Math.min(c1, c2), maxC = Math.max(c1, c2);
+        const minR = Math.min(r1, r2),
+          maxR = Math.max(r1, r2);
+        const minC = Math.min(c1, c2),
+          maxC = Math.max(c1, c2);
         for (let r = minR; r <= maxR; r++) {
           const line = [];
           for (let c = minC; c <= maxC; c++) {
@@ -985,8 +1414,10 @@ const TableApp = ({ data, postMessage }: { data: OutputPayload | any[], postMess
       });
     } else if (selection.type === 'range' && selection.range) {
       const { r1, c1, r2, c2 } = selection.range;
-      const minR = Math.min(r1, r2), maxR = Math.max(r1, r2);
-      const minC = Math.min(c1, c2), maxC = Math.max(c1, c2);
+      const minR = Math.min(r1, r2),
+        maxR = Math.max(r1, r2);
+      const minC = Math.min(c1, c2),
+        maxC = Math.max(c1, c2);
       for (let r = minR; r <= maxR; r++) {
         const line = [];
         for (let c = minC; c <= maxC; c++) {
@@ -996,19 +1427,26 @@ const TableApp = ({ data, postMessage }: { data: OutputPayload | any[], postMess
         }
         rowsToText.push(line.join('\t'));
       }
-    } else if (selection.type === 'all' || selection.type === 'row' || selection.type === 'col') {
+    } else if (
+      selection.type === 'all' ||
+      selection.type === 'row' ||
+      selection.type === 'col'
+    ) {
       let targetRows = tableRows;
       let targetCols = visibleColumns;
       if (selection.type === 'row' && selection.ids) {
         targetRows = tableRows.filter((_, i) => selection.ids!.has(i));
       }
       if (selection.type === 'col' && selection.ids) {
-        targetCols = visibleColumns.filter(c => selection.ids!.has(c.id));
+        targetCols = visibleColumns.filter((c) => selection.ids!.has(c.id));
       }
-      rowsToText.push(targetCols.map(c => c.columnDef.header).join('\t'));
-      targetRows.forEach(r => {
-        const line = targetCols.map(c => {
-          let v = r.getVisibleCells().find(cell => cell.column.id === c.id)?.getValue();
+      rowsToText.push(targetCols.map((c) => c.columnDef.header).join('\t'));
+      targetRows.forEach((r) => {
+        const line = targetCols.map((c) => {
+          let v = r
+            .getVisibleCells()
+            .find((cell) => cell.column.id === c.id)
+            ?.getValue();
           return typeof v === 'object' ? JSON.stringify(v) : String(v ?? '');
         });
         rowsToText.push(line.join('\t'));
@@ -1017,46 +1455,70 @@ const TableApp = ({ data, postMessage }: { data: OutputPayload | any[], postMess
     window.navigator.clipboard.writeText(rowsToText.join('\n'));
   }, [selection, tableRows, visibleColumns]);
   useEffect(() => {
-    const k = (e: KeyboardEvent) => { if((e.ctrlKey||e.metaKey)&&e.key==='c') { e.preventDefault(); handleCopy(); }};
-    window.addEventListener('keydown', k); return ()=>window.removeEventListener('keydown', k);
+    const k = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'c') {
+        e.preventDefault();
+        handleCopy();
+      }
+    };
+    window.addEventListener('keydown', k);
+    return () => window.removeEventListener('keydown', k);
   }, [handleCopy]);
-  const onMouseDown = (r:number, c:number, isCtrl: boolean) => {
+  const onMouseDown = (r: number, c: number, isCtrl: boolean) => {
     if (isCtrl && selection && selection.type === 'range' && selection.range) {
-      setSelection(prev => ({
+      setSelection((prev) => ({
         type: 'multi',
-        ranges: prev?.range ? [prev.range, { r1: r, c1: c, r2: r, c2: c }] : [{ r1: r, c1: c, r2: r, c2: c }]
+        ranges: prev?.range
+          ? [prev.range, { r1: r, c1: c, r2: r, c2: c }]
+          : [{ r1: r, c1: c, r2: r, c2: c }],
       }));
       setDragMode('cell');
-      setDragStart({r, c});
-    } else if (isCtrl && selection && selection.type === 'multi' && selection.ranges) {
-      setSelection(prev => ({
+      setDragStart({ r, c });
+    } else if (
+      isCtrl &&
+      selection &&
+      selection.type === 'multi' &&
+      selection.ranges
+    ) {
+      setSelection((prev) => ({
         type: 'multi',
-        ranges: [...(prev?.ranges || []), { r1: r, c1: c, r2: r, c2: c }]
+        ranges: [...(prev?.ranges || []), { r1: r, c1: c, r2: r, c2: c }],
       }));
       setDragMode('cell');
-      setDragStart({r, c});
+      setDragStart({ r, c });
     } else {
       setDragMode('cell');
-      setDragStart({r,c});
-      setSelection({type:'range', range:{r1:r,c1:c,r2:r,c2:c}});
+      setDragStart({ r, c });
+      setSelection({ type: 'range', range: { r1: r, c1: c, r2: r, c2: c } });
     }
   };
-  const onMouseEnter = (r:number, c:number) => {
-    if(dragMode === 'cell' && dragStart) {
+  const onMouseEnter = (r: number, c: number) => {
+    if (dragMode === 'cell' && dragStart) {
       if (selection && selection.type === 'multi' && selection.ranges) {
         const updatedRanges = [...selection.ranges];
         updatedRanges[updatedRanges.length - 1] = {
           r1: dragStart.r,
           c1: dragStart.c,
           r2: r,
-          c2: c
+          c2: c,
         };
         const lastRange = selection.ranges[selection.ranges.length - 1];
-        if (lastRange.r2 === r && lastRange.c2 === c) { return; }
-        setSelection(prev => ({ type:'multi', ranges: updatedRanges }));
+        if (lastRange.r2 === r && lastRange.c2 === c) {
+          return;
+        }
+        setSelection((prev) => ({ type: 'multi', ranges: updatedRanges }));
       } else {
-        if (selection && selection.range?.r2 === r && selection.range?.c2 === c) { return; }
-        setSelection(prev => ({ type:'range', range:{r1:dragStart.r,c1:dragStart.c,r2:r,c2:c} }));
+        if (
+          selection &&
+          selection.range?.r2 === r &&
+          selection.range?.c2 === c
+        ) {
+          return;
+        }
+        setSelection((prev) => ({
+          type: 'range',
+          range: { r1: dragStart.r, c1: dragStart.c, r2: r, c2: c },
+        }));
       }
     }
   };
@@ -1069,19 +1531,29 @@ const TableApp = ({ data, postMessage }: { data: OutputPayload | any[], postMess
     if (dragMode === 'row' && dragStartRow !== null) {
       const minR = Math.min(dragStartRow, r);
       const maxR = Math.max(dragStartRow, r);
-      setSelection(prev => {
-        if (prev?.type === 'row' && prev.ids && prev.ids.size === maxR - minR + 1 && prev.ids.has(r) && prev.ids.has(dragStartRow)) {
-           return prev;
+      setSelection((prev) => {
+        if (
+          prev?.type === 'row' &&
+          prev.ids &&
+          prev.ids.size === maxR - minR + 1 &&
+          prev.ids.has(r) &&
+          prev.ids.has(dragStartRow)
+        ) {
+          return prev;
         }
         const newIds = new Set<number>();
-        for(let i = minR; i <= maxR; i++) {newIds.add(i);}
+        for (let i = minR; i <= maxR; i++) {
+          newIds.add(i);
+        }
         return { type: 'row', ids: newIds };
       });
     }
   };
-  const handleCornerClick = () => setSelection({type:'all'});
+  const handleCornerClick = () => setSelection({ type: 'all' });
   useEffect(() => {
-    if (dragMode === 'none') {return;}
+    if (dragMode === 'none') {
+      return;
+    }
     let animationFrame: number;
     const wrapper = tableWrapperRef.current;
     let lastX = 0;
@@ -1092,69 +1564,101 @@ const TableApp = ({ data, postMessage }: { data: OutputPayload | any[], postMess
       setDragStartRow(null);
     };
     const autoScroll = () => {
-      if (!wrapper) {return;}
+      if (!wrapper) {
+        return;
+      }
       const rect = (wrapper as HTMLElement).getBoundingClientRect();
       let scrollX = 0;
       let scrollY = 0;
       const edge = 40;
       const speed = 25;
-      if (lastY > rect.bottom - edge) {scrollY = speed;}
-      else if (lastY < rect.top + edge) {scrollY = -speed;}
-      if (lastX > rect.right - edge) {scrollX = speed;}
-      else if (lastX < rect.left + edge) {scrollX = -speed;}
+      if (lastY > rect.bottom - edge) {
+        scrollY = speed;
+      } else if (lastY < rect.top + edge) {
+        scrollY = -speed;
+      }
+      if (lastX > rect.right - edge) {
+        scrollX = speed;
+      } else if (lastX < rect.left + edge) {
+        scrollX = -speed;
+      }
       if (scrollX !== 0 || scrollY !== 0) {
-         (wrapper as HTMLElement).scrollBy({ left: scrollX, top: scrollY });
-         const el = window.document.elementFromPoint(lastX, lastY);
-         if (el) {
-           const td = el.closest('td');
-           if (td) {
-              if (dragMode === 'cell' && dragStart) {
-                const rStr = td.getAttribute('data-r');
-                const cStr = td.getAttribute('data-c');
-                if (rStr && cStr) {
-                   const r = parseInt(rStr, 10);
-                   const c = parseInt(cStr, 10);
-                   setSelection(prev => {
-                      if (prev?.type === 'multi' && prev.ranges) {
-                         const lastRange = prev.ranges[prev.ranges.length - 1];
-                         if (lastRange.r2 === r && lastRange.c2 === c) {return prev;}
-                         const updatedRanges = [...prev.ranges];
-                         updatedRanges[updatedRanges.length - 1] = { r1: dragStart.r, c1: dragStart.c, r2: r, c2: c };
-                         return { type: 'multi', ranges: updatedRanges };
-                      }
-                      if (prev?.type === 'range' && prev.range?.r2 === r && prev.range?.c2 === c) {return prev;}
-                      return { type: 'range', range: { r1: dragStart.r, c1: dragStart.c, r2: r, c2: c } };
-                   });
-                }
-              } else if (dragMode === 'row' && dragStartRow !== null) {
-                const rStr = td.getAttribute('data-row-index');
-                if (rStr) {
-                    const r = parseInt(rStr, 10);
-                    const minR = Math.min(dragStartRow, r);
-                    const maxR = Math.max(dragStartRow, r);
-                    setSelection(prev => {
-                        if (prev?.type === 'row' && prev.ids && prev.ids.size === maxR - minR + 1 && prev.ids.has(r) && prev.ids.has(dragStartRow)) {
-                            return prev;
-                        }
-                        const newIds = new Set<number>();
-                        for(let i=minR; i<=maxR; i++) {newIds.add(i);}
-                        return { type: 'row', ids: newIds };
-                    });
-                }
+        (wrapper as HTMLElement).scrollBy({ left: scrollX, top: scrollY });
+        const el = window.document.elementFromPoint(lastX, lastY);
+        if (el) {
+          const td = el.closest('td');
+          if (td) {
+            if (dragMode === 'cell' && dragStart) {
+              const rStr = td.getAttribute('data-r');
+              const cStr = td.getAttribute('data-c');
+              if (rStr && cStr) {
+                const r = parseInt(rStr, 10);
+                const c = parseInt(cStr, 10);
+                setSelection((prev) => {
+                  if (prev?.type === 'multi' && prev.ranges) {
+                    const lastRange = prev.ranges[prev.ranges.length - 1];
+                    if (lastRange.r2 === r && lastRange.c2 === c) {
+                      return prev;
+                    }
+                    const updatedRanges = [...prev.ranges];
+                    updatedRanges[updatedRanges.length - 1] = {
+                      r1: dragStart.r,
+                      c1: dragStart.c,
+                      r2: r,
+                      c2: c,
+                    };
+                    return { type: 'multi', ranges: updatedRanges };
+                  }
+                  if (
+                    prev?.type === 'range' &&
+                    prev.range?.r2 === r &&
+                    prev.range?.c2 === c
+                  ) {
+                    return prev;
+                  }
+                  return {
+                    type: 'range',
+                    range: { r1: dragStart.r, c1: dragStart.c, r2: r, c2: c },
+                  };
+                });
               }
-           }
-         }
-         animationFrame = window.requestAnimationFrame(autoScroll);
+            } else if (dragMode === 'row' && dragStartRow !== null) {
+              const rStr = td.getAttribute('data-row-index');
+              if (rStr) {
+                const r = parseInt(rStr, 10);
+                const minR = Math.min(dragStartRow, r);
+                const maxR = Math.max(dragStartRow, r);
+                setSelection((prev) => {
+                  if (
+                    prev?.type === 'row' &&
+                    prev.ids &&
+                    prev.ids.size === maxR - minR + 1 &&
+                    prev.ids.has(r) &&
+                    prev.ids.has(dragStartRow)
+                  ) {
+                    return prev;
+                  }
+                  const newIds = new Set<number>();
+                  for (let i = minR; i <= maxR; i++) {
+                    newIds.add(i);
+                  }
+                  return { type: 'row', ids: newIds };
+                });
+              }
+            }
+          }
+        }
+        animationFrame = window.requestAnimationFrame(autoScroll);
       } else {
-         isScrolling = false;
+        isScrolling = false;
       }
     };
     const handleMouseMoveGlobal = (e: any) => {
       lastX = e.clientX || 0;
       lastY = e.clientY || 0;
       if (!isScrolling) {
-         isScrolling = true;
-         autoScroll();
+        isScrolling = true;
+        autoScroll();
       }
     };
     window.addEventListener('mouseup', handleMouseUpGlobal);
@@ -1173,98 +1677,167 @@ const TableApp = ({ data, postMessage }: { data: OutputPayload | any[], postMess
       } else {
         newIds.add(idx);
       }
-      setSelection(newIds.size > 0 ? {type:'row', ids: newIds} : null);
+      setSelection(newIds.size > 0 ? { type: 'row', ids: newIds } : null);
     } else {
-      setSelection({type:'row', ids: new Set([idx])});
+      setSelection({ type: 'row', ids: new Set([idx]) });
     }
   };
   const EMPTY_STYLE: React.CSSProperties = {};
-  const getCellSelectionStyle = (r: number, c: number, colId: string): React.CSSProperties => {
-    if (!selection) { return EMPTY_STYLE; }
+  const getCellSelectionStyle = (
+    r: number,
+    c: number,
+    colId: string,
+  ): React.CSSProperties => {
+    if (!selection) {
+      return EMPTY_STYLE;
+    }
     let isSel = false;
-    let minR = -1, maxR = -1, minC = -1, maxC = -1;
+    let minR = -1,
+      maxR = -1,
+      minC = -1,
+      maxC = -1;
     if (selection.type === 'all') {
       isSel = true;
-      minR = 0; maxR = tableRows.length - 1;
-      minC = 0; maxC = visibleColumns.length - 1;
+      minR = 0;
+      maxR = tableRows.length - 1;
+      minC = 0;
+      maxC = visibleColumns.length - 1;
     } else if (selection.type === 'row' && selection.ids?.has(r)) {
       isSel = true;
-      minR = r; maxR = r;
-      minC = 0; maxC = visibleColumns.length - 1;
+      minR = r;
+      maxR = r;
+      minC = 0;
+      maxC = visibleColumns.length - 1;
     } else if (selection.type === 'col' && selection.ids?.has(colId)) {
       isSel = true;
-      minR = 0; maxR = tableRows.length - 1;
-      minC = visibleColumns.findIndex(col => col.id === colId);
+      minR = 0;
+      maxR = tableRows.length - 1;
+      minC = visibleColumns.findIndex((col) => col.id === colId);
       maxC = minC;
     } else if (selection.type === 'range' && selection.range) {
       const { r1, c1, r2, c2 } = selection.range;
-      if (r >= Math.min(r1, r2) && r <= Math.max(r1, r2) && c >= Math.min(c1, c2) && c <= Math.max(c1, c2)) {
+      if (
+        r >= Math.min(r1, r2) &&
+        r <= Math.max(r1, r2) &&
+        c >= Math.min(c1, c2) &&
+        c <= Math.max(c1, c2)
+      ) {
         isSel = true;
-        minR = Math.min(r1, r2); maxR = Math.max(r1, r2);
-        minC = Math.min(c1, c2); maxC = Math.max(c1, c2);
+        minR = Math.min(r1, r2);
+        maxR = Math.max(r1, r2);
+        minC = Math.min(c1, c2);
+        maxC = Math.max(c1, c2);
       }
     } else if (selection.type === 'multi' && selection.ranges) {
       for (const range of selection.ranges) {
         const { r1, c1, r2, c2 } = range;
-        if (r >= Math.min(r1, r2) && r <= Math.max(r1, r2) && c >= Math.min(c1, c2) && c <= Math.max(c1, c2)) {
+        if (
+          r >= Math.min(r1, r2) &&
+          r <= Math.max(r1, r2) &&
+          c >= Math.min(c1, c2) &&
+          c <= Math.max(c1, c2)
+        ) {
           isSel = true;
-          minR = Math.min(r1, r2); maxR = Math.max(r1, r2);
-          minC = Math.min(c1, c2); maxC = Math.max(c1, c2);
+          minR = Math.min(r1, r2);
+          maxR = Math.max(r1, r2);
+          minC = Math.min(c1, c2);
+          maxC = Math.max(c1, c2);
           break;
         }
       }
     }
-    if (!isSel) { return EMPTY_STYLE; }
+    if (!isSel) {
+      return EMPTY_STYLE;
+    }
     let shadows = [];
     const color = 'var(--selection-border)';
-    if (r === minR) { shadows.push(`inset 0 1px 0 0 ${color}`); }
-    if (r === maxR) { shadows.push(`inset 0 -1px 0 0 ${color}`); }
-    if (c === minC) { shadows.push(`inset 1px 0 0 0 ${color}`); }
-    if (c === maxC) { shadows.push(`inset -1px 0 0 0 ${color}`); }
+    if (r === minR) {
+      shadows.push(`inset 0 1px 0 0 ${color}`);
+    }
+    if (r === maxR) {
+      shadows.push(`inset 0 -1px 0 0 ${color}`);
+    }
+    if (c === minC) {
+      shadows.push(`inset 1px 0 0 0 ${color}`);
+    }
+    if (c === maxC) {
+      shadows.push(`inset -1px 0 0 0 ${color}`);
+    }
     return {
       backgroundColor: 'var(--selection-bg-dim)',
-      boxShadow: shadows.length > 0 ? shadows.join(', ') : undefined
+      boxShadow: shadows.length > 0 ? shadows.join(', ') : undefined,
     };
   };
   const exportCSV = () => {
     if (postMessage) {
-      const exportColumns = visibleColumns.map(c => String(c.columnDef.header ?? c.id));
-      const exportRows = tableRows.map(r =>
+      const exportColumns = visibleColumns.map((c) =>
+        String(c.columnDef.header ?? c.id),
+      );
+      const exportRows = tableRows.map((r) =>
         visibleColumns.map((c, i) => {
           const value = r.getVisibleCells()[i]?.getValue();
           return typeof value === 'object' ? JSON.stringify(value) : value;
-        })
+        }),
       );
-      const currentData = tableRows.map(r => r.original);
-      postMessage({ type: 'export_data', payload: { data: currentData, columns: exportColumns, rows: exportRows, format: 'csv' } });
+      const currentData = tableRows.map((r) => r.original);
+      postMessage({
+        type: 'export_data',
+        payload: {
+          data: currentData,
+          columns: exportColumns,
+          rows: exportRows,
+          format: 'csv',
+        },
+      });
     }
   };
   const exportExcel = () => {
     if (postMessage) {
-      const exportColumns = visibleColumns.map(c => String(c.columnDef.header ?? c.id));
-      const exportRows = tableRows.map(r =>
-        visibleColumns.map(c => {
-          const value = r.getVisibleCells().find(cell => cell.column.id === c.id)?.getValue();
-          return typeof value === 'object' ? JSON.stringify(value) : value;
-        })
+      const exportColumns = visibleColumns.map((c) =>
+        String(c.columnDef.header ?? c.id),
       );
-      const currentData = tableRows.map(r => r.original);
-      postMessage({ type: 'export_data', payload: { data: currentData, columns: exportColumns, rows: exportRows, format: 'xlsx' } });
+      const exportRows = tableRows.map((r) =>
+        visibleColumns.map((c) => {
+          const value = r
+            .getVisibleCells()
+            .find((cell) => cell.column.id === c.id)
+            ?.getValue();
+          return typeof value === 'object' ? JSON.stringify(value) : value;
+        }),
+      );
+      const currentData = tableRows.map((r) => r.original);
+      postMessage({
+        type: 'export_data',
+        payload: {
+          data: currentData,
+          columns: exportColumns,
+          rows: exportRows,
+          format: 'xlsx',
+        },
+      });
     }
   };
   const exportSQL = () => {
     const tableName = tableNameFromBackend;
-    const exportColumns = visibleColumns.map(c => {
-       const header = String(c.columnDef.header ?? c.id);
-       return header.match(/^[a-zA-Z0-9_]+$/) ? header : `[${header}]`;
+    const exportColumns = visibleColumns.map((c) => {
+      const header = String(c.columnDef.header ?? c.id);
+      return header.match(/^[a-zA-Z0-9_]+$/) ? header : `[${header}]`;
     });
-    const sqlRows = tableRows.map(r => {
-        const vals = visibleColumns.map((c, i) => {
-          const val = r.getVisibleCells()[i]?.getValue();
-        if (val === null || val === undefined) {return 'NULL';}
-        if (typeof val === 'number') {return val;}
-        if (typeof val === 'boolean') {return val ? 1 : 0;}
-        if (typeof val === 'object') {return `'${JSON.stringify(val).replace(/'/g, "''")}'`;}
+    const sqlRows = tableRows.map((r) => {
+      const vals = visibleColumns.map((c, i) => {
+        const val = r.getVisibleCells()[i]?.getValue();
+        if (val === null || val === undefined) {
+          return 'NULL';
+        }
+        if (typeof val === 'number') {
+          return val;
+        }
+        if (typeof val === 'boolean') {
+          return val ? 1 : 0;
+        }
+        if (typeof val === 'object') {
+          return `'${JSON.stringify(val).replace(/'/g, "''")}'`;
+        }
         return `'${String(val).replace(/'/g, "''")}'`;
       });
       return `  (${vals.join(', ')})`;
@@ -1273,7 +1846,9 @@ const TableApp = ({ data, postMessage }: { data: OutputPayload | any[], postMess
     const chunks: string[] = [];
     for (let i = 0; i < sqlRows.length; i += chunkSize) {
       const chunk = sqlRows.slice(i, i + chunkSize);
-      chunks.push(`INSERT INTO ${tableName} (${exportColumns.join(', ')})\nVALUES\n${chunk.join(',\n')};`);
+      chunks.push(
+        `INSERT INTO ${tableName} (${exportColumns.join(', ')})\nVALUES\n${chunk.join(',\n')};`,
+      );
     }
     const sql = `-- Exported from SQL Notebook Pro\n${chunks.join('\n\n')}`;
     if (postMessage) {
@@ -1283,52 +1858,81 @@ const TableApp = ({ data, postMessage }: { data: OutputPayload | any[], postMess
     }
   };
   const generateUpdates = () => {
-     const tableName = tableNameFromBackend;
-     let pkCols = primaryKeysFromBackend.length > 0 
-       ? columns.filter((c: any) => primaryKeysFromBackend.includes(c.header || c.id))
-       : [columns.find((c: any) => String(c.header).toLowerCase() === 'id') || columns[0]].filter(Boolean);
-     if (!pkCols || pkCols.length === 0) { return; }
-     const updates: string[] = [];
-     Object.keys(editedRows).forEach(rIndexStr => {
-        const rIndex = parseInt(rIndexStr, 10);
-        const changes = editedRows[rIndex];
-        const originalRow = rows[rIndex] as Record<string, any>;
-        const hasAllPks = pkCols.every((pkColDef: any) => originalRow[pkColDef.id] !== undefined);
-        if (!hasAllPks) { return; }
-        const setClauses = Object.entries(changes).map(([colId, val]) => {
-            const safeVal = val === null || val === undefined ? 'NULL' : `'${String(val).replace(/'/g, "''")}'`;
-            const colDef = columns.find((c: any) => c.id === colId) as any;
-            const colName = String(colDef ? (colDef.header ?? colId) : colId);
-            const safeCol = colName.match(/^[a-zA-Z0-9_]+$/) ? colName : `[${colName}]`;
-            return `${safeCol} = ${safeVal}`;
+    const tableName = tableNameFromBackend;
+    let pkCols =
+      primaryKeysFromBackend.length > 0
+        ? columns.filter((c: any) =>
+            primaryKeysFromBackend.includes(c.header || c.id),
+          )
+        : [
+            columns.find((c: any) => String(c.header).toLowerCase() === 'id') ||
+              columns[0],
+          ].filter(Boolean);
+    if (!pkCols || pkCols.length === 0) {
+      return;
+    }
+    const updates: string[] = [];
+    Object.keys(editedRows).forEach((rIndexStr) => {
+      const rIndex = parseInt(rIndexStr, 10);
+      const changes = editedRows[rIndex];
+      const originalRow = rows[rIndex] as Record<string, any>;
+      const hasAllPks = pkCols.every(
+        (pkColDef: any) => originalRow[pkColDef.id] !== undefined,
+      );
+      if (!hasAllPks) {
+        return;
+      }
+      const setClauses = Object.entries(changes).map(([colId, val]) => {
+        const safeVal =
+          val === null || val === undefined
+            ? 'NULL'
+            : `'${String(val).replace(/'/g, "''")}'`;
+        const colDef = columns.find((c: any) => c.id === colId) as any;
+        const colName = String(colDef ? (colDef.header ?? colId) : colId);
+        const safeCol = colName.match(/^[a-zA-Z0-9_]+$/)
+          ? colName
+          : `[${colName}]`;
+        return `${safeCol} = ${safeVal}`;
+      });
+      if (setClauses.length === 0) {
+        return;
+      }
+      const whereClauses = pkCols.map((pkColDef: any) => {
+        const pkValue = originalRow[pkColDef.id];
+        const safePkVal =
+          typeof pkValue === 'number'
+            ? pkValue
+            : `'${String(pkValue).replace(/'/g, "''")}'`;
+        const pkColName = String(pkColDef.header ?? pkColDef.id);
+        const safePkCol = pkColName.match(/^[a-zA-Z0-9_]+$/)
+          ? pkColName
+          : `[${pkColName}]`;
+        return `${safePkCol} = ${safePkVal}`;
+      });
+      updates.push(
+        `UPDATE ${tableName} SET ${setClauses.join(', ')} WHERE ${whereClauses.join(' AND ')};`,
+      );
+    });
+    if (updates.length > 0) {
+      const finalSql = updates.join('\n');
+      if (postMessage) {
+        postMessage({ type: 'apply_updates', payload: { sql: finalSql } });
+        setSaveBtnText('✅ Saved!');
+        const updatedRows = [...rows];
+        Object.keys(editedRows).forEach((rIndexStr) => {
+          const rIndex = parseInt(rIndexStr, 10);
+          updatedRows[rIndex] = {
+            ...(updatedRows[rIndex] as Record<string, any>),
+            ...editedRows[rIndex],
+          };
         });
-        if (setClauses.length === 0) {return;}
-        const whereClauses = pkCols.map((pkColDef: any) => {
-            const pkValue = originalRow[pkColDef.id];
-            const safePkVal = typeof pkValue === 'number' ? pkValue : `'${String(pkValue).replace(/'/g, "''")}'`;
-            const pkColName = String(pkColDef.header ?? pkColDef.id);
-            const safePkCol = pkColName.match(/^[a-zA-Z0-9_]+$/) ? pkColName : `[${pkColName}]`;
-            return `${safePkCol} = ${safePkVal}`;
-        });
-        updates.push(`UPDATE ${tableName} SET ${setClauses.join(', ')} WHERE ${whereClauses.join(' AND ')};`);
-     });
-     if (updates.length > 0) {
-         const finalSql = updates.join('\n');
-         if (postMessage) {
-            postMessage({ type: 'apply_updates', payload: { sql: finalSql } });
-            setSaveBtnText('✅ Saved!');
-            const updatedRows = [...rows];
-            Object.keys(editedRows).forEach(rIndexStr => {
-                const rIndex = parseInt(rIndexStr, 10);
-                updatedRows[rIndex] = {
-                    ...(updatedRows[rIndex] as Record<string, any>),
-                    ...editedRows[rIndex]
-                };
-            });
-            setRows(updatedRows);
-            setTimeout(() => { setSaveBtnText('💾 Save Changes'); setEditedRows({}); }, 2000);
-         }
-     }
+        setRows(updatedRows);
+        setTimeout(() => {
+          setSaveBtnText('💾 Save Changes');
+          setEditedRows({});
+        }, 2000);
+      }
+    }
   };
   const containerMinHeight = activeMenuId ? 360 : 'auto';
   const indexWidth = useMemo(() => {
@@ -1338,36 +1942,43 @@ const TableApp = ({ data, postMessage }: { data: OutputPayload | any[], postMess
   return (
     <div
       className="sql-grid-container"
-      style={{ 
-        minHeight: containerMinHeight, 
-        '--index-width': `${indexWidth}px`,
-        '--selection-border': themeColor,
-        '--selection-bg-dim': themeBgDim
-      } as React.CSSProperties}
+      style={
+        {
+          minHeight: containerMinHeight,
+          '--index-width': `${indexWidth}px`,
+          '--selection-border': themeColor,
+          '--selection-bg-dim': themeBgDim,
+        } as React.CSSProperties
+      }
     >
       <style>{styles}</style>
       <div className="toolbar">
-        <span style={{fontSize:11, fontWeight:'bold'}}>
+        <span style={{ fontSize: 11, fontWeight: 'bold' }}>
           {isTruncated
             ? `${tableRows.length.toLocaleString()} rows shown of ${totalRowsFromBackend.toLocaleString()} total`
             : `${tableRows.length.toLocaleString()} rows`}
         </span>
-        <span className="toolbar-time">
-           🕒 {runTime}
-        </span>
-          <span className="toolbar-time">
-            📅 {runDate}
-          </span>
+        <span className="toolbar-time">🕒 {runTime}</span>
+        <span className="toolbar-time">📅 {runDate}</span>
         <ThemeColorPicker color={themeColor} onChange={handleColorChange} />
-        <div style={{flex:1}}/>
+        <div style={{ flex: 1 }} />
         {!isSelectNoRows && (
           <>
             {Object.keys(editedRows).length > 0 && (
-              <button className="btn-action" onClick={generateUpdates} title="Generate UPDATE script" style={{color: '#d7ba7d', borderColor: '#d7ba7d'}}>
+              <button
+                className="btn-action"
+                onClick={generateUpdates}
+                title="Generate UPDATE script"
+                style={{ color: '#d7ba7d', borderColor: '#d7ba7d' }}
+              >
                 {saveBtnText}
               </button>
             )}
-            <button className="btn-action" onClick={exportSQL} title="Export as SQL To Insert to File">
+            <button
+              className="btn-action"
+              onClick={exportSQL}
+              title="Export as SQL To Insert to File"
+            >
               {exportSqlText}
             </button>
             <button className="btn-action" onClick={exportExcel}>
@@ -1391,7 +2002,8 @@ const TableApp = ({ data, postMessage }: { data: OutputPayload | any[], postMess
         onScroll={(e) => {
           if (shouldVirtualize || shouldVirtualizeCols) {
             const currentScrollTop = (e.currentTarget as HTMLElement).scrollTop;
-            const currentScrollLeft = (e.currentTarget as HTMLElement).scrollLeft;
+            const currentScrollLeft = (e.currentTarget as HTMLElement)
+              .scrollLeft;
             if (scrollRafRef.current) {
               window.cancelAnimationFrame(scrollRafRef.current);
             }
@@ -1402,110 +2014,164 @@ const TableApp = ({ data, postMessage }: { data: OutputPayload | any[], postMess
           }
         }}
       >
-      <table style={{ width: `calc(${table.getTotalSize()}px + var(--index-width, 45px))` }}>
+        <table
+          style={{
+            width: `calc(${table.getTotalSize()}px + var(--index-width, 45px))`,
+          }}
+        >
           <colgroup>
             <col style={{ width: 'var(--index-width, 45px)' }} />
             {leftSpacerWidth > 0 && <col style={{ width: leftSpacerWidth }} />}
-            {renderedColumnsInfo.map(cInfo => (
+            {renderedColumnsInfo.map((cInfo) => (
               <col key={cInfo.column.id} style={{ width: cInfo.width }} />
             ))}
-            {rightSpacerWidth > 0 && <col style={{ width: rightSpacerWidth }} />}
+            {rightSpacerWidth > 0 && (
+              <col style={{ width: rightSpacerWidth }} />
+            )}
           </colgroup>
           <thead>
-            {table.getHeaderGroups().map(hg => (
+            {table.getHeaderGroups().map((hg) => (
               <tr key={hg.id}>
-                <th className="corner-header" onClick={handleCornerClick}>◢</th>
+                <th className="corner-header" onClick={handleCornerClick}>
+                  ◢
+                </th>
                 {leftSpacerWidth > 0 && <th className="virtual-spacer-cell" />}
-                {renderedColumnsInfo.map(cInfo => {
-                  const header = hg.headers.find(h => h.column.id === cInfo.column.id);
-                  if (!header) {return null;}
+                {renderedColumnsInfo.map((cInfo) => {
+                  const header = hg.headers.find(
+                    (h) => h.column.id === cInfo.column.id,
+                  );
+                  if (!header) {
+                    return null;
+                  }
                   const customWidth = cInfo.width;
                   return (
-                    <th key={header.id}
-                      className={selection && selection.type === 'col' && selection.ids?.has(header.id) ? 'selected-bg' : ''}
+                    <th
+                      key={header.id}
+                      className={
+                        selection &&
+                        selection.type === 'col' &&
+                        selection.ids?.has(header.id)
+                          ? 'selected-bg'
+                          : ''
+                      }
                       style={{
                         width: customWidth,
                         minWidth: customWidth,
-                        position: 'relative'
+                        position: 'relative',
                       }}
                     >
-                    <div
+                      <div
                         className="th-content"
                         onClick={(e) => {
-                           const isMulti = e.ctrlKey || e.metaKey;
-                           const colId = header.id;
-                           setSelection(prev => {
-                             if (!isMulti || !prev || prev.type !== 'col' || !prev.ids) {
-                               return { type: 'col', ids: new Set([colId]) };
-                             }
-                             const newIds = new Set(prev.ids);
-                             if (newIds.has(colId)) {
-                               newIds.delete(colId);
-                             } else {
-                               newIds.add(colId);
-                             }
-                             return newIds.size > 0 ? { type: 'col', ids: newIds } : null;
-                           });
-                        }}
-                    >
-                      <div
-                        className="th-text-group"
-                        onClick={(e) => handleSortClick(header.column, e)}
-                        title="Click para ordenar"
-                      >
-                        <span className="th-title">
-                           {flexRender(header.column.columnDef.header, header.getContext())}
-                        </span>
-                        <span className="th-sort-icon">
-                          {{ asc: ' ▲', desc: ' ▼' }[header.column.getIsSorted() as string] ?? ''}
-                        </span>
-                      </div>
-                      <FilterMenu
-                        column={header.column}
-                        isOpen={activeMenuId === header.id}
-                        onToggle={(e) => {
-                          e.stopPropagation();
-                          setActiveMenuId(activeMenuId === header.id ? null : header.id);
-                        }}
-                        onClose={() => setActiveMenuId(null)}
-                      />
-                      <div
-                        onMouseDown={header.getResizeHandler()}
-                        onTouchStart={header.getResizeHandler()}
-                        onDoubleClick={(e) => {
-                          e.stopPropagation();
-                          const colId = header.column.id;
-                          const resizerDiv = e.currentTarget as HTMLDivElement;
-                          const thContent = resizerDiv.parentElement as HTMLElement;
-                          const titleSpan = thContent?.querySelector('.th-title') as HTMLSpanElement | null;
-                          const canvas = window.document.createElement('canvas');
-                          const ctx = canvas.getContext('2d');
-                          if (!ctx) {return;}
-                          const headerText = titleSpan?.textContent || String(header.column.id);
-                          ctx.font = '600 13px "Segoe UI", sans-serif';
-                          const headerTextWidth = ctx.measureText(headerText).width;
-                          const finalHeaderWidth = headerTextWidth + 70;
-                          ctx.font = '13px "Segoe UI", sans-serif';
-                          let textWidthData = 0;
-                          const rowsToScan = tableRows.slice(0, 500);
-                          for (const r of rowsToScan) {
-                            const val = r.getValue(colId);
-                            if (val !== null && val !== undefined) {
-                              const strVal = typeof val === 'object' ? JSON.stringify(val) : String(val);
-                              const w = ctx.measureText(strVal).width;
-                              if (w > textWidthData) { textWidthData = w; }
+                          const isMulti = e.ctrlKey || e.metaKey;
+                          const colId = header.id;
+                          setSelection((prev) => {
+                            if (
+                              !isMulti ||
+                              !prev ||
+                              prev.type !== 'col' ||
+                              !prev.ids
+                            ) {
+                              return { type: 'col', ids: new Set([colId]) };
                             }
-                          }
-                          const finalDataWidth = textWidthData + 25;
-                          const newWidth = Math.min(800, Math.max(60, finalHeaderWidth, finalDataWidth));
-                          setColumnSizing(old => ({ ...old, [header.id]: newWidth }));
+                            const newIds = new Set(prev.ids);
+                            if (newIds.has(colId)) {
+                              newIds.delete(colId);
+                            } else {
+                              newIds.add(colId);
+                            }
+                            return newIds.size > 0
+                              ? { type: 'col', ids: newIds }
+                              : null;
+                          });
                         }}
-                        className={`resizer ${header.column.getIsResizing() ? 'isResizing' : ''}`}
-                        onClick={e => e.stopPropagation()}
-                        title="Drag to resize, Double-click to auto-fit"
-                      />
-                    </div>
-                  </th>
+                      >
+                        <div
+                          className="th-text-group"
+                          onClick={(e) => handleSortClick(header.column, e)}
+                          title="Click para ordenar"
+                        >
+                          <span className="th-title">
+                            {flexRender(
+                              header.column.columnDef.header,
+                              header.getContext(),
+                            )}
+                          </span>
+                          <span className="th-sort-icon">
+                            {{ asc: ' ▲', desc: ' ▼' }[
+                              header.column.getIsSorted() as string
+                            ] ?? ''}
+                          </span>
+                        </div>
+                        <FilterMenu
+                          column={header.column}
+                          isOpen={activeMenuId === header.id}
+                          onToggle={(e) => {
+                            e.stopPropagation();
+                            setActiveMenuId(
+                              activeMenuId === header.id ? null : header.id,
+                            );
+                          }}
+                          onClose={() => setActiveMenuId(null)}
+                        />
+                        <div
+                          onMouseDown={header.getResizeHandler()}
+                          onTouchStart={header.getResizeHandler()}
+                          onDoubleClick={(e) => {
+                            e.stopPropagation();
+                            const colId = header.column.id;
+                            const resizerDiv =
+                              e.currentTarget as HTMLDivElement;
+                            const thContent =
+                              resizerDiv.parentElement as HTMLElement;
+                            const titleSpan = thContent?.querySelector(
+                              '.th-title',
+                            ) as HTMLSpanElement | null;
+                            const canvas =
+                              window.document.createElement('canvas');
+                            const ctx = canvas.getContext('2d');
+                            if (!ctx) {
+                              return;
+                            }
+                            const headerText =
+                              titleSpan?.textContent ||
+                              String(header.column.id);
+                            ctx.font = '600 13px "Segoe UI", sans-serif';
+                            const headerTextWidth =
+                              ctx.measureText(headerText).width;
+                            const finalHeaderWidth = headerTextWidth + 70;
+                            ctx.font = '13px "Segoe UI", sans-serif';
+                            let textWidthData = 0;
+                            const rowsToScan = tableRows.slice(0, 500);
+                            for (const r of rowsToScan) {
+                              const val = r.getValue(colId);
+                              if (val !== null && val !== undefined) {
+                                const strVal =
+                                  typeof val === 'object'
+                                    ? JSON.stringify(val)
+                                    : String(val);
+                                const w = ctx.measureText(strVal).width;
+                                if (w > textWidthData) {
+                                  textWidthData = w;
+                                }
+                              }
+                            }
+                            const finalDataWidth = textWidthData + 25;
+                            const newWidth = Math.min(
+                              800,
+                              Math.max(60, finalHeaderWidth, finalDataWidth),
+                            );
+                            setColumnSizing((old) => ({
+                              ...old,
+                              [header.id]: newWidth,
+                            }));
+                          }}
+                          className={`resizer ${header.column.getIsResizing() ? 'isResizing' : ''}`}
+                          onClick={(e) => e.stopPropagation()}
+                          title="Drag to resize, Double-click to auto-fit"
+                        />
+                      </div>
+                    </th>
                   );
                 })}
                 {rightSpacerWidth > 0 && <th className="virtual-spacer-cell" />}
@@ -1514,32 +2180,44 @@ const TableApp = ({ data, postMessage }: { data: OutputPayload | any[], postMess
           </thead>
           <tbody
             onMouseDown={(e) => {
-               const td = (e.target as HTMLElement).closest('td');
-               if (!td) {return;}
-               if (td.classList.contains('row-index')) {
-                   const rStr = td.getAttribute('data-row-index');
-                   if (rStr) {onRowMouseDown(parseInt(rStr, 10), e.ctrlKey || e.metaKey);}
-                   return;
-               }
-               const rStr = td.getAttribute('data-r');
-               const cStr = td.getAttribute('data-c');
-               if (rStr && cStr) {
-                  onMouseDown(parseInt(rStr, 10), parseInt(cStr, 10), e.ctrlKey || e.metaKey);
-               }
+              const td = (e.target as HTMLElement).closest('td');
+              if (!td) {
+                return;
+              }
+              if (td.classList.contains('row-index')) {
+                const rStr = td.getAttribute('data-row-index');
+                if (rStr) {
+                  onRowMouseDown(parseInt(rStr, 10), e.ctrlKey || e.metaKey);
+                }
+                return;
+              }
+              const rStr = td.getAttribute('data-r');
+              const cStr = td.getAttribute('data-c');
+              if (rStr && cStr) {
+                onMouseDown(
+                  parseInt(rStr, 10),
+                  parseInt(cStr, 10),
+                  e.ctrlKey || e.metaKey,
+                );
+              }
             }}
             onMouseOver={(e) => {
-               const td = (e.target as HTMLElement).closest('td');
-               if (!td) {return;}
-               if (td.classList.contains('row-index')) {
-                   const rStr = td.getAttribute('data-row-index');
-                   if (rStr) {onRowMouseEnter(parseInt(rStr, 10));}
-                   return;
-               }
-               const rStr = td.getAttribute('data-r');
-               const cStr = td.getAttribute('data-c');
-               if (rStr && cStr) {
-                  onMouseEnter(parseInt(rStr, 10), parseInt(cStr, 10));
-               }
+              const td = (e.target as HTMLElement).closest('td');
+              if (!td) {
+                return;
+              }
+              if (td.classList.contains('row-index')) {
+                const rStr = td.getAttribute('data-row-index');
+                if (rStr) {
+                  onRowMouseEnter(parseInt(rStr, 10));
+                }
+                return;
+              }
+              const rStr = td.getAttribute('data-r');
+              const cStr = td.getAttribute('data-c');
+              if (rStr && cStr) {
+                onMouseEnter(parseInt(rStr, 10), parseInt(cStr, 10));
+              }
             }}
           >
             {shouldVirtualize && topSpacerHeight > 0 && (
@@ -1552,19 +2230,33 @@ const TableApp = ({ data, postMessage }: { data: OutputPayload | any[], postMess
               </tr>
             )}
             {renderedRows.map((row, localIndex) => {
-              const rIndex = shouldVirtualize ? startIndex + localIndex : localIndex;
-              const isRowSelected = selection && selection.type === 'row' && selection.ids?.has(rIndex);
-              
+              const rIndex = shouldVirtualize
+                ? startIndex + localIndex
+                : localIndex;
+              const isRowSelected =
+                selection &&
+                selection.type === 'row' &&
+                selection.ids?.has(rIndex);
+
               return (
                 <tr key={row.id}>
                   <MemoRowIndex rIndex={rIndex} isSelected={isRowSelected} />
-                  {leftSpacerWidth > 0 && <td className="virtual-spacer-cell" />}
-                  {renderedColumnsInfo.map(cInfo => {
+                  {leftSpacerWidth > 0 && (
+                    <td className="virtual-spacer-cell" />
+                  )}
+                  {renderedColumnsInfo.map((cInfo) => {
                     const cell = row.getVisibleCells()[cInfo.index];
-                    if (!cell) {return null;}
+                    if (!cell) {
+                      return null;
+                    }
                     const customWidth = cInfo.width;
-                    const selectionStyle = getCellSelectionStyle(rIndex, cInfo.index, cell.column.id);
-                    const isEdited = editedRows[rIndex]?.[cell.column.id] !== undefined;
+                    const selectionStyle = getCellSelectionStyle(
+                      rIndex,
+                      cInfo.index,
+                      cell.column.id,
+                    );
+                    const isEdited =
+                      editedRows[rIndex]?.[cell.column.id] !== undefined;
                     return (
                       <MemoTd
                         key={cell.id}
@@ -1578,7 +2270,9 @@ const TableApp = ({ data, postMessage }: { data: OutputPayload | any[], postMess
                       />
                     );
                   })}
-                  {rightSpacerWidth > 0 && <td className="virtual-spacer-cell" />}
+                  {rightSpacerWidth > 0 && (
+                    <td className="virtual-spacer-cell" />
+                  )}
                 </tr>
               );
             })}
@@ -1597,14 +2291,26 @@ const TableApp = ({ data, postMessage }: { data: OutputPayload | any[], postMess
     </div>
   );
 };
+const roots = new WeakMap<HTMLElement, Root>();
 export const activate: ActivationFunction = (context) => {
   return {
     renderOutputItem(data, element) {
       const json = data.json();
       if (json && json.kind === 1 && json.attachments) {
-        json.value = injectAttachmentsIntoMarkdown(json.value, json.attachments);
+        json.value = injectAttachmentsIntoMarkdown(
+          json.value,
+          json.attachments,
+        );
       }
-      ReactDOM.render(<TableApp data={json} postMessage={context.postMessage} />, element);
-    }
+      let root = roots.get(element);
+      if (!root) {
+        root = createRoot(element);
+        roots.set(element, root);
+      }
+      root.render(<TableApp data={json} postMessage={context.postMessage} />);
+    },
+    disposeOutputItem(id) {
+      //
+    },
   };
 };

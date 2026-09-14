@@ -1,24 +1,36 @@
-
 export function splitSqlBatches(sql: string): string[] {
   const goRegex = /^\s*GO\s*$/gim;
   return sql
     .split(goRegex)
-    .map(batch => batch.trim())
-    .filter(batch => batch.length > 0);
+    .map((batch) => batch.trim())
+    .filter((batch) => batch.length > 0);
 }
 
-function wrapSqlList(prefix: string, content: string, safeRegex: RegExp, prefixLengthOverride?: number): string {
+function wrapSqlList(
+  prefix: string,
+  content: string,
+  safeRegex: RegExp,
+  prefixLengthOverride?: number,
+): string {
   const compacted = content.replace(safeRegex, ',\u0001');
   const parts = compacted.split('\u0001');
   const lines: string[] = [];
   let currentLine = '';
   let isFirstLine = true;
 
-  const effectivePrefixLen = prefixLengthOverride !== undefined ? prefixLengthOverride : (prefix ? prefix.length + 1 : 0);
+  const effectivePrefixLen =
+    prefixLengthOverride !== undefined
+      ? prefixLengthOverride
+      : prefix
+        ? prefix.length + 1
+        : 0;
 
   for (const part of parts) {
     const cleanPart = part.trimStart();
-    const lineLen = currentLine.length + cleanPart.length + (isFirstLine ? effectivePrefixLen : 0);
+    const lineLen =
+      currentLine.length +
+      cleanPart.length +
+      (isFirstLine ? effectivePrefixLen : 0);
     if (lineLen > 100 || cleanPart.includes('\n')) {
       if (currentLine) {
         lines.push(currentLine.replace(/\r?\n$/, ''));
@@ -35,7 +47,9 @@ function wrapSqlList(prefix: string, content: string, safeRegex: RegExp, prefixL
       }
     }
   }
-  if (currentLine) { lines.push(currentLine.replace(/\r?\n$/, '')); }
+  if (currentLine) {
+    lines.push(currentLine.replace(/\r?\n$/, ''));
+  }
   return prefix ? `${prefix} ${lines.join('\n')}` : lines.join('\n');
 }
 
@@ -49,23 +63,40 @@ export function compactFormattedSql(sql: string, language: string): string {
   sql = sql.replace(/\bAS\s*\n\s*([@a-zA-Z0-9_\[\]"`']+)/gi, ' AS $1');
   sql = sql.replace(/([@a-zA-Z0-9_\[\]"`']+)\s*\n\s*AS\b/gi, '$1 AS');
 
-  sql = sql.replace(/\b(COUNT|SUM|MAX|MIN|AVG|ISNULL|COALESCE|CAST|CONVERT|IFNULL|DATETIME|STRFTIME)\s*\(\s*\n\s*([^)\n]+)\s*\n\s*\)/gi, '$1($2)');
+  sql = sql.replace(
+    /\b(COUNT|SUM|MAX|MIN|AVG|ISNULL|COALESCE|CAST|CONVERT|IFNULL|DATETIME|STRFTIME)\s*\(\s*\n\s*([^)\n]+)\s*\n\s*\)/gi,
+    '$1($2)',
+  );
 
-  sql = sql.replace(/\bOVER\s*\([\s\S]*?\)/gi, match => match.replace(/\s+/g, ' '));
+  sql = sql.replace(/\bOVER\s*\([\s\S]*?\)/gi, (match) =>
+    match.replace(/\s+/g, ' '),
+  );
 
   sql = sql.replace(/\bINSERT\s+INTO\s*\n\s*/gi, 'INSERT INTO ');
-  sql = sql.replace(/\b(INSERT\s+INTO\s+[a-zA-Z0-9_\[\]"`'.]+)\s*\(([\s\S]*?)\)\s*(?=\bVALUES\b|\bSELECT\b|\bOUTPUT\b|;|$)/gi, (match, prefix, inner) => {
-    if (inner.match(/\bSELECT\b/i)) { return match; }
-    const wrapped = wrapSqlList('', inner, /,\s*\n?\s*/g, prefix.length + 2).trimEnd();
-    if (wrapped.includes('--')) {
-      return `${prefix} (${wrapped}\n)`;
-    }
-    return `${prefix} (${wrapped})`;
-  });
+  sql = sql.replace(
+    /\b(INSERT\s+INTO\s+[a-zA-Z0-9_\[\]"`'.]+)\s*\(([\s\S]*?)\)\s*(?=\bVALUES\b|\bSELECT\b|\bOUTPUT\b|;|$)/gi,
+    (match, prefix, inner) => {
+      if (inner.match(/\bSELECT\b/i)) {
+        return match;
+      }
+      const wrapped = wrapSqlList(
+        '',
+        inner,
+        /,\s*\n?\s*/g,
+        prefix.length + 2,
+      ).trimEnd();
+      if (wrapped.includes('--')) {
+        return `${prefix} (${wrapped}\n)`;
+      }
+      return `${prefix} (${wrapped})`;
+    },
+  );
 
   sql = sql.replace(/\bCASE\b([\s\S]*?)\bEND\b/gi, (match) => {
     const compacted = match.replace(/\s*\n\s*/g, ' ').trim();
-    if (compacted.length <= 150) { return compacted; }
+    if (compacted.length <= 150) {
+      return compacted;
+    }
     let partial = match.replace(/\s*\n\s*THEN\b/gi, ' THEN');
     partial = partial.replace(/\bTHEN\s*\n\s*/gi, 'THEN ');
     partial = partial.replace(/\s*\n\s*ELSE\b/gi, ' ELSE');
@@ -79,9 +110,16 @@ export function compactFormattedSql(sql: string, language: string): string {
   sql = sql.replace(/\bSELECT\s+DISTINCT\s*\n\s*/gi, 'SELECT DISTINCT ');
   sql = sql.replace(/\bSELECT\s*\n\s*/gi, 'SELECT ');
 
-  sql = sql.replace(/\b(SELECT|SELECT\s+DISTINCT)\s+([\s\S]*?)(?=\n\s*(?:FROM|INTO)\b|;|\s*$)/gi, (match, selType, inner) => {
-    return wrapSqlList(selType.toUpperCase(), inner, /,\s*\n\s*(?!\bSELECT\b|\()/gi);
-  });
+  sql = sql.replace(
+    /\b(SELECT|SELECT\s+DISTINCT)\s+([\s\S]*?)(?=\n\s*(?:FROM|INTO)\b|;|\s*$)/gi,
+    (match, selType, inner) => {
+      return wrapSqlList(
+        selType.toUpperCase(),
+        inner,
+        /,\s*\n\s*(?!\bSELECT\b|\()/gi,
+      );
+    },
+  );
 
   sql = sql.replace(/\s*\n\s*THEN\b/gi, ' THEN');
   sql = sql.replace(/\bTHEN\s*\n\s*/gi, 'THEN ');
@@ -90,20 +128,36 @@ export function compactFormattedSql(sql: string, language: string): string {
   let prevSql: string;
   do {
     prevSql = sql;
-    sql = sql.replace(/\(\s*\n((?:(?!\(\s*\n)[\s\S])*?)\n\s*\)/gi, (match, inner) => {
-      const stripped = match.replace(/'[^']*'/g, '').replace(/"[^"]*"/g, '').replace(/\[[^\]]*\]/g, '');
-      if (stripped.includes('--') || stripped.includes('/*')) { return match; }
+    sql = sql.replace(
+      /\(\s*\n((?:(?!\(\s*\n)[\s\S])*?)\n\s*\)/gi,
+      (match, inner) => {
+        const stripped = match
+          .replace(/'[^']*'/g, '')
+          .replace(/"[^"]*"/g, '')
+          .replace(/\[[^\]]*\]/g, '');
+        if (stripped.includes('--') || stripped.includes('/*')) {
+          return match;
+        }
 
-      const opens = (stripped.match(/\(/g) || []).length;
-      const closes = (stripped.match(/\)/g) || []).length;
-      if (opens !== closes) { return match; }
+        const opens = (stripped.match(/\(/g) || []).length;
+        const closes = (stripped.match(/\)/g) || []).length;
+        if (opens !== closes) {
+          return match;
+        }
 
-      if (/\b(GROUP BY|ORDER BY|HAVING|INSERT|UPDATE|DELETE)\b/i.test(inner)) { return match; }
+        if (
+          /\b(GROUP BY|ORDER BY|HAVING|INSERT|UPDATE|DELETE)\b/i.test(inner)
+        ) {
+          return match;
+        }
 
-      const compacted = inner.replace(/\s*\n\s*/g, ' ').trim();
-      if (compacted.length <= 150) { return `(${compacted})`; }
-      return match;
-    });
+        const compacted = inner.replace(/\s*\n\s*/g, ' ').trim();
+        if (compacted.length <= 150) {
+          return `(${compacted})`;
+        }
+        return match;
+      },
+    );
   } while (sql !== prevSql);
 
   sql = sql.replace(/\b(OR|AND)\s*\n\s*(--.*)/gi, '$1 $2');
@@ -114,25 +168,45 @@ export function compactFormattedSql(sql: string, language: string): string {
     .replace(/\bSET\s*\n\s*/gi, 'SET ')
     .replace(/\bFROM\s*\n\s*/gi, 'FROM ')
     .replace(/\bWHERE\s*\n\s*/gi, 'WHERE ')
-    .replace(/\b(INNER JOIN|LEFT JOIN|RIGHT JOIN|FULL OUTER JOIN|CROSS JOIN|JOIN)\s*\n\s*/gi, '$1 ')
+    .replace(
+      /\b(INNER JOIN|LEFT JOIN|RIGHT JOIN|FULL OUTER JOIN|CROSS JOIN|JOIN)\s*\n\s*/gi,
+      '$1 ',
+    )
     .replace(/\bORDER BY\s*\n\s*/gi, 'ORDER BY ')
     .replace(/\bGROUP BY\s*\n\s*/gi, 'GROUP BY ')
     .replace(/\bHAVING\s*\n\s*/gi, 'HAVING ');
 
-  sql = sql.replace(/\b(ORDER BY|GROUP BY)\s+([\s\S]*?)(?=\b(?:LIMIT|OFFSET|HAVING|FOR|OPTION|;|$))/gi, (match, type, inner) => {
-    return wrapSqlList(type.toUpperCase(), inner, /,\s*\n\s*/g);
-  });
+  sql = sql.replace(
+    /\b(ORDER BY|GROUP BY)\s+([\s\S]*?)(?=\b(?:LIMIT|OFFSET|HAVING|FOR|OPTION|;|$))/gi,
+    (match, type, inner) => {
+      return wrapSqlList(type.toUpperCase(), inner, /,\s*\n\s*/g);
+    },
+  );
 
-  sql = sql.replace(/\b(JOIN\s+[\w\[\]"`'.]+(?:(?:\s+AS)?\s+[\w\[\]"`']*)?)\s*\n\s*ON\b/gi, '$1 ON');
+  sql = sql.replace(
+    /\b(JOIN\s+[\w\[\]"`'.]+(?:(?:\s+AS)?\s+[\w\[\]"`']*)?)\s*\n\s*ON\b/gi,
+    '$1 ON',
+  );
 
   if (language === 'tsql') {
-    sql = sql.replace(/\bOPTION\s*\n?\s*\(([^)]+)\)/gi, (_m, inner) => `OPTION (${inner.replace(/\s+/g, ' ').trim()})`);
+    sql = sql.replace(
+      /\bOPTION\s*\n?\s*\(([^)]+)\)/gi,
+      (_m, inner) => `OPTION (${inner.replace(/\s+/g, ' ').trim()})`,
+    );
   }
 
   sql = sql.replace(/\bIN\s*\(\s*\n([^()]+)\s*\)/gi, (_m, inner) => {
-    if (/\bSELECT\b/i.test(inner)) { return _m; }
-    const items = inner.split('\n').map((s: string) => s.trim().replace(/,+$/, '')).filter(Boolean).join(', ');
-    if (items.length < 100) {return `IN (${items})`;}
+    if (/\bSELECT\b/i.test(inner)) {
+      return _m;
+    }
+    const items = inner
+      .split('\n')
+      .map((s: string) => s.trim().replace(/,+$/, ''))
+      .filter(Boolean)
+      .join(', ');
+    if (items.length < 100) {
+      return `IN (${items})`;
+    }
     return _m;
   });
 
@@ -176,7 +250,11 @@ function styleTsqlControlFlow(sql: string): string {
       continue;
     }
 
-    if (/^END$/i.test(trimmed) && /^ELSE$/i.test(next) && /^BEGIN$/i.test(next2)) {
+    if (
+      /^END$/i.test(trimmed) &&
+      /^ELSE$/i.test(next) &&
+      /^BEGIN$/i.test(next2)
+    ) {
       const indent = line.match(/^\s*/)?.[0] ?? '';
       output.push(`${indent}END ELSE BEGIN`);
       i += 2;
@@ -193,7 +271,10 @@ function styleTsqlControlFlow(sql: string): string {
     output.push(line);
   }
 
-  return output.join('\n').replace(/\n{3,}/g, '\n\n').trim();
+  return output
+    .join('\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
 }
 
 function reindentTsqlByContext(sql: string): string {
@@ -213,19 +294,27 @@ function reindentTsqlByContext(sql: string): string {
     }
 
     const leading = rawLine.match(/^\s*/)?.[0] || '';
-    const existingLevel = (leading.match(/\t/g) || []).length + Math.floor((leading.match(/ /g) || []).length / 2);
+    const existingLevel =
+      (leading.match(/\t/g) || []).length +
+      Math.floor((leading.match(/ /g) || []).length / 2);
 
-    const safeLine = trimmed.replace(/N?'[^']*'/g, '').replace(/--.*/g, '').replace(/\/\*[\s\S]*?\*\//g, '').replace(/\[[^\]]*\]/g, '');
+    const safeLine = trimmed
+      .replace(/N?'[^']*'/g, '')
+      .replace(/--.*/g, '')
+      .replace(/\/\*[\s\S]*?\*\//g, '')
+      .replace(/\[[^\]]*\]/g, '');
     const isEndLine = /^END\b/i.test(trimmed);
 
     if (isEndLine && stack.length > 0) {
       stack.pop();
     }
 
-    const contextLevel = stack.filter(x => x === 'BEGIN').length;
+    const contextLevel = stack.filter((x) => x === 'BEGIN').length;
     output.push(`${makeIndent(contextLevel + existingLevel)}${trimmed}`);
 
-    let beginCount = (safeLine.match(/\bBEGIN\b(?!\s+(?:TRAN|TRANSACTION|DIALOG)\b)/gi) || []).length;
+    let beginCount = (
+      safeLine.match(/\bBEGIN\b(?!\s+(?:TRAN|TRANSACTION|DIALOG)\b)/gi) || []
+    ).length;
     const caseCount = (safeLine.match(/\bCASE\b/gi) || []).length;
     let endCount = (safeLine.match(/\bEND\b/gi) || []).length;
 
@@ -237,13 +326,22 @@ function reindentTsqlByContext(sql: string): string {
       }
     }
 
-    for (let i = 0; i < beginCount; i++) {stack.push('BEGIN');}
-    for (let i = 0; i < caseCount; i++) {stack.push('CASE');}
+    for (let i = 0; i < beginCount; i++) {
+      stack.push('BEGIN');
+    }
+    for (let i = 0; i < caseCount; i++) {
+      stack.push('CASE');
+    }
     for (let i = 0; i < endCount; i++) {
-      if (stack.length > 0) {stack.pop();}
+      if (stack.length > 0) {
+        stack.pop();
+      }
     }
   }
-  return output.join('\n').replace(/\n{3,}/g, '\n\n').trim();
+  return output
+    .join('\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
 }
 
 function reindentGeneral(sql: string): string {
@@ -261,5 +359,8 @@ function reindentGeneral(sql: string): string {
     output.push(rawLine);
   }
 
-  return output.join('\n').replace(/\n{3,}/g, '\n\n').trim();
+  return output
+    .join('\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
 }

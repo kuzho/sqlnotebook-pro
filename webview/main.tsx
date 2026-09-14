@@ -1,7 +1,6 @@
 import * as React from 'react';
-import * as ReactDOM from 'react-dom';
+import { createRoot } from 'react-dom/client';
 import Form from './Form';
-
 
 declare const acquireVsCodeApi: () => {
   postMessage: (message: { type: string; data: any }) => void;
@@ -20,7 +19,11 @@ function testConnection(config: any) {
 }
 
 function processFormData(form: HTMLFormElement) {
-  const data = Object.fromEntries(new FormData(form)) as Record<string, FormDataEntryValue | boolean>;
+  const formData = new FormData(form);
+  const data: Record<string, FormDataEntryValue | boolean> = {};
+  formData.forEach((value, key) => {
+    data[key] = value;
+  });
 
   if (data.encrypt) {
     data.encrypt = !!data.encrypt;
@@ -47,9 +50,15 @@ function handleTest(form: HTMLFormElement) {
 }
 
 document.addEventListener('DOMContentLoaded', () => {
-  const root = document.getElementById('root');
-  ReactDOM.render(
-    <Form handleSubmit={handleSubmit} handleTest={handleTest} />,
-    root
-  );
+  const container = document.getElementById('root');
+  if (container) {
+    const root = createRoot(container);
+    root.render(
+      <Form
+        vscode={vscode}
+        handleSubmit={handleSubmit}
+        handleTest={handleTest}
+      />,
+    );
+  }
 });

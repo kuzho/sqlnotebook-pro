@@ -21,10 +21,12 @@ export interface ReportData {
 }
 
 export class SQLNotebookReports implements vscode.TreeDataProvider<vscode.TreeItem> {
-  private _onDidChangeTreeData = new vscode.EventEmitter<vscode.TreeItem | undefined | void>();
+  private _onDidChangeTreeData = new vscode.EventEmitter<
+    vscode.TreeItem | undefined | void
+  >();
   readonly onDidChangeTreeData = this._onDidChangeTreeData.event;
   constructor() {
-    vscode.workspace.onDidChangeConfiguration(e => {
+    vscode.workspace.onDidChangeConfiguration((e) => {
       if (e.affectsConfiguration('sqlnotebook.reports')) {
         this.refresh();
       }
@@ -36,17 +38,22 @@ export class SQLNotebookReports implements vscode.TreeDataProvider<vscode.TreeIt
   getTreeItem(element: vscode.TreeItem): vscode.TreeItem {
     return element;
   }
-  getChildren(element?: vscode.TreeItem): vscode.ProviderResult<vscode.TreeItem[]> {
-    const reports = vscode.workspace.getConfiguration('sqlnotebook').get<ReportData[]>('reports') || [];
+  getChildren(
+    element?: vscode.TreeItem,
+  ): vscode.ProviderResult<vscode.TreeItem[]> {
+    const reports =
+      vscode.workspace
+        .getConfiguration('sqlnotebook')
+        .get<ReportData[]>('reports') || [];
     if (element instanceof GroupItem) {
       return reports
-        .filter(r => r.group === element.label)
-        .map(r => new ReportItem(r));
+        .filter((r) => r.group === element.label)
+        .map((r) => new ReportItem(r));
     }
     if (!element) {
       const groups = new Set<string>();
       const orphans: ReportData[] = [];
-      reports.forEach(r => {
+      reports.forEach((r) => {
         if (r.group && r.group.trim() !== '') {
           groups.add(r.group);
         } else {
@@ -54,8 +61,12 @@ export class SQLNotebookReports implements vscode.TreeDataProvider<vscode.TreeIt
         }
       });
       const items: vscode.TreeItem[] = [];
-      Array.from(groups).sort().forEach(g => items.push(new GroupItem(g)));
-      orphans.sort((a, b) => a.name.localeCompare(b.name)).forEach(r => items.push(new ReportItem(r)));
+      Array.from(groups)
+        .sort()
+        .forEach((g) => items.push(new GroupItem(g)));
+      orphans
+        .sort((a, b) => a.name.localeCompare(b.name))
+        .forEach((r) => items.push(new ReportItem(r)));
       return items;
     }
     return [];
@@ -76,7 +87,7 @@ export class ReportItem extends vscode.TreeItem {
     this.command = {
       command: 'sqlnotebook.openReport',
       title: 'Open Report',
-      arguments: [report]
+      arguments: [report],
     };
   }
 }

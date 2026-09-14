@@ -2,17 +2,20 @@ import * as vscode from 'vscode';
 import { ConnData } from './connections';
 import { getPool, PoolConfig } from './driver';
 const axios = require('axios');
-function parseTrinoCatalogSchema(database?: string): { catalog?: string; schema?: string } {
+function parseTrinoCatalogSchema(database?: string): {
+  catalog?: string;
+  schema?: string;
+} {
   const raw = (database || '').trim();
   if (!raw || raw === '*' || raw.toLowerCase() === 'all') {
     return {};
   }
   if (raw.includes('/')) {
-    const [catalog, schema] = raw.split('/').map(v => v.trim());
+    const [catalog, schema] = raw.split('/').map((v) => v.trim());
     return { catalog: catalog || undefined, schema: schema || undefined };
   }
   if (raw.includes('.')) {
-    const [catalog, schema] = raw.split('.').map(v => v.trim());
+    const [catalog, schema] = raw.split('.').map((v) => v.trim());
     return { catalog: catalog || undefined, schema: schema || undefined };
   }
   return { catalog: raw };
@@ -21,13 +24,15 @@ function buildTrinoStatementUrl(hostInput: string, port: number): string {
   const trimmedHost = (hostInput || '').trim();
   const defaultProtocol = port === 443 ? 'https' : 'http';
   const hasScheme = /^https?:\/\//i.test(trimmedHost);
-  const parsed = new URL(hasScheme ? trimmedHost : `${defaultProtocol}://${trimmedHost}`);
+  const parsed = new URL(
+    hasScheme ? trimmedHost : `${defaultProtocol}://${trimmedHost}`,
+  );
   if (!parsed.port && Number.isFinite(port) && port > 0) {
     parsed.port = String(port);
   }
   let basePath = parsed.pathname || '';
   if (basePath.endsWith('/v1/statement')) {
-    basePath = basePath.slice(0, -('/v1/statement'.length));
+    basePath = basePath.slice(0, -'/v1/statement'.length);
   }
   basePath = basePath.replace(/\/+$/, '');
   return `${parsed.protocol}//${parsed.host}${basePath}/v1/statement`;
@@ -36,17 +41,18 @@ export let globalFormProvider: SQLConfigurationViewProvider | undefined;
 export function activateFormProvider(context: vscode.ExtensionContext) {
   const provider = new SQLConfigurationViewProvider(
     'sqlnotebook.connectionForm',
-    context
+    context,
   );
   globalFormProvider = provider;
   context.subscriptions.push(
-    vscode.window.registerWebviewViewProvider(provider.viewId, provider)
+    vscode.window.registerWebviewViewProvider(provider.viewId, provider),
   );
 }
 class SQLConfigurationViewProvider implements vscode.WebviewViewProvider {
   public readonly viewId: string;
   private readonly context: vscode.ExtensionContext;
   private _view?: vscode.WebviewView;
+  private _pendingEditConfig?: ConnData;
   constructor(viewId: string, context: vscode.ExtensionContext) {
     this.viewId = viewId;
     this.context = context;
@@ -54,7 +60,7 @@ class SQLConfigurationViewProvider implements vscode.WebviewViewProvider {
   async resolveWebviewView(
     webviewView: vscode.WebviewView,
     _context: vscode.WebviewViewResolveContext<unknown>,
-    _token: vscode.CancellationToken
+    _token: vscode.CancellationToken,
   ): Promise<void> {
     this._view = webviewView;
     webviewView.webview.options = {
@@ -62,35 +68,63 @@ class SQLConfigurationViewProvider implements vscode.WebviewViewProvider {
       enableForms: true,
       localResourceRoots: [this.context.extensionUri],
     };
-    webviewView.description = "Connection Manager";
-    webviewView.webview.html = await getWebviewContent(webviewView.webview, this.context.extensionUri);
+    webviewView.description = 'Connection Manager';
+    webviewView.webview.html = await getWebviewContent(
+      webviewView.webview,
+      this.context.extensionUri,
+    );
+    webviewView.onDidChangeVisibility(() => {
+      if (webviewView.visible && this._pendingEditConfig) {
+        webviewView.webview.postMessage({
+          type: 'edit_connection',
+          data: this._pendingEditConfig,
+        });
+      }
+    });
     webviewView.webview.onDidReceiveMessage(async (message) => {
       switch (message.type) {
+        case 'ready': {
+          if (this._pendingEditConfig) {
+            webviewView.webview.postMessage({
+              type: 'edit_connection',
+              data: this._pendingEditConfig,
+            });
+          }
+          break;
+        }
         case 'test_connection': {
-          const { displayName, originalName, password, port, ...rest } = message.data;
+          const { displayName, originalName, password, port, ...rest } =
+            message.data;
           const tempConfig = {
             ...rest,
             name: 'TEST_CONN',
             port: parseInt(port, 10),
-            password: password
+            password: password,
           };
           if (!tempConfig.password && (displayName || originalName)) {
-             const nameToLookup = originalName || displayName;
-             const passwordKey = `sqlnotebook.${nameToLookup}`;
-             try {
-               tempConfig.password = await this.context.secrets.get(passwordKey);
-             } catch (e) {}
+            const nameToLookup = originalName || displayName;
+            const passwordKey = `sqlnotebook.${nameToLookup}`;
+            try {
+              tempConfig.password = await this.context.secrets.get(passwordKey);
+            } catch (e) {}
           }
           if (!isValid(tempConfig, true)) {
             return;
           }
           if (tempConfig.driver === 'trino') {
             try {
-              vscode.window.setStatusBarMessage('$(sync~spin) Testing Trino connection...', 3000);
+              vscode.window.setStatusBarMessage(
+                '$(sync~spin) Testing Trino connection...',
+                3000,
+              );
               const parsed = parseTrinoCatalogSchema(tempConfig.database);
               const catalog = parsed.catalog || 'system';
-              const schema = parsed.schema || (catalog === 'system' ? 'runtime' : 'default');
-              const url = buildTrinoStatementUrl(tempConfig.host, tempConfig.port);
+              const schema =
+                parsed.schema || (catalog === 'system' ? 'runtime' : 'default');
+              const url = buildTrinoStatementUrl(
+                tempConfig.host,
+                tempConfig.port,
+              );
               const response = await axios.post(url, 'SELECT 1', {
                 headers: {
                   'X-Trino-User': tempConfig.user,
@@ -99,24 +133,37 @@ class SQLConfigurationViewProvider implements vscode.WebviewViewProvider {
                 },
                 auth: {
                   username: tempConfig.user,
-                  password: tempConfig.password || ''
+                  password: tempConfig.password || '',
                 },
-                timeout: 5000
+                timeout: 5000,
               });
-              if (response.status === 200 && response.data && response.data.stats) {
+              if (
+                response.status === 200 &&
+                response.data &&
+                response.data.stats
+              ) {
                 const state = response.data.stats.state;
                 if (state === 'FINISHED' || state === 'QUEUED') {
-                  vscode.window.showInformationMessage(`Connection Test Successful! Estado: ${state} ✅`);
+                  vscode.window.showInformationMessage(
+                    `Connection Test Successful! Estado: ${state} ✅`,
+                  );
                 } else {
                   throw new Error(`Trino returned status ${state}`);
                 }
               } else {
-                const state = response.data && response.data.stats ? response.data.stats.state : 'UNKNOWN';
+                const state =
+                  response.data && response.data.stats
+                    ? response.data.stats.state
+                    : 'UNKNOWN';
                 throw new Error(`Trino returned status ${state}`);
               }
             } catch (err: any) {
               let message = err.message;
-              if (err.response && err.response.data && err.response.data.message) {
+              if (
+                err.response &&
+                err.response.data &&
+                err.response.data.message
+              ) {
                 message = err.response.data.message;
               }
               vscode.window.showErrorMessage(`Connection Failed: ${message}`);
@@ -124,23 +171,36 @@ class SQLConfigurationViewProvider implements vscode.WebviewViewProvider {
             break;
           }
           try {
-             vscode.window.setStatusBarMessage('$(sync~spin) Testing connection...', 2000);
-             const pool = await getPool({
-               ...tempConfig,
-               queryTimeout: 5000
-             } as PoolConfig);
-             const conn = await pool.getConnection();
-             await conn.query('SELECT 1');
-             conn.release();
-             pool.end();
-             vscode.window.showInformationMessage(`Connection Test Successful! ✅`);
+            vscode.window.setStatusBarMessage(
+              '$(sync~spin) Testing connection...',
+              2000,
+            );
+            const pool = await getPool({
+              ...tempConfig,
+              queryTimeout: 5000,
+            } as PoolConfig);
+            const conn = await pool.getConnection();
+            await conn.query('SELECT 1');
+            conn.release();
+            pool.end();
+            vscode.window.showInformationMessage(
+              `Connection Test Successful! ✅`,
+            );
           } catch (err: any) {
-             vscode.window.showErrorMessage(`Connection Failed: ${err.message}`);
+            vscode.window.showErrorMessage(`Connection Failed: ${err.message}`);
           }
           break;
         }
         case 'create_connection': {
-          const { displayName, originalName, password, port, group, isSaveAsNew, ...rest } = message.data;
+          const {
+            displayName,
+            originalName,
+            password,
+            port,
+            group,
+            isSaveAsNew,
+            ...rest
+          } = message.data;
           const passwordKey = `sqlnotebook.${displayName}`;
           const newConfig = {
             ...rest,
@@ -154,9 +214,11 @@ class SQLConfigurationViewProvider implements vscode.WebviewViewProvider {
           }
           const config = vscode.workspace.getConfiguration('sqlnotebook');
           const connections = config.get<ConnData[]>('connections') || [];
-          if (isSaveAsNew && connections.some(c => c.name === displayName)) {
-              vscode.window.showErrorMessage(`A connection named '${displayName}' already exists. Please choose a different name for the new connection.`);
-              return;
+          if (isSaveAsNew && connections.some((c) => c.name === displayName)) {
+            vscode.window.showErrorMessage(
+              `A connection named '${displayName}' already exists. Please choose a different name for the new connection.`,
+            );
+            return;
           }
           if (password && password.trim() !== '') {
             await this.context.secrets.store(passwordKey, password);
@@ -166,35 +228,56 @@ class SQLConfigurationViewProvider implements vscode.WebviewViewProvider {
           } else {
             if (originalName) {
               try {
-                const oldSecret = await this.context.secrets.get(`sqlnotebook.${originalName}`);
+                const oldSecret = await this.context.secrets.get(
+                  `sqlnotebook.${originalName}`,
+                );
                 await this.context.secrets.store(passwordKey, oldSecret || '');
                 if (!isSaveAsNew && originalName !== displayName) {
-                  await this.context.secrets.delete(`sqlnotebook.${originalName}`);
+                  await this.context.secrets.delete(
+                    `sqlnotebook.${originalName}`,
+                  );
                 }
-              } catch(e) {
+              } catch (e) {
                 await this.context.secrets.store(passwordKey, '');
               }
             } else {
               await this.context.secrets.store(passwordKey, '');
             }
           }
-          let newConnectionsList = connections.filter(c => c.name !== displayName);
+          let newConnectionsList = connections.filter(
+            (c) => c.name !== displayName,
+          );
           if (!isSaveAsNew && originalName) {
-             newConnectionsList = newConnectionsList.filter(c => c.name !== originalName);
+            newConnectionsList = newConnectionsList.filter(
+              (c) => c.name !== originalName,
+            );
           }
-          
+
           newConnectionsList.push(newConfig);
-          newConnectionsList.sort((a, b) => (a.group || '').localeCompare(b.group || '') || a.name.localeCompare(b.name));
-          await config.update('connections', newConnectionsList, vscode.ConfigurationTarget.Global);
-          await vscode.commands.executeCommand('sqlnotebook.refreshConnectionPanel');
+          newConnectionsList.sort(
+            (a, b) =>
+              (a.group || '').localeCompare(b.group || '') ||
+              a.name.localeCompare(b.name),
+          );
+          await config.update(
+            'connections',
+            newConnectionsList,
+            vscode.ConfigurationTarget.Global,
+          );
+          await vscode.commands.executeCommand(
+            'sqlnotebook.refreshConnectionPanel',
+          );
           await vscode.commands.executeCommand('sqlnotebook.refreshKernels');
+          this._pendingEditConfig = undefined;
           webviewView.webview.postMessage({ type: 'clear_form' });
           break;
         }
       }
     });
   }
-  public editConnection(config: ConnData) {
+  public async editConnection(config: ConnData) {
+    this._pendingEditConfig = config;
+    await vscode.commands.executeCommand(`${this.viewId}.focus`);
     if (this._view) {
       this._view.show(true);
       this._view.webview.postMessage({ type: 'edit_connection', data: config });
@@ -223,8 +306,15 @@ function isValid(config: ConnData, isTest = false): boolean {
   }
   return true;
 }
-async function getWebviewContent(webview: vscode.Webview, extensionUri: vscode.Uri) {
-  const bundlePath = getUri(webview, extensionUri, ['dist', 'webview', 'main-bundle.js']);
+async function getWebviewContent(
+  webview: vscode.Webview,
+  extensionUri: vscode.Uri,
+) {
+  const bundlePath = getUri(webview, extensionUri, [
+    'dist',
+    'webview',
+    'main-bundle.js',
+  ]);
   const nonce = getNonce();
   return `<!DOCTYPE html>
   <html lang="en">
@@ -240,11 +330,16 @@ async function getWebviewContent(webview: vscode.Webview, extensionUri: vscode.U
     </body>
   </html>`;
 }
-function getUri(webview: vscode.Webview, extensionUri: vscode.Uri, pathList: string[]) {
+function getUri(
+  webview: vscode.Webview,
+  extensionUri: vscode.Uri,
+  pathList: string[],
+) {
   return webview.asWebviewUri(vscode.Uri.joinPath(extensionUri, ...pathList));
 }
 function getNonce() {
-  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+  const chars =
+    'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
   let value = '';
   for (let i = 0; i < 32; i++) {
     value += chars.charAt(Math.floor(Math.random() * chars.length));

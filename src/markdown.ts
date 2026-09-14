@@ -11,21 +11,26 @@ export function resultToMarkdownTable(result: TabularResult): string {
   if (displayResult.length > maxRows) {
     displayResult = displayResult.slice(0, maxRows);
     const dummyRow: Row = {};
-    columns.forEach(col => {
+    columns.forEach((col) => {
       dummyRow[col] = '...';
     });
     displayResult.push(dummyRow);
   }
   const header = markdownHeader(columns);
-  const rowsStr = displayResult.map(row => markdownRow(row, columns)).join('\n');
+  const rowsStr = displayResult
+    .map((row) => markdownRow(row, columns))
+    .join('\n');
   return `${header}\n${rowsStr}`;
 }
-function normalizeTabularResult(result: TabularResult): { rows: Row[]; columns?: string[] } {
+function normalizeTabularResult(result: TabularResult): {
+  rows: Row[];
+  columns?: string[];
+} {
   if (result && typeof result === 'object' && 'rows' in result) {
     const rows = Array.isArray(result.rows) ? result.rows : [];
     const columns = Array.isArray(result.columns) ? result.columns : undefined;
     if (columns) {
-      const mapped = rows.map(row => {
+      const mapped = rows.map((row) => {
         if (Array.isArray(row)) {
           const obj: Row = {};
           columns.forEach((col, idx) => {
@@ -60,7 +65,10 @@ function serializeCell(a: any): any {
       return JSON.stringify(a);
     }
     if (typeof a === 'string') {
-      return a.replace(/\n/g, '\\n').replace(/\r/g, '\\r').replace(/\|/g, '\\|');
+      return a
+        .replace(/\n/g, '\\n')
+        .replace(/\r/g, '\\r')
+        .replace(/\|/g, '\\|');
     }
     return a;
   } catch {
@@ -75,8 +83,6 @@ function markdownRow(row: Row, columns: string[]): string {
 }
 function markdownHeader(columns: string[]): string {
   const keys = columns.join(' | ');
-  const divider = columns
-    .map(() => '--')
-    .join(' | ');
+  const divider = columns.map(() => '--').join(' | ');
   return `| ${keys} |\n| ${divider} |`;
 }

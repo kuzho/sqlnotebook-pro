@@ -1,11 +1,18 @@
-export function extractAttachmentsFromMarkdown(markdown: string): { markdown: string, attachments: Record<string, Record<string, string>> } {
-  const regex = /!\[([^\]]*)\]\((data:image\/(png|jpeg|jpg|gif|webp);base64,([^\)]+))\)/g;
+export function extractAttachmentsFromMarkdown(markdown: string): {
+  markdown: string;
+  attachments: Record<string, Record<string, string>>;
+} {
+  const regex =
+    /!\[([^\]]*)\]\((data:image\/(png|jpeg|jpg|gif|webp);base64,([^\)]+))\)/g;
   let match: RegExpExecArray | null;
   let result = markdown;
   const attachments: Record<string, Record<string, string>> = {};
   let imgCount = 1;
   const sanitize = (name: string): string => {
-    const cleaned = (name || 'image').replace(/[\\/:*?"<>|\s]+/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '');
+    const cleaned = (name || 'image')
+      .replace(/[\\/:*?"<>|\s]+/g, '-')
+      .replace(/-+/g, '-')
+      .replace(/^-|-$/g, '');
     return cleaned || 'image';
   };
   const nextAvailableName = (baseName: string, ext: string): string => {
@@ -35,12 +42,20 @@ export function extractAttachmentsFromMarkdown(markdown: string): { markdown: st
  * Rewrites markdown to use base64 data URIs from attachments.
  * Used for rendering or exporting to other formats.
  */
-export function injectAttachmentsIntoMarkdown(markdown: string, attachments: Record<string, Record<string, string>>): string {
-  return markdown.replace(/!\[([^\]]*)\]\(attachment:([^\)]+)\)/g, (full, alt, filename) => {
-    const att = attachments[filename];
-    if (!att) {return full;}
-    const mime = Object.keys(att)[0];
-    const base64 = att[mime];
-    return `![${alt}](data:${mime};base64,${base64})`;
-  });
+export function injectAttachmentsIntoMarkdown(
+  markdown: string,
+  attachments: Record<string, Record<string, string>>,
+): string {
+  return markdown.replace(
+    /!\[([^\]]*)\]\(attachment:([^\)]+)\)/g,
+    (full, alt, filename) => {
+      const att = attachments[filename];
+      if (!att) {
+        return full;
+      }
+      const mime = Object.keys(att)[0];
+      const base64 = att[mime];
+      return `![${alt}](data:${mime};base64,${base64})`;
+    },
+  );
 }
