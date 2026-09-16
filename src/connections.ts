@@ -91,8 +91,14 @@ export class SQLNotebookConnections implements vscode.TreeDataProvider<vscode.Tr
           queryTimeout: 15000,
         } as PoolConfig;
         const pool = await getPool(poolConfig);
-        const schema = await pool.getSchema();
-        pool.end();
+        let schema: TableSchema[] = [];
+        try {
+          schema = await pool.getSchema();
+        } finally {
+          try {
+            pool.end();
+          } catch (e) {}
+        }
         const schemaGroups = new Map<string, TableSchema[]>();
         const orphans: TableSchema[] = [];
         schema.forEach((obj) => {

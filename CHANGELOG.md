@@ -1,5 +1,15 @@
 # Change Log
 
+## [3.4.5]
+
+### 🐛 Bug Fixes & Stability Improvements
+
+- **Unified Status Indicator:** Fixed parameter and notebook cell status tracking so the status badge reliably displays `UNSAVED` for any in-memory modification (notebook cell or SQL parameter) and `SAVED` when saved.
+- **Safe Regex Parameter Substitution:** Fixed a bug where parameter values containing special dollar patterns (e.g., `$1`, `$&`) were corrupted during parameter replacement in SQL queries.
+- **Database Connection Leak Fix:** Wrapped schema discovery in `try...finally` to ensure connection pools are properly closed even if schema discovery fails or times out.
+- **Notebook Serializer Matching:** Prevented empty initial cells from falsely matching notebook URIs during image attachment serialization.
+- **Form State & UI Polish:** Improved connection form state handling, form input responsiveness, and button layouts.
+
 ## [3.4.4]
 
 ### ⚡ Updates & Modernization

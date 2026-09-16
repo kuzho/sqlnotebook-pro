@@ -327,9 +327,10 @@ export class SQLNotebookKernel {
             'g',
           );
           if (raw === true) {
-            batch = batch.replace(searchPattern, value);
+            batch = batch.replace(searchPattern, () => value);
           } else {
-            batch = batch.replace(searchPattern, formatParameterValue(value));
+            const formatted = formatParameterValue(value);
+            batch = batch.replace(searchPattern, () => formatted);
           }
         });
         const strippedBatch = batch

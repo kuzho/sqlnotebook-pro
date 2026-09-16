@@ -280,6 +280,7 @@ const Parameters: React.FC = () => {
         type: 'parameters_updated',
         payload: {
           parameters: outgoingParameters,
+          isDirty,
         },
       });
     } else {

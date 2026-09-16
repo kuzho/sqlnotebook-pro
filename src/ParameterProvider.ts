@@ -3,23 +3,63 @@ export class ParameterProvider implements vscode.WebviewViewProvider {
   public static readonly viewType = 'sqlnotebook.parameters';
   private _view?: vscode.WebviewView;
   private _activeUri: string | null = null;
+  private _savedParamsByUri = new Map<
+    string,
+    Record<string, StoredParameter>
+  >();
   private _runtimeParamsByUri = new Map<
     string,
     Record<string, StoredParameter>
   >();
+  private _paramDirtyByUri = new Map<string, boolean>();
+  private _lastSentIsDirtyByUri = new Map<string, boolean>();
   private _explicitSaveRequests = new Set<string>();
   constructor(
     private readonly _extensionUri: vscode.Uri,
     private readonly _context: vscode.ExtensionContext,
   ) {
     this._context.subscriptions.push(
+      vscode.workspace.onWillSaveNotebookDocument((event) => {
+        if (event.notebook.notebookType !== 'sql-notebook') {
+          return;
+        }
+        const uriKey = event.notebook.uri.toString();
+        const pending = this._runtimeParamsByUri.get(uriKey);
+        if (pending) {
+          const currentMetadata = event.notebook.metadata || {};
+          const custom = currentMetadata.custom || {};
+          const savedParams = (custom.parameters || {}) as Record<
+            string,
+            StoredParameter
+          >;
+          if (!areParamsEqual(savedParams, pending)) {
+            const edit = new vscode.WorkspaceEdit();
+            edit.set(event.notebook.uri, [
+              vscode.NotebookEdit.updateNotebookMetadata({
+                ...currentMetadata,
+                custom: { ...custom, parameters: pending },
+              }),
+            ]);
+            event.waitUntil(vscode.workspace.applyEdit(edit));
+          }
+        }
+      }),
+    );
+    this._context.subscriptions.push(
       vscode.workspace.onDidSaveNotebookDocument((notebook) => {
         if (notebook.notebookType !== 'sql-notebook') {
           return;
         }
         const uriKey = notebook.uri.toString();
+        const savedParams = (notebook.metadata?.custom?.parameters ||
+          {}) as Record<string, StoredParameter>;
+        this._savedParamsByUri.set(uriKey, savedParams);
+        this._paramDirtyByUri.set(uriKey, false);
         if (this._activeUri === uriKey) {
-          this._updateWebviewForEditor(vscode.window.activeNotebookEditor);
+          this.updateWebviewState({
+            isDirty: false,
+            hasActiveFile: true,
+          });
           this._view?.webview.postMessage({
             type: 'save_now_result',
             payload: { message: 'Saved' },
@@ -33,7 +73,11 @@ export class ParameterProvider implements vscode.WebviewViewProvider {
           return;
         }
         if (this._activeUri === event.notebook.uri.toString()) {
-          this._updateWebviewForEditor(vscode.window.activeNotebookEditor);
+          const isDirty = this._computeIsDirty(this._activeUri);
+          this.updateWebviewState({
+            isDirty,
+            hasActiveFile: true,
+          });
         }
       }),
     );
@@ -44,6 +88,9 @@ export class ParameterProvider implements vscode.WebviewViewProvider {
         }
         const uriKey = notebook.uri.toString();
         this._runtimeParamsByUri.delete(uriKey);
+        this._savedParamsByUri.delete(uriKey);
+        this._paramDirtyByUri.delete(uriKey);
+        this._lastSentIsDirtyByUri.delete(uriKey);
         this._explicitSaveRequests.delete(uriKey);
         if (this._activeUri === uriKey) {
           this._activeUri = null;
@@ -56,6 +103,28 @@ export class ParameterProvider implements vscode.WebviewViewProvider {
         this._updateWebviewForEditor(editor);
       }),
     );
+  }
+  private _computeIsDirty(uri: string): boolean {
+    const notebook = vscode.workspace.notebookDocuments.find(
+      (nb) => nb.uri.toString() === uri,
+    );
+    const isNotebookDirty = notebook ? notebook.isDirty : false;
+
+    const savedParams =
+      this._savedParamsByUri.get(uri) ||
+      ((notebook?.metadata?.custom?.parameters || {}) as Record<
+        string,
+        StoredParameter
+      >);
+    const runtimeParams = this._runtimeParamsByUri.get(uri);
+    const displayParams =
+      runtimeParams !== undefined ? runtimeParams : savedParams;
+
+    const isParamsDirty =
+      (this._paramDirtyByUri.get(uri) ?? false) ||
+      !areParamsEqual(savedParams, displayParams);
+
+    return isNotebookDirty || isParamsDirty;
   }
   public resolveWebviewView(
     webviewView: vscode.WebviewView,
@@ -81,7 +150,7 @@ export class ParameterProvider implements vscode.WebviewViewProvider {
       }
 
       if (data.type === 'parameters_updated') {
-        const { parameters } = data.payload;
+        const { parameters, isDirty: webviewIsDirty } = data.payload;
 
         let targetUri = this._activeUri;
         if (!targetUri) {
@@ -104,29 +173,20 @@ export class ParameterProvider implements vscode.WebviewViewProvider {
           this._activeUri = targetUri;
           this._runtimeParamsByUri.set(targetUri, parameters);
 
-          const notebook = vscode.workspace.notebookDocuments.find(
-            (nb) => nb.uri.toString() === targetUri,
-          );
-          if (notebook) {
-            const currentMetadata = notebook.metadata || {};
-            const custom = currentMetadata.custom || {};
-            const savedParams = (custom.parameters || {}) as Record<
-              string,
-              StoredParameter
-            >;
+          const savedParams =
+            this._savedParamsByUri.get(targetUri) ||
+            ((vscode.window.activeNotebookEditor?.notebook.metadata?.custom
+              ?.parameters || {}) as Record<string, StoredParameter>);
 
-            if (!areParamsEqual(savedParams, parameters)) {
-              const edit = new vscode.WorkspaceEdit();
-              edit.set(notebook.uri, [
-                vscode.NotebookEdit.updateNotebookMetadata({
-                  ...currentMetadata,
-                  custom: { ...custom, parameters },
-                }),
-              ]);
-              await vscode.workspace.applyEdit(edit);
-            }
-            this._updateWebviewForEditor(vscode.window.activeNotebookEditor);
-          }
+          const isParamsDiff = !areParamsEqual(savedParams, parameters);
+          const isParamDirty = webviewIsDirty === true || isParamsDiff;
+          this._paramDirtyByUri.set(targetUri, isParamDirty);
+
+          const isDirty = this._computeIsDirty(targetUri);
+          this.updateWebviewState({
+            isDirty,
+            hasActiveFile: true,
+          });
         }
       }
       if (data.type === 'save_now') {
@@ -158,11 +218,11 @@ export class ParameterProvider implements vscode.WebviewViewProvider {
             if (pending) {
               const currentMetadata = notebook.metadata || {};
               const custom = currentMetadata.custom || {};
-              const currentParams = (custom.parameters || {}) as Record<
+              const savedParams = (custom.parameters || {}) as Record<
                 string,
                 StoredParameter
               >;
-              if (!areParamsEqual(currentParams, pending)) {
+              if (!areParamsEqual(savedParams, pending)) {
                 const edit = new vscode.WorkspaceEdit();
                 edit.set(notebook.uri, [
                   vscode.NotebookEdit.updateNotebookMetadata({
@@ -194,6 +254,13 @@ export class ParameterProvider implements vscode.WebviewViewProvider {
     isDirty?: boolean;
     hasActiveFile?: boolean;
   }) {
+    if (this._activeUri && state.isDirty !== undefined) {
+      const prev = this._lastSentIsDirtyByUri.get(this._activeUri);
+      if (prev === state.isDirty && state.hasActiveFile === undefined) {
+        return;
+      }
+      this._lastSentIsDirtyByUri.set(this._activeUri, state.isDirty);
+    }
     this._view?.webview.postMessage({
       type: 'update_state',
       payload: state,
@@ -204,7 +271,19 @@ export class ParameterProvider implements vscode.WebviewViewProvider {
   }
   public onExternalSave(uri: string) {
     if (this._activeUri === uri) {
-      this._updateWebviewForEditor(vscode.window.activeNotebookEditor);
+      const notebook = vscode.workspace.notebookDocuments.find(
+        (nb) => nb.uri.toString() === uri,
+      );
+      if (notebook) {
+        const savedParams = (notebook.metadata?.custom?.parameters ||
+          {}) as Record<string, StoredParameter>;
+        this._savedParamsByUri.set(uri, savedParams);
+      }
+      this._paramDirtyByUri.set(uri, false);
+      this.updateWebviewState({
+        isDirty: false,
+        hasActiveFile: true,
+      });
       this._view?.webview.postMessage({
         type: 'save_now_result',
         payload: { message: 'Saved' },
@@ -215,12 +294,13 @@ export class ParameterProvider implements vscode.WebviewViewProvider {
     if (editor && editor.notebook.notebookType === 'sql-notebook') {
       this._activeUri = editor.notebook.uri.toString();
       const notebook = editor.notebook;
-      const savedParams = notebook.metadata?.custom?.parameters as
-        Record<string, StoredParameter> | undefined;
+      const savedParams = (notebook.metadata?.custom?.parameters || {}) as
+        Record<string, StoredParameter>;
+      this._savedParamsByUri.set(this._activeUri, savedParams);
       const runtimeParams = this._runtimeParamsByUri.get(this._activeUri);
       const displayParams =
-        runtimeParams !== undefined ? runtimeParams : savedParams || {};
-      const isDirty = notebook.isDirty;
+        runtimeParams !== undefined ? runtimeParams : savedParams;
+      const isDirty = this._computeIsDirty(this._activeUri);
       this._view?.webview.postMessage({
         type: 'set_parameters',
         payload: {
@@ -388,4 +468,11 @@ function normalizeParam(param: StoredParameter): {
     uncheckedValue: 'false',
     required: false,
   };
+}
+function getNotebookCellTexts(notebook: vscode.NotebookDocument): string[] {
+  const texts: string[] = [];
+  for (let i = 0; i < notebook.cellCount; i++) {
+    texts.push(notebook.cellAt(i).document.getText());
+  }
+  return texts;
 }

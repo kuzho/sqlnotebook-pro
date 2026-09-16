@@ -18,6 +18,7 @@ type SerializedCell = {
   value: string;
   attachments?: Record<string, Record<string, string>>;
   output?: any;
+  outputs?: any[];
   executionSummary?: {
     executionOrder?: number;
     success?: boolean;
@@ -98,7 +99,18 @@ function toNotebookDataFromJson(
           attachments: serializedCell.attachments,
         };
       }
-      if (serializedCell.output !== undefined) {
+      if (
+        Array.isArray(serializedCell.outputs) &&
+        serializedCell.outputs.length > 0
+      ) {
+        cell.outputs = serializedCell.outputs.map((outPayload) => {
+          const item = vscode.NotebookCellOutputItem.json(
+            outPayload,
+            'application/vnd.code-sql-notebook.table+json',
+          );
+          return new vscode.NotebookCellOutput([item]);
+        });
+      } else if (serializedCell.output !== undefined) {
         const item = vscode.NotebookCellOutputItem.json(
           serializedCell.output,
           'application/vnd.code-sql-notebook.table+json',
@@ -156,25 +168,26 @@ function parseLegacyNotebook(contents: string): vscode.NotebookData {
       let savedSummary: vscode.NotebookCellExecutionSummary | undefined;
       const matches = [...cleanText.matchAll(OUTPUT_REGEX)];
       if (matches.length > 0) {
-        const match = matches[0];
-        try {
-          const jsonStr = match[1].trim();
-          const fullData = JSON.parse(jsonStr);
-          if (fullData.summary) {
-            const normalizedSummary = normalizeExecutionSummary(
-              fullData.summary,
-            );
-            if (normalizedSummary) {
-              savedSummary = { ...normalizedSummary };
+        for (const match of matches) {
+          try {
+            const jsonStr = match[1].trim();
+            const fullData = JSON.parse(jsonStr);
+            if (fullData.summary && !savedSummary) {
+              const normalizedSummary = normalizeExecutionSummary(
+                fullData.summary,
+              );
+              if (normalizedSummary) {
+                savedSummary = { ...normalizedSummary };
+              }
             }
+            const item = vscode.NotebookCellOutputItem.json(
+              fullData,
+              'application/vnd.code-sql-notebook.table+json',
+            );
+            outputs.push(new vscode.NotebookCellOutput([item]));
+          } catch (e) {
+            console.error('Error recovering output:', e);
           }
-          const item = vscode.NotebookCellOutputItem.json(
-            fullData,
-            'application/vnd.code-sql-notebook.table+json',
-          );
-          outputs = [new vscode.NotebookCellOutput([item])];
-        } catch (e) {
-          console.error('Error recovering output:', e);
         }
       }
       cleanText = cleanText.replace(OUTPUT_REGEX, '');
@@ -234,22 +247,27 @@ function parseLegacyNotebook(contents: string): vscode.NotebookData {
   data.metadata = { custom: { parameters: params } };
   return data;
 }
-function getCellOutputPayload(cell: vscode.NotebookCellData): any {
+function getCellOutputsPayloads(
+  cell: vscode.NotebookCellData,
+): any[] | undefined {
   if (!cell.outputs || cell.outputs.length === 0) {
     return undefined;
   }
-  const item = cell.outputs[0].items.find(
-    (i) => i.mime === 'application/vnd.code-sql-notebook.table+json',
-  );
-  if (!item) {
-    return undefined;
+  const payloads: any[] = [];
+  for (const out of cell.outputs) {
+    const item = out.items.find(
+      (i) => i.mime === 'application/vnd.code-sql-notebook.table+json',
+    );
+    if (item) {
+      const jsonStr = new TextDecoder().decode(item.data);
+      try {
+        payloads.push(JSON.parse(jsonStr));
+      } catch {
+        payloads.push({});
+      }
+    }
   }
-  const jsonStr = new TextDecoder().decode(item.data);
-  try {
-    return JSON.parse(jsonStr);
-  } catch {
-    return {};
-  }
+  return payloads.length > 0 ? payloads : undefined;
 }
 function getCellExecutionSummary(
   cell: vscode.NotebookCellData,
@@ -319,11 +337,16 @@ async function serializeNotebookCells(
               : undefined,
         };
       }
+      const outputsPayload = getCellOutputsPayloads(cell);
       return {
         kind: 'code',
         language: 'sql',
         value: cell.value,
-        output: getCellOutputPayload(cell),
+        outputs: outputsPayload,
+        output:
+          outputsPayload && outputsPayload.length > 0
+            ? outputsPayload[0]
+            : undefined,
         executionSummary: getCellExecutionSummary(cell),
       };
     }),
@@ -353,7 +376,17 @@ export async function serializeNotebookAsLegacySql(
     } else {
       cellParts.push(cell.value);
     }
-    if (cell.output !== undefined) {
+    if (cell.outputs && cell.outputs.length > 0) {
+      cell.outputs.forEach((outPayload, outIdx) => {
+        const outputData =
+          outIdx === 0 && cell.executionSummary
+            ? { ...outPayload, summary: cell.executionSummary }
+            : outPayload;
+        cellParts.push(
+          `${OUTPUT_START}\n${JSON.stringify(outputData, null, 2)}\n${OUTPUT_END}`,
+        );
+      });
+    } else if (cell.output !== undefined) {
       const outputData = cell.executionSummary
         ? { ...cell.output, summary: cell.executionSummary }
         : cell.output;
@@ -392,10 +425,13 @@ export class SQLSerializer implements vscode.NotebookSerializer {
     data: vscode.NotebookData,
     _token: vscode.CancellationToken,
   ): Promise<Uint8Array> {
-    // Intentamos obtener el URI del notebook desde los documentos abiertos que coincidan con la data
-    const notebookUri = vscode.workspace.notebookDocuments.find(
-      (nb) => nb.cellAt(0).document.getText() === data.cells[0]?.value,
-    )?.uri;
+    const firstCellValue = data.cells[0]?.value;
+    const notebookUri =
+      firstCellValue && firstCellValue.trim() !== ''
+        ? vscode.workspace.notebookDocuments.find(
+            (nb) => nb.cellAt(0).document.getText() === firstCellValue,
+          )?.uri
+        : undefined;
     const finalOutput = await serializeNotebookAsLegacySql(data, notebookUri);
     return new TextEncoder().encode(finalOutput);
   }
