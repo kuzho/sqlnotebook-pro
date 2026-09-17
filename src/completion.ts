@@ -203,6 +203,10 @@ export class SqlCompletionItemProvider
     }
   }
 
+  public getConsolidatedSchema(): Map<string, TableSchema[]> {
+    return this.consolidatedSchema;
+  }
+
   private getCellText(
     document: vscode.TextDocument,
     position: vscode.Position,
@@ -221,6 +225,32 @@ export class SqlCompletionItemProvider
     }
 
     return document.getText();
+  }
+
+  private getFullContextText(
+    document: vscode.TextDocument,
+    position: vscode.Position,
+  ): string {
+    const notebook = vscode.workspace.notebookDocuments.find((nb) =>
+      nb.getCells().some((cell) => cell.document === document),
+    );
+
+    if (notebook) {
+      const cells = notebook.getCells();
+      const currentIdx = cells.findIndex((cell) => cell.document === document);
+      if (currentIdx > 0) {
+        const precedingText = cells
+          .slice(0, currentIdx)
+          .map((c) => c.document.getText())
+          .join('\n;\n');
+        const offsetInCell = document.offsetAt(position);
+        const cellTextBefore = document.getText().substring(0, offsetInCell);
+        return `${precedingText}\n;\n${cellTextBefore}`;
+      }
+    }
+
+    const offsetInCell = document.offsetAt(position);
+    return document.getText().substring(0, offsetInCell);
   }
 
   private getNotebookUri(document: vscode.TextDocument): string | undefined {
@@ -273,10 +303,11 @@ export class SqlCompletionItemProvider
     includeImplicit = false,
   ): Map<string, string> {
     const aliasMap = new Map<string, string>();
+    const cleanText = text.replace(/WITH\s*\([^)]*\)/gi, '');
     const regex =
       /\b(from|join|update)\s+([^\s,\(]+)(?:\s+as)?(?:\s+([a-zA-Z_][\w]*))?/gi;
     let match: RegExpExecArray | null;
-    while ((match = regex.exec(text)) !== null) {
+    while ((match = regex.exec(cleanText)) !== null) {
       const tableToken = this.normalizeTableForLookup(match[2]);
       const aliasCandidate = match[3];
       if (aliasCandidate && !this.isClauseKeyword(aliasCandidate)) {
@@ -286,17 +317,80 @@ export class SqlCompletionItemProvider
         aliasMap.set(tableToken, tableToken);
       }
     }
+
+    const fromMatches = cleanText.matchAll(
+      /\bFROM\s+([^\bWHERE\b|\bJOIN\b|\bGROUP\b|\bORDER\b|\bHAVING\b|\bLIMIT\b;]+)/gi,
+    );
+    for (const fromMatch of fromMatches) {
+      const tablesList = fromMatch[1].split(',');
+      for (const tItem of tablesList) {
+        const parts = tItem.trim().split(/\s+/);
+        if (parts.length >= 1) {
+          const rawTable = parts[0];
+          if (
+            rawTable &&
+            !this.isClauseKeyword(rawTable) &&
+            !rawTable.startsWith('(')
+          ) {
+            const tableToken = this.normalizeTableForLookup(rawTable);
+            let aliasCandidate =
+              parts.length >= 2 ? parts[parts.length - 1] : undefined;
+            if (
+              aliasCandidate &&
+              aliasCandidate.toUpperCase() === 'AS' &&
+              parts.length >= 3
+            ) {
+              aliasCandidate = parts[parts.length - 1];
+            }
+            if (aliasCandidate && !this.isClauseKeyword(aliasCandidate)) {
+              aliasMap.set(aliasCandidate, tableToken);
+            }
+            if (includeImplicit) {
+              aliasMap.set(tableToken, tableToken);
+            }
+          }
+        }
+      }
+    }
+
     return aliasMap;
   }
 
-  private getTablesInQuery(text: string): Set<string> {
+  public getTablesInQuery(text: string): Set<string> {
     const tables = new Set<string>();
-    const regex = /\b(from|join|update)\s+([^\s,\(;]+)/gi;
+    const cleanText = text.replace(/WITH\s*\([^)]*\)/gi, '');
+    const regex = /\b(from|join|update|into)\s+([^\s,\(;]+)/gi;
     let match: RegExpExecArray | null;
-    while ((match = regex.exec(text)) !== null) {
+    while ((match = regex.exec(cleanText)) !== null) {
       const tableToken = this.normalizeTableForLookup(match[2]);
-      tables.add(tableToken);
+      if (tableToken && !this.isClauseKeyword(tableToken)) {
+        tables.add(tableToken);
+      }
     }
+
+    const fromMatches = cleanText.matchAll(
+      /\bFROM\s+([^\bWHERE\b|\bJOIN\b|\bGROUP\b|\bORDER\b|\bHAVING\b|\bLIMIT\b;]+)/gi,
+    );
+    for (const fromMatch of fromMatches) {
+      const tablesList = fromMatch[1].split(',');
+      for (const tItem of tablesList) {
+        const parts = tItem.trim().split(/\s+/);
+        if (parts.length >= 1) {
+          const rawTable = parts[0];
+          if (
+            rawTable &&
+            !this.isClauseKeyword(rawTable) &&
+            !rawTable.startsWith('(')
+          ) {
+            const tableToken = this.normalizeTableForLookup(rawTable);
+            if (tableToken) {
+              tables.add(tableToken);
+            }
+          }
+        }
+      }
+    }
+
     return tables;
   }
 
@@ -537,6 +631,7 @@ export class SqlCompletionItemProvider
       return [];
     }
 
+    const contextText = this.getFullContextText(document, position);
     const cellText = this.getCellText(document, position);
     const offsetInCell = document.offsetAt(position);
     const textBefore = cellText.substring(0, offsetInCell);
@@ -562,11 +657,9 @@ export class SqlCompletionItemProvider
 
     const matchTable = lineText.match(/([\w\[\]"`\.]+)\.$/);
     if (matchTable) {
-      const aliasMap = this.buildAliasMap(textBefore);
+      const aliasMap = this.buildAliasMap(contextText);
       const rawName = this.normalizeName(matchTable[1]);
-      const tableName =
-        aliasMap.get(rawName) || this.normalizeTableForLookup(rawName);
-      return this.getColumnsForTable(tableName);
+      return this.getSchemaOrTableItems(rawName, aliasMap);
     }
 
     const inOnContext =
@@ -575,7 +668,7 @@ export class SqlCompletionItemProvider
         textBefore,
       );
     if (inOnContext) {
-      const aliasMap = this.buildAliasMap(textBefore, true);
+      const aliasMap = this.buildAliasMap(contextText, true);
       const preferredPair = this.getPreferredJoinAliasPair(
         textBefore,
         aliasMap,
@@ -598,6 +691,7 @@ export class SqlCompletionItemProvider
           aliasItem.detail = `Column of ${table}`;
           aliasItem.sortText = `${aliasRank}_${qualified}`;
           aliasItem.insertText = qualified;
+          aliasItem.documentation = item.documentation;
           return aliasItem;
         });
         onItems.push(...cols);
@@ -621,10 +715,10 @@ export class SqlCompletionItemProvider
     const currentStatement = this.getCurrentStatement(textBefore);
     this.learnUsageFromStatement(document.uri.toString(), currentStatement);
 
-    const aliasMap = this.buildAliasMap(textBefore);
-    const tablesInQuery = this.getTablesInQuery(textBefore);
+    const aliasMap = this.buildAliasMap(contextText);
+    const tablesInQuery = this.getTablesInQuery(contextText);
 
-    const ctes = this.getCTEs(textBefore);
+    const ctes = this.getCTEs(contextText);
     ctes.forEach((c) => tablesInQuery.add(c));
 
     const identifierMatch = lineText.match(/([\w\[\]"`\.]+)$/);
@@ -679,6 +773,17 @@ export class SqlCompletionItemProvider
     );
     const keywordItems = this.getKeywordItems(driver, queryContext);
     const snippets = this.getSnippets(queryContext, driver);
+
+    // Expand * snippet in SELECT context
+    if (queryContext === 'select' || /\bSELECT\s+$/i.test(textBefore)) {
+      const selectAllSnippet = this.getSelectAllColumnsSnippet(
+        aliasMap,
+        tablesInQuery,
+      );
+      if (selectAllSnippet) {
+        snippets.unshift(selectAllSnippet);
+      }
+    }
 
     if (queryContext === 'insert' || queryContext === 'update') {
       const targetMatch = textBefore.match(
@@ -780,6 +885,55 @@ export class SqlCompletionItemProvider
     ]);
   }
 
+  private getSelectAllColumnsSnippet(
+    aliasMap: Map<string, string>,
+    tablesInQuery: Set<string>,
+  ): vscode.CompletionItem | undefined {
+    const colList: string[] = [];
+
+    if (aliasMap.size > 0) {
+      for (const [alias, table] of aliasMap) {
+        const cols = this.getRawColumnNames(table);
+        cols.forEach((c) => colList.push(`${alias}.${c}`));
+      }
+    } else if (tablesInQuery.size > 0) {
+      for (const table of tablesInQuery) {
+        const cols = this.getRawColumnNames(table);
+        cols.forEach((c) => colList.push(c));
+      }
+    }
+
+    if (colList.length === 0) {
+      return undefined;
+    }
+
+    const expanded = colList.join(', ');
+    const item = new vscode.CompletionItem(
+      `* (Expand ${colList.length} columns)`,
+      vscode.CompletionItemKind.Snippet,
+    );
+    item.detail = `Expands * to: ${expanded.slice(0, 60)}${expanded.length > 60 ? '...' : ''}`;
+    item.documentation = new vscode.MarkdownString(
+      `Expands \`*\` to all columns from query tables:\n\`\`\`sql\n${expanded}\n\`\`\``,
+    );
+    item.sortText = `00_*_EXPAND`;
+    item.insertText = expanded;
+    return item;
+  }
+
+  private getRawColumnNames(tableName: string): string[] {
+    const lookupName = this.normalizeTableForLookup(tableName);
+    for (const [, schema] of this.consolidatedSchema) {
+      const table = schema.find(
+        (t) => t.table.toLowerCase() === lookupName.toLowerCase(),
+      );
+      if (table) {
+        return table.columns;
+      }
+    }
+    return [];
+  }
+
   private getColumnsForTables(tables: string[]): vscode.CompletionItem[] {
     const columnsByName = new Map<
       string,
@@ -801,12 +955,12 @@ export class SqlCompletionItemProvider
             columnsByName.set(col, {
               tables: new Set(),
               count: 0,
-              typeStr: '',
+              typeStr: table.columnTypes?.[col] || '',
             });
           }
           const info = columnsByName.get(col)!;
           info.tables.add(table.table);
-          info.count++; // Track how many times this column appears across tables
+          info.count++;
         });
       }
     }
@@ -821,8 +975,15 @@ export class SqlCompletionItemProvider
         colName,
         vscode.CompletionItemKind.Field,
       );
-      item.detail = `Column in: ${tableList}${moreCount}`;
-      // Columns appearing in more tables get higher priority (common columns first)
+      const typeDisplay = info.typeStr ? ` (${info.typeStr})` : '';
+      item.detail = `Column in: ${tableList}${moreCount}${typeDisplay}`;
+      const doc = new vscode.MarkdownString();
+      doc.appendMarkdown(`### Column \`${colName}\`\n\n`);
+      doc.appendMarkdown(`- **Found in tables:** \`${Array.from(info.tables).join('`, `')}\`\n`);
+      if (info.typeStr) {
+        doc.appendMarkdown(`- **Type:** \`${info.typeStr}\`\n`);
+      }
+      item.documentation = doc;
       const commonRank = info.count > 1 ? '0' : '1';
       item.sortText = `${commonRank}_${colName}`;
       item.insertText = colName;
@@ -861,6 +1022,7 @@ export class SqlCompletionItemProvider
           vscode.CompletionItemKind.Field,
         );
         item.detail = `Column of ${table}${typeDisplay}`;
+        item.documentation = colItem.documentation;
         item.sortText = `0_${qualified}`;
         item.insertText = qualified;
         items.push(item);
@@ -929,10 +1091,91 @@ export class SqlCompletionItemProvider
     return [...head, ...tail];
   }
 
+  private getSchemaOrTableItems(
+    rawName: string,
+    aliasMap: Map<string, string>,
+  ): vscode.CompletionItem[] {
+    const resolvedTable =
+      aliasMap.get(rawName) || this.normalizeTableForLookup(rawName);
+    const columnItems = this.getColumnsForTable(resolvedTable);
+
+    if (columnItems.length > 0) {
+      const allColNames = columnItems
+        .map((c) => `${rawName}.${c.label.toString()}`)
+        .join(', ');
+      const expandItem = new vscode.CompletionItem(
+        `* (Expand all ${columnItems.length} columns)`,
+        vscode.CompletionItemKind.Snippet,
+      );
+      expandItem.detail = `Expand to: ${allColNames.slice(0, 60)}...`;
+      expandItem.sortText = `00_*`;
+      expandItem.insertText = allColNames;
+      columnItems.unshift(expandItem);
+    }
+
+    const schemaTables: vscode.CompletionItem[] = [];
+    for (const [, schema] of this.consolidatedSchema) {
+      schema.forEach((t) => {
+        if (t.schema && t.schema.toLowerCase() === rawName.toLowerCase()) {
+          const tableLabel = t.table;
+          const item = new vscode.CompletionItem(
+            tableLabel,
+            t.type === 'view'
+              ? vscode.CompletionItemKind.Interface
+              : vscode.CompletionItemKind.Class,
+          );
+          item.detail = `${t.type === 'view' ? 'View' : 'Table'} in ${t.schema}`;
+          item.sortText = `0_${t.table}`;
+          item.insertText = tableLabel;
+          schemaTables.push(item);
+        }
+      });
+    }
+
+    if (schemaTables.length > 0) {
+      return this.dedupeByLabel([...schemaTables, ...columnItems]);
+    }
+
+    return columnItems;
+  }
+
+  private getUnaggregatedSelectColumns(textBefore: string): vscode.CompletionItem[] {
+    const selectMatch = textBefore.match(/\bSELECT\s+([\s\S]*?)\bFROM\b/i);
+    if (!selectMatch) {
+      return [];
+    }
+    const selectBody = selectMatch[1];
+    const rawCols = selectBody.split(',');
+    const items: vscode.CompletionItem[] = [];
+    for (const rawCol of rawCols) {
+      const trimmed = rawCol.trim();
+      if (
+        !trimmed ||
+        /\b(COUNT|SUM|AVG|MIN|MAX|COALESCE|NULLIF)\s*\(/i.test(trimmed)
+      ) {
+        continue;
+      }
+      const noAlias = trimmed.replace(/\s+AS\s+[\w`"\[\]]+$/i, '').trim();
+      if (noAlias && !noAlias.includes('*')) {
+        const colName = noAlias.split('.').pop() || noAlias;
+        const item = new vscode.CompletionItem(
+          noAlias,
+          vscode.CompletionItemKind.Field,
+        );
+        item.detail = `Selected column for GROUP BY`;
+        item.sortText = `00_${colName}`;
+        item.insertText = noAlias;
+        items.push(item);
+      }
+    }
+    return items;
+  }
+
   private prioritizeGroupByItems(
     items: vscode.CompletionItem[],
     textBefore: string,
   ): vscode.CompletionItem[] {
+    const unaggregated = this.getUnaggregatedSelectColumns(textBefore);
     const aggregates = new Set(['COUNT', 'SUM', 'AVG', 'MIN', 'MAX']);
     const afterGroupByColumn =
       /\bGROUP\s+BY\s+[\w\]\[\.`"]+(?:\s*,\s*[\w\]\[\.`"]+)*\s*$/i.test(
@@ -940,7 +1183,7 @@ export class SqlCompletionItemProvider
       );
 
     if (!afterGroupByColumn) {
-      return items;
+      return this.dedupeByLabel([...unaggregated, ...items]);
     }
 
     const head: vscode.CompletionItem[] = [];
@@ -955,7 +1198,7 @@ export class SqlCompletionItemProvider
       }
     });
 
-    return [...head, ...tail];
+    return this.dedupeByLabel([...unaggregated, ...head, ...tail]);
   }
 
   private getParameterItems(
@@ -966,11 +1209,34 @@ export class SqlCompletionItemProvider
     const keys = Object.keys(params);
     return keys.map((key) => {
       const label = key.startsWith('@') ? key : `@${key}`;
+      const paramVal = params[key];
+      let detail = 'SQL Parameter';
+      const doc = new vscode.MarkdownString();
+      doc.appendMarkdown(`### Parameter \`${label}\`\n\n`);
+
+      if (paramVal && typeof paramVal === 'object') {
+        const typeStr = paramVal.type || 'text';
+        const reqStr = paramVal.required ? 'Yes' : 'No';
+        const valStr =
+          paramVal.value !== undefined ? String(paramVal.value) : '(empty)';
+        detail = `SQL Parameter (${typeStr})${paramVal.value ? ` = "${paramVal.value}"` : ''}`;
+        doc.appendMarkdown(`- **Type:** \`${typeStr}\`\n`);
+        doc.appendMarkdown(`- **Value:** \`${valStr}\`\n`);
+        doc.appendMarkdown(`- **Required:** ${reqStr}\n`);
+      } else if (
+        typeof paramVal === 'string' ||
+        typeof paramVal === 'number' ||
+        typeof paramVal === 'boolean'
+      ) {
+        detail = `SQL Parameter = "${paramVal}"`;
+        doc.appendMarkdown(`- **Value:** \`${paramVal}\`\n`);
+      }
       const item = new vscode.CompletionItem(
         label,
         vscode.CompletionItemKind.Variable,
       );
-      item.detail = 'SQL Parameter';
+      item.detail = detail;
+      item.documentation = doc;
       item.sortText = `0_${label}`;
       if (replaceRange) {
         item.textEdit = vscode.TextEdit.replace(replaceRange, label);
@@ -986,8 +1252,9 @@ export class SqlCompletionItemProvider
     let foundColumns: string[] | undefined;
     let sourceTable = lookupName;
     let columnTypes: Record<string, string> | undefined;
+    let schemaTableObj: TableSchema | undefined;
 
-    for (const [kernelId, schema] of this.consolidatedSchema) {
+    for (const [, schema] of this.consolidatedSchema) {
       const table = schema.find(
         (t) => t.table.toLowerCase() === lookupName.toLowerCase(),
       );
@@ -995,6 +1262,7 @@ export class SqlCompletionItemProvider
         foundColumns = table.columns;
         sourceTable = table.table;
         columnTypes = table.columnTypes;
+        schemaTableObj = table;
         break;
       }
     }
@@ -1010,6 +1278,24 @@ export class SqlCompletionItemProvider
       );
       const typeStr = columnTypes?.[col] ? ` (${columnTypes[col]})` : '';
       item.detail = `Column of ${sourceTable}${typeStr}`;
+
+      const isPk = schemaTableObj?.primaryKeys?.includes(col);
+      const fk = schemaTableObj?.foreignKeys?.find((f) => f.column === col);
+
+      const doc = new vscode.MarkdownString();
+      doc.appendMarkdown(`### Column \`${col}\`\n\n`);
+      doc.appendMarkdown(`- **Table:** \`${sourceTable}\`\n`);
+      if (columnTypes?.[col]) {
+        doc.appendMarkdown(`- **Type:** \`${columnTypes[col]}\`\n`);
+      }
+      if (isPk) {
+        doc.appendMarkdown(`- 🔑 **Primary Key**\n`);
+      }
+      if (fk) {
+        doc.appendMarkdown(`- 🔗 **Foreign Key:** \`-> ${fk.referencedTable}.${fk.referencedColumn}\`\n`);
+      }
+
+      item.documentation = doc;
       item.sortText = `0_${col}`;
       return item;
     });
@@ -1067,6 +1353,20 @@ export class SqlCompletionItemProvider
           ? `Table (${t.schema})`
           : `Table (${connectionName})`;
 
+        const doc = new vscode.MarkdownString();
+        doc.appendMarkdown(`### ${t.type === 'view' ? 'View' : 'Table'} \`${label}\`\n\n`);
+        if (t.schema) {
+          doc.appendMarkdown(`- **Schema:** \`${t.schema}\`\n`);
+        }
+        doc.appendMarkdown(`- **Columns (${t.columns.length}):** ${t.columns.slice(0, 10).map((c) => `\`${c}\``).join(', ')}${t.columns.length > 10 ? '...' : ''}\n`);
+        if (t.primaryKeys && t.primaryKeys.length > 0) {
+          doc.appendMarkdown(`- 🔑 **Primary Key:** ${t.primaryKeys.map((k) => `\`${k}\``).join(', ')}\n`);
+        }
+        if (t.foreignKeys && t.foreignKeys.length > 0) {
+          doc.appendMarkdown(`- 🔗 **Foreign Keys (${t.foreignKeys.length}):** ${t.foreignKeys.map((fk) => `\`${fk.column} -> ${fk.referencedTable}.${fk.referencedColumn}\``).join(', ')}\n`);
+        }
+        tableItem.documentation = doc;
+
         const qualifierRank = hasQualifier
           ? normalizedSchemaLower === qualifierPrefixLower
             ? '0'
@@ -1093,6 +1393,22 @@ export class SqlCompletionItemProvider
         }
 
         allTables.push(tableItem);
+
+        if (prioritizeTables && !hasQualifier) {
+          const alias = generateTableAlias(t.table);
+          const aliasLabel = `${label} ${alias}`;
+          const aliasItem = new vscode.CompletionItem(
+            aliasLabel,
+            vscode.CompletionItemKind.Snippet,
+          );
+          aliasItem.detail = `Table with alias: ${alias}`;
+          aliasItem.documentation = doc;
+          aliasItem.sortText = `${qualifierRank}${tableRank}${usageRank}_1_${label}`;
+          aliasItem.insertText = new vscode.SnippetString(
+            `${label} \${1:${alias}}`,
+          );
+          allTables.push(aliasItem);
+        }
       });
     }
 
@@ -1111,7 +1427,7 @@ export class SqlCompletionItemProvider
       context === 'order' ||
       context === 'group';
 
-    for (const [kernelId, schema] of this.consolidatedSchema) {
+    for (const [, schema] of this.consolidatedSchema) {
       schema.forEach((t) => {
         t.columns.forEach((col) => {
           if (!columnMap.has(col)) {
@@ -1138,6 +1454,13 @@ export class SqlCompletionItemProvider
       const typeDisplay = info.typeStr ? ` (${info.typeStr})` : '';
 
       item.detail = `Column in: ${tableList}${moreCount}${typeDisplay}`;
+      const doc = new vscode.MarkdownString();
+      doc.appendMarkdown(`### Column \`${colName}\`\n\n`);
+      doc.appendMarkdown(`- **Found in tables:** \`${Array.from(info.tables).join('`, `')}\`\n`);
+      if (info.typeStr) {
+        doc.appendMarkdown(`- **Type:** \`${info.typeStr}\`\n`);
+      }
+      item.documentation = doc;
       item.sortText = prioritizeColumns ? `0_${colName}` : `9_${colName}`;
       item.insertText = colName;
 
@@ -1157,7 +1480,6 @@ export class SqlCompletionItemProvider
     let baseKeywords =
       contextKeywords.length > 0 ? [...contextKeywords] : [...SQL_KEYWORDS];
 
-    // If we are in a FROM or JOIN context, also suggest clauses that can come after the table.
     if (context === 'from' || context === 'join') {
       baseKeywords.push('WHERE', 'GROUP BY', 'ORDER BY', 'HAVING', 'LIMIT');
     }
@@ -1174,6 +1496,18 @@ export class SqlCompletionItemProvider
       'MAX',
       'CAST',
       'CONVERT',
+      'COALESCE',
+      'NULLIF',
+      'DATEADD',
+      'DATEDIFF',
+      'ROW_NUMBER',
+      'RANK',
+      'DENSE_RANK',
+      'SUBSTRING',
+      'REPLACE',
+      'CONCAT',
+      'STRING_AGG',
+      'IIF',
     ];
     const functions =
       context === 'select' ||
@@ -1182,6 +1516,36 @@ export class SqlCompletionItemProvider
       context === 'group'
         ? [...coreFunctions, ...driverFunctions]
         : driverFunctions;
+
+    const functionDefinitions: Record<
+      string,
+      { snippet: string; doc: string }
+    > = {
+      COUNT: { snippet: 'COUNT(${1:*})', doc: 'Returns the number of rows or non-null values.' },
+      SUM: { snippet: 'SUM(${1:expression})', doc: 'Calculates the total sum of a numeric column.' },
+      AVG: { snippet: 'AVG(${1:expression})', doc: 'Calculates the average value of a numeric column.' },
+      MIN: { snippet: 'MIN(${1:expression})', doc: 'Returns the minimum value in a column.' },
+      MAX: { snippet: 'MAX(${1:expression})', doc: 'Returns the maximum value in a column.' },
+      COALESCE: { snippet: 'COALESCE(${1:expr1}, ${2:default_val})', doc: 'Returns the first non-null expression.' },
+      NULLIF: { snippet: 'NULLIF(${1:expr1}, ${2:expr2})', doc: 'Returns NULL if expr1 equals expr2.' },
+      CAST: { snippet: 'CAST(${1:expression} AS ${2:DATA_TYPE})', doc: 'Converts an expression to a specified data type.' },
+      CONVERT: { snippet: 'CONVERT(${1:DATA_TYPE}, ${2:expression})', doc: 'Converts an expression to a data type (MSSQL).' },
+      ISNULL: { snippet: 'ISNULL(${1:check_expression}, ${2:replacement_value})', doc: 'Replaces NULL with a specified value (MSSQL).' },
+      IFNULL: { snippet: 'IFNULL(${1:expr1}, ${2:expr2})', doc: 'Returns expr2 if expr1 is NULL.' },
+      GETDATE: { snippet: 'GETDATE()', doc: 'Returns current system date and time (MSSQL).' },
+      NOW: { snippet: 'NOW()', doc: 'Returns current date and time.' },
+      DATEADD: { snippet: 'DATEADD(${1:datepart}, ${2:number}, ${3:date})', doc: 'Adds an interval to a date (MSSQL).' },
+      DATEDIFF: { snippet: 'DATEDIFF(${1:datepart}, ${2:startdate}, ${3:enddate})', doc: 'Calculates difference between dates (MSSQL).' },
+      DATE_TRUNC: { snippet: "DATE_TRUNC('${1:day}', ${2:timestamp})", doc: 'Truncates timestamp to specified precision.' },
+      IIF: { snippet: 'IIF(${1:boolean_expression}, ${2:true_value}, ${3:false_value})', doc: 'Returns one of two values depending on evaluation.' },
+      ROW_NUMBER: { snippet: 'ROW_NUMBER() OVER (PARTITION BY ${1:column} ORDER BY ${2:column})', doc: 'Numbers rows sequentially.' },
+      RANK: { snippet: 'RANK() OVER (PARTITION BY ${1:column} ORDER BY ${2:column})', doc: 'Ranks rows with gaps for duplicate values.' },
+      DENSE_RANK: { snippet: 'DENSE_RANK() OVER (PARTITION BY ${1:column} ORDER BY ${2:column})', doc: 'Ranks rows without gaps for duplicate values.' },
+      STRING_AGG: { snippet: "STRING_AGG(${1:expression}, '${2:,}')", doc: 'Concatenates string expressions.' },
+      CONCAT: { snippet: 'CONCAT(${1:str1}, ${2:str2})', doc: 'Concatenates two or more strings.' },
+      SUBSTRING: { snippet: 'SUBSTRING(${1:expression}, ${2:start}, ${3:length})', doc: 'Extracts substring from string.' },
+      REPLACE: { snippet: 'REPLACE(${1:string_expression}, ${2:pattern}, ${3:replacement})', doc: 'Replaces all occurrences of substring.' },
+    };
 
     const keywordItems = keywords.map((k) => {
       const item = new vscode.CompletionItem(
@@ -1200,7 +1564,13 @@ export class SqlCompletionItemProvider
       );
       item.detail = 'SQL Function';
       item.sortText = `1_${fn}`;
-      item.insertText = new vscode.SnippetString(`${fn}($1)`);
+      const def = functionDefinitions[fn.toUpperCase()];
+      if (def) {
+        item.insertText = new vscode.SnippetString(def.snippet);
+        item.documentation = new vscode.MarkdownString(def.doc);
+      } else {
+        item.insertText = new vscode.SnippetString(`${fn}($1)`);
+      }
       return item;
     });
 
@@ -1421,6 +1791,11 @@ export class SqlCompletionItemProvider
       return [];
     }
 
+    const lastJoinMatch = textBefore.match(
+      /\b(LEFT\s+JOIN|RIGHT\s+JOIN|FULL\s+OUTER\s+JOIN|INNER\s+JOIN|CROSS\s+JOIN|JOIN)\b(?=[^;]*$)/i,
+    );
+    const joinKeyword = lastJoinMatch ? lastJoinMatch[1].toUpperCase() : 'JOIN';
+
     const anchor = refs[refs.length - 1];
     const usedTables = new Set(refs.map((r) => r.table.toLowerCase()));
     const snippets: vscode.CompletionItem[] = [];
@@ -1456,7 +1831,7 @@ export class SqlCompletionItemProvider
       }
 
       const joinBase = this.normalizeTableForLookup(joinTable);
-      const label = `JOIN ${joinTable} ON`;
+      const label = `${joinKeyword} ${joinTable} ON`;
       const item = new vscode.CompletionItem(
         label,
         vscode.CompletionItemKind.Snippet,
@@ -1464,7 +1839,7 @@ export class SqlCompletionItemProvider
       item.detail = `Suggested by FK (${anchor.table} ↔ ${joinBase})`;
       item.sortText = `05_${label}`;
       item.insertText = new vscode.SnippetString(
-        `JOIN ${joinTable} ${joinBase} ON ${leftExpr} = ${rightExpr}`,
+        `${joinKeyword} ${joinTable} ${joinBase} ON ${leftExpr} = ${rightExpr}`,
       );
       snippets.push(item);
     }
@@ -1524,3 +1899,108 @@ export class SqlCompletionItemProvider
     });
   }
 }
+
+function generateTableAlias(tableName: string): string {
+  const parts = tableName
+    .replace(/[^a-zA-Z0-9_]/g, '')
+    .split('_')
+    .filter(Boolean);
+  if (parts.length > 1) {
+    return parts.map((p) => p[0].toLowerCase()).join('');
+  }
+  const clean = parts[0] || tableName;
+  if (clean.length <= 3) {
+    return clean.toLowerCase();
+  }
+  return clean[0].toLowerCase();
+}
+
+export class SqlHoverProvider implements vscode.HoverProvider {
+  constructor(private completionProvider: SqlCompletionItemProvider) {}
+
+  async provideHover(document: vscode.TextDocument, position: vscode.Position, token: vscode.CancellationToken): Promise<vscode.Hover | null> {
+    const wordRange = document.getWordRangeAtPosition(position);
+    if (!wordRange) return null;
+    const word = document.getText(wordRange);
+
+    const schema = this.completionProvider.getConsolidatedSchema();
+    for (const [conn, tables] of schema) {
+      for (const t of tables) {
+        if (t.table.toLowerCase() === word.toLowerCase()) {
+          const pkStr = t.primaryKeys?.length ? `\nPrimary Keys: ${t.primaryKeys.join(', ')}` : '';
+          const fkStr = t.foreignKeys?.length ? `\nForeign Keys: ${t.foreignKeys.length}` : '';
+          const msString = new vscode.MarkdownString();
+          msString.appendMarkdown(`**Table**: \`${t.table}\`\n\n`);
+          msString.appendMarkdown(`**Columns**:\n`);
+          t.columns.forEach(c => {
+             const type = t.columnTypes?.[c] || 'unknown';
+             msString.appendMarkdown(`- \`${c}\`: *${type}*\n`);
+          });
+          if (pkStr) msString.appendMarkdown(`\n${pkStr}`);
+          if (fkStr) msString.appendMarkdown(`${fkStr}`);
+          return new vscode.Hover(msString);
+        }
+        
+        const cIdx = t.columns.findIndex(c => c.toLowerCase() === word.toLowerCase());
+        if (cIdx !== -1) {
+           const type = t.columnTypes?.[t.columns[cIdx]] || 'unknown';
+           return new vscode.Hover(new vscode.MarkdownString(`**Column**: \`${t.columns[cIdx]}\`\n**Type**: *${type}*\n**Table**: \`${t.table}\``));
+        }
+      }
+    }
+    return null;
+  }
+}
+
+export function refreshDiagnostics(
+  doc: vscode.TextDocument, 
+  diagnosticCollection: vscode.DiagnosticCollection, 
+  completionProvider: SqlCompletionItemProvider
+) {
+  if (doc.languageId !== 'sql') {
+    return;
+  }
+  const diagnostics: vscode.Diagnostic[] = [];
+  const text = doc.getText();
+  
+  const tablesInQuery = completionProvider.getTablesInQuery(text);
+  if (tablesInQuery.size === 0) {
+    diagnosticCollection.set(doc.uri, []);
+    return;
+  }
+  
+  const schema = completionProvider.getConsolidatedSchema();
+  if (schema.size === 0) {
+    return;
+  }
+
+  const existingTables = new Set<string>();
+  for (const [conn, tables] of schema) {
+    for (const t of tables) {
+      existingTables.add(t.table.toLowerCase());
+    }
+  }
+
+  for (const table of tablesInQuery) {
+    const lowerTable = table.toLowerCase();
+    if (!existingTables.has(lowerTable)) {
+      // Find where this table is in the text
+      const regex = new RegExp(`\\b${table}\\b`, 'g');
+      let match;
+      while ((match = regex.exec(text)) !== null) {
+        const startPos = doc.positionAt(match.index);
+        const endPos = doc.positionAt(match.index + table.length);
+        const range = new vscode.Range(startPos, endPos);
+        const diagnostic = new vscode.Diagnostic(
+          range,
+          `Table or view '${table}' does not exist in the current schema cache.`,
+          vscode.DiagnosticSeverity.Warning
+        );
+        diagnostics.push(diagnostic);
+      }
+    }
+  }
+  
+  diagnosticCollection.set(doc.uri, diagnostics);
+}
+

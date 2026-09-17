@@ -1,5 +1,19 @@
 # Change Log
 
+## [3.5.0]
+
+### ✨ Major Features & The "Complete IDE" Update
+
+- **Rich Object Explorer:** Explore schemas, tables, and views with a native VS Code tree view.
+- **Intelligence of Code:** Hover over database objects in your SQL scripts to see their schema definition, and get rich autocomplete based on the live database schema.
+- **SSH Tunneling:** Connect securely to remote databases via SSH tunnels directly within your connection configuration.
+- **Execution Plans (EXPLAIN):** Visualize your query execution plans graphically with an interactive, expandable tree using the new `/explain` command.
+- **CRUD Grid (Interactive Editing):** Double-click any cell in the results grid to edit it inline. The IDE will automatically generate and execute the corresponding `UPDATE` statements to save your changes back to the database.
+
+### 🐛 Bug Fixes & Stability
+
+- **TypeScript Strictness:** Fixed SSH Tunneling interface options and properly handled nullable connection attributes to improve stability and prevent runtime crashes.
+
 ## [3.4.5]
 
 ### 🐛 Bug Fixes & Stability Improvements

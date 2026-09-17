@@ -7,7 +7,7 @@
   "repository": {
     "url": "https://github.com/kuzho/sqlnotebook-pro.git"
   },
-  "version": "3.4.5",
+  "version": "3.5.0",
   "preview": false,
   "engines": {
     "vscode": "^1.95.0",
@@ -48,7 +48,8 @@
         "displayName": "Interactive SQL Table",
         "entrypoint": "./dist/renderer.js",
         "mimeTypes": [
-          "application/vnd.code-sql-notebook.table+json"
+          "application/vnd.code-sql-notebook.table+json",
+          "application/vnd.code-sql-notebook.plan+json"
         ],
         "requiresMessaging": "optional"
       }
@@ -97,6 +98,11 @@
           "when": "notebookType == 'sql-notebook'"
         },
         {
+          "command": "sqlnotebook.showExecutionPlan",
+          "group": "inline@3",
+          "when": "notebookType == 'sql-notebook' && notebookCellType == 'code'"
+        },
+        {
           "command": "sqlnotebook.moveCellDown",
           "group": "inline@3",
           "when": "notebookType == 'sql-notebook'"
@@ -109,38 +115,89 @@
       ],
       "view/item/context": [
         {
+          "command": "sqlnotebook.newNotebookForConnection",
+          "when": "view == sqlnotebook-connections && viewItem == database",
+          "group": "0_notebook@1"
+        },
+        {
+          "command": "sqlnotebook.testConnection",
+          "when": "view == sqlnotebook-connections && viewItem == database",
+          "group": "inline@1"
+        },
+        {
           "command": "sqlnotebook.editConnection",
           "when": "view == sqlnotebook-connections && viewItem == database",
-          "group": "1_modification"
+          "group": "1_modification@1"
+        },
+        {
+          "command": "sqlnotebook.duplicateConnection",
+          "when": "view == sqlnotebook-connections && viewItem == database",
+          "group": "1_modification@2"
         },
         {
           "command": "sqlnotebook.deleteConnectionConfiguration",
           "when": "view == sqlnotebook-connections && viewItem == database",
-          "group": "1_modification"
+          "group": "1_modification@3"
         },
         {
           "command": "sqlnotebook.scriptSelectTop",
+          "when": "view == sqlnotebook-connections && (viewItem == table || viewItem == view)",
+          "group": "1_script@1"
+        },
+        {
+          "command": "sqlnotebook.scriptCountRows",
+          "when": "view == sqlnotebook-connections && (viewItem == table || viewItem == view)",
+          "group": "1_script@2"
+        },
+        {
+          "command": "sqlnotebook.scriptCreate",
+          "when": "view == sqlnotebook-connections && (viewItem == table || viewItem == view)",
+          "group": "1_script@3"
+        },
+        {
+          "command": "sqlnotebook.scriptDrop",
+          "when": "view == sqlnotebook-connections && (viewItem == table || viewItem == view)",
+          "group": "1_script@4"
+        },
+        {
+          "command": "sqlnotebook.scriptInsert",
           "when": "view == sqlnotebook-connections && viewItem == table",
-          "group": "1_modification"
+          "group": "1_script@5"
+        },
+        {
+          "command": "sqlnotebook.insertIntoActiveCell",
+          "when": "view == sqlnotebook-connections && (viewItem == table || viewItem == view || viewItem == column)",
+          "group": "2_action@1"
+        },
+        {
+          "command": "sqlnotebook.copyObjectName",
+          "when": "view == sqlnotebook-connections && (viewItem == table || viewItem == view || viewItem == column || viewItem == schema)",
+          "group": "2_action@2"
         },
         {
           "command": "sqlnotebook.showERDiagram",
           "when": "view == sqlnotebook-connections && (viewItem == database || viewItem == schema)",
-          "group": "1_modification"
+          "group": "3_tools"
         },
         {
           "command": "sqlnotebook.editReport",
           "when": "view == sqlnotebook-reports && viewItem == report",
-          "group": "1_modification"
+          "group": "1_modification@1"
         },
         {
           "command": "sqlnotebook.duplicateReport",
           "when": "view == sqlnotebook-reports && viewItem == report",
-          "group": "1_modification"
+          "group": "1_modification@2"
+        },
+        {
+          "command": "sqlnotebook.exportRdl",
+          "when": "view == sqlnotebook-reports && viewItem == report",
+          "group": "2_export@1"
         },
         {
           "command": "sqlnotebook.deleteReport",
-          "when": "view == sqlnotebook-reports && viewItem == report"
+          "when": "view == sqlnotebook-reports && viewItem == report",
+          "group": "3_delete"
         }
       ],
       "view/title": [
@@ -152,23 +209,80 @@
         {
           "command": "sqlnotebook.addReport",
           "when": "view == sqlnotebook-reports",
-          "group": "navigation"
+          "group": "navigation@1"
+        },
+        {
+          "command": "sqlnotebook.importRdl",
+          "when": "view == sqlnotebook-reports",
+          "group": "navigation@2"
         }
       ]
     },
     "commands": [
+      {
+        "command": "sqlnotebook.showExecutionPlan",
+        "title": "Explain Query Plan",
+        "icon": "$(git-merge)"
+      },
+      {
+        "command": "sqlnotebook.newNotebookForConnection",
+        "title": "New Notebook with this Connection",
+        "icon": "$(new-file)"
+      },
+      {
+        "command": "sqlnotebook.testConnection",
+        "title": "Test Connection",
+        "icon": "$(remote)"
+      },
       {
         "command": "sqlnotebook.editConnection",
         "title": "Edit Connection",
         "icon": "$(edit)"
       },
       {
+        "command": "sqlnotebook.duplicateConnection",
+        "title": "Duplicate Connection",
+        "icon": "$(copy)"
+      },
+      {
         "command": "sqlnotebook.deleteConnectionConfiguration",
-        "title": "Delete SQL Connection Configuration"
+        "title": "Delete Connection",
+        "icon": "$(trash)"
       },
       {
         "command": "sqlnotebook.scriptSelectTop",
-        "title": "Select Top 100 Rows"
+        "title": "Script as SELECT",
+        "icon": "$(table)"
+      },
+      {
+        "command": "sqlnotebook.scriptCountRows",
+        "title": "Script as COUNT",
+        "icon": "$(symbol-number)"
+      },
+      {
+        "command": "sqlnotebook.scriptCreate",
+        "title": "Script as CREATE",
+        "icon": "$(add)"
+      },
+      {
+        "command": "sqlnotebook.scriptDrop",
+        "title": "Script as DROP",
+        "icon": "$(trash)"
+      },
+      {
+        "command": "sqlnotebook.scriptInsert",
+        "title": "Script as INSERT",
+        "icon": "$(insert)"
+      },
+      {
+        "command": "sqlnotebook.insertIntoActiveCell",
+        "title": "Insert Name into Active Cell",
+        "icon": "$(sign-in)"
+      },
+      {
+        "command": "sqlnotebook.copyObjectName",
+        "title": "Copy Name",
+        "icon": "$(clippy)"
       },
       {
         "command": "sqlnotebook.showERDiagram",
@@ -184,6 +298,16 @@
         "command": "sqlnotebook.duplicateReport",
         "title": "Duplicate Report",
         "icon": "$(copy)"
+      },
+      {
+        "command": "sqlnotebook.exportRdl",
+        "title": "Export as RDL (.rdl)",
+        "icon": "$(save-as)"
+      },
+      {
+        "command": "sqlnotebook.importRdl",
+        "title": "Import RDL File (.rdl)",
+        "icon": "$(file-code)"
       },
       {
         "command": "sqlnotebook.addReport",
@@ -476,6 +600,7 @@
     "react-dom": "^19.3.0",
     "sql-formatter": "^15.8.2",
     "sql.js": "^1.14.2",
+    "tunnel-ssh": "^5.2.0",
     "xlsx": "https://cdn.sheetjs.com/xlsx-latest/xlsx-latest.tgz"
   },
   "overrides": {

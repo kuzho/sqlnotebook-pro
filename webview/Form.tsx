@@ -36,6 +36,12 @@ interface FormState {
   encrypt: boolean;
   trustServerCertificate: boolean;
   legacyTls10: boolean;
+  enableSsh: boolean;
+  sshHost: string;
+  sshPort: string;
+  sshUser: string;
+  sshKey: string;
+  sshPassword?: string;
 }
 
 const initialFormState: FormState = {
@@ -53,6 +59,12 @@ const initialFormState: FormState = {
   encrypt: true,
   trustServerCertificate: false,
   legacyTls10: false,
+  enableSsh: false,
+  sshHost: '',
+  sshPort: '22',
+  sshUser: '',
+  sshKey: '',
+  sshPassword: '',
 };
 
 const Form: React.FC<{
@@ -131,6 +143,12 @@ const Form: React.FC<{
               config.encrypt !== undefined ? !!config.encrypt : true,
             trustServerCertificate: !!config.trustServerCertificate,
             legacyTls10: !!config.legacyTls10,
+            enableSsh: !!config.enableSsh,
+            sshHost: config.sshHost || '',
+            sshPort: config.sshPort !== undefined && config.sshPort !== null ? String(config.sshPort) : '22',
+            sshUser: config.sshUser || '',
+            sshKey: config.sshKey || '',
+            sshPassword: '',
           });
           break;
         }
@@ -221,6 +239,52 @@ const Form: React.FC<{
             value={formData.database}
             onChange={(val) => updateField('database', val)}
           />
+
+          <VSCodeCheckbox
+            name="enableSsh"
+            checked={formData.enableSsh}
+            onChange={(e: any) => updateField('enableSsh', e.target.checked)}
+          >
+            Enable SSH Tunneling
+          </VSCodeCheckbox>
+
+          {formData.enableSsh && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '15px', paddingLeft: '15px', borderLeft: '2px solid var(--vscode-focusBorder)' }}>
+              <TextOption
+                label="SSH Host"
+                objectKey="sshHost"
+                value={formData.sshHost}
+                onChange={(val) => updateField('sshHost', val)}
+              />
+              <TextOption
+                label="SSH Port"
+                objectKey="sshPort"
+                value={formData.sshPort}
+                onChange={(val) => updateField('sshPort', val)}
+              />
+              <TextOption
+                label="SSH User"
+                objectKey="sshUser"
+                value={formData.sshUser}
+                onChange={(val) => updateField('sshUser', val)}
+              />
+              <TextOption
+                label="SSH Private Key File Path (Optional)"
+                objectKey="sshKey"
+                placeholder="e.g. C:\Users\name\.ssh\id_rsa"
+                value={formData.sshKey}
+                onChange={(val) => updateField('sshKey', val)}
+              />
+              <TextOption
+                label="SSH Password / Key Passphrase"
+                objectKey="sshPassword"
+                type="password"
+                placeholder="(Leave empty to keep current password)"
+                value={formData.sshPassword || ''}
+                onChange={(val) => updateField('sshPassword', val)}
+              />
+            </div>
+          )}
         </>
       )}
 

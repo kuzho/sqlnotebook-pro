@@ -3,9 +3,11 @@ import * as pg from 'pg';
 import * as mssql from 'mssql';
 import initSqlJs from 'sql.js';
 import * as fs from 'fs/promises';
+import * as fsSync from 'fs';
 import type { Database as SqliteDatabase } from 'sql.js';
 import * as path from 'path';
 import * as vscode from 'vscode';
+import { createTunnel } from 'tunnel-ssh';
 const trinoLib = require('@trinodb/trino-js-client');
 const supportedDrivers = [
   'mysql',
@@ -51,21 +53,63 @@ interface Conn {
 }
 export type PoolConfig =
   SqliteConfig | MySQLConfig | MSSQLConfig | PostgresConfig | TrinoConfig;
-export async function getPool(c: PoolConfig): Promise<Pool> {
+export async function getPool(c: PoolConfig & any): Promise<Pool> {
+  let tunnelServer: any = null;
+  if (c.enableSsh && c.driver !== 'sqlite') {
+    const tunnelOptions: any = { autoClose: true, reconnectOnError: false };
+    const serverOptions = { port: 0 };
+    const sshOptions: any = {
+      host: c.sshHost,
+      port: c.sshPort || 22,
+      username: c.sshUser,
+    };
+    if (c.sshPassword) {
+      sshOptions.password = c.sshPassword;
+    }
+    if (c.sshKey) {
+      sshOptions.privateKey = fsSync.readFileSync(c.sshKey);
+    }
+    const forwardOptions = {
+      srcAddr: '127.0.0.1',
+      srcPort: 0,
+      dstAddr: c.host,
+      dstPort: c.port,
+    };
+    
+    try {
+      const [server] = await createTunnel(tunnelOptions, serverOptions, sshOptions, forwardOptions);
+      tunnelServer = server;
+      c.host = '127.0.0.1';
+      c.port = (server?.address() as any)?.port;
+    } catch (e: any) {
+      throw new Error(`SSH Tunnel failed: ${e.message}`);
+    }
+  }
+
+  let pool: Pool;
   switch (c.driver) {
     case 'mysql':
-      return createMySQLPool(c);
+      pool = await createMySQLPool(c); break;
     case 'mssql':
-      return createMSSQLPool(c);
+      pool = await createMSSQLPool(c); break;
     case 'postgres':
-      return createPostgresPool(c);
+      pool = await createPostgresPool(c); break;
     case 'sqlite':
-      return createSqLitePool(c);
+      pool = await createSqLitePool(c); break;
     case 'trino':
-      return createTrinoPool(c);
+      pool = await createTrinoPool(c); break;
     default:
       throw Error('invalid driver key');
   }
+
+  if (tunnelServer) {
+    const originalEnd = pool.end;
+    pool.end = () => {
+      try { originalEnd.call(pool); } catch (e) {}
+      try { tunnelServer.close(); } catch (e) {}
+    };
+  }
+  return pool;
 }
 interface BaseConfig {
   driver: DriverKey;
@@ -125,7 +169,7 @@ function sqlitePool(pool: SqliteDatabase, dbFile?: string): Pool {
         if (resTables.length && resTables[0].values) {
           for (const row of resTables[0].values) {
             const tableName = row[0] as string;
-            const resCols = pool.exec(`PRAGMA table_info(\"${tableName}\")`);
+            const resCols = pool.exec(`PRAGMA table_info("${tableName.replace(/"/g, '""')}")`);
             const columns: string[] = [];
             const columnTypes: Record<string, string> = {};
             const primaryKeys: string[] = [];
@@ -156,7 +200,7 @@ function sqlitePool(pool: SqliteDatabase, dbFile?: string): Pool {
         if (resViews.length && resViews[0].values) {
           for (const row of resViews[0].values) {
             const viewName = row[0] as string;
-            const resCols = pool.exec(`PRAGMA table_info(\"${viewName}\")`);
+            const resCols = pool.exec(`PRAGMA table_info("${viewName.replace(/"/g, '""')}")`);
             const columns: string[] = [];
             const columnTypes: Record<string, string> = {};
             if (resCols.length && resCols[0].values) {

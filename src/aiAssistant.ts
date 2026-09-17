@@ -1,6 +1,8 @@
 import * as vscode from 'vscode';
 import { KernelManager } from './controller';
 import { TableSchema, getStatementInfos } from './driver';
+import { ParameterProvider } from './ParameterProvider';
+
 function formatSchemaForPrompt(schemas: TableSchema[]): string {
   return schemas
     .map((s) => {
@@ -23,9 +25,11 @@ function formatSchemaForPrompt(schemas: TableSchema[]): string {
     })
     .join('\n\n');
 }
+
 export function registerAiAssistant(
   context: vscode.ExtensionContext,
   kernelManager: KernelManager,
+  parameterProvider?: ParameterProvider,
 ) {
   const handler: vscode.ChatRequestHandler = async (
     request,
@@ -59,6 +63,30 @@ export function registerAiAssistant(
         }
       }
     }
+
+    let paramsPrompt = '';
+    if (parameterProvider) {
+      const notebookUri = activeNotebook?.uri.toString();
+      const params = parameterProvider.getParameters(notebookUri);
+      const entries = Object.entries(params);
+      if (entries.length > 0) {
+        const paramLines = entries.map(([key, val]) => {
+          const paramName = key.startsWith('@') ? key : `@${key}`;
+          if (val && typeof val === 'object') {
+            const typeStr = val.type ? ` (${val.type})` : '';
+            const reqStr = val.required ? ' [required]' : '';
+            const valStr =
+              val.value !== undefined ? ` = "${val.value}"` : '';
+            return `  - ${paramName}${typeStr}${valStr}${reqStr}`;
+          }
+          return `  - ${paramName} = "${val}"`;
+        });
+        paramsPrompt = `\nActive Notebook SQL Parameters:\n${paramLines.join('\n')}\n`;
+      }
+    }
+
+    const driverName = activeKernel?.getDriver() || 'SQL';
+
     if (activeKernel && activeKernel.getDriver()) {
       try {
         const schema = await activeKernel.getSchemaOrLoad();
@@ -137,14 +165,18 @@ export function registerAiAssistant(
       }
     }
     const systemPrompt = `You are an expert SQL Data Engineer.
-        Your current database has this structure:
+        Target SQL Dialect / Database Engine: ${driverName.toUpperCase()}
+
+        Database Schema:
         ${schemaPrompt}
+        ${paramsPrompt}
         ${activeContextText ? `The user currently has this SQL code in focus:\n\`\`\`sql\n${activeContextText}\n\`\`\`\nUse this context if they ask to optimize, fix, or explain a query.\n` : ''}
         Rules:
-        - You must always assist the user with their SQL-related requests. Assume any ambiguous message is about the database schema or the queries. Never refuse to help.
-        - If the user asks for a query, provide the SQL code inside a Markdown \`\`\`sql block.
+        - You must always assist the user with their SQL-related requests using ${driverName.toUpperCase()} dialect. Assume any ambiguous message is about the database schema, SQL parameters, or queries. Never refuse to help.
+        - If the user asks for a query, provide the SQL code inside a Markdown \`\`\`sql block using ${driverName.toUpperCase()} syntax.
+        - If notebook SQL parameters (@param) are defined above, use them in queries when appropriate.
         - If the user asks for multiple tables or queries, provide all the SQL statements inside a single Markdown \`\`\`sql block, separated by semicolons.
-        - If the user asks a general question about the database schema, answer it conversationally.
+        - If the user asks a general question about the database schema or parameters, answer it conversationally.
         - Do NOT output CREATE TABLE statements unless explicitly requested.`;
     const model: vscode.LanguageModelChat | undefined =
       (request as any).model ||

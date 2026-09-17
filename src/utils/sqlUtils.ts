@@ -1,9 +1,155 @@
+export function stripLiteralsAndComments(sql: string): string {
+  let safe = '';
+  let inString = false;
+  let stringChar = '';
+  let inBracket = false;
+  let inSingleLineComment = false;
+  let inMultiLineComment = false;
+
+  for (let i = 0; i < sql.length; i++) {
+    const char = sql[i];
+    const nextChar = sql[i + 1] || '';
+
+    if (inSingleLineComment) {
+      if (char === '\n' || char === '\r') {
+        inSingleLineComment = false;
+        safe += char;
+      } else {
+        safe += ' ';
+      }
+    } else if (inMultiLineComment) {
+      if (char === '*' && nextChar === '/') {
+        inMultiLineComment = false;
+        safe += '  ';
+        i++;
+      } else if (char === '\n' || char === '\r') {
+        safe += char;
+      } else {
+        safe += ' ';
+      }
+    } else if (inString) {
+      if (char === stringChar) {
+        if (nextChar === stringChar) {
+          safe += '  ';
+          i++;
+        } else {
+          inString = false;
+          safe += ' ';
+        }
+      } else if (char === '\n' || char === '\r') {
+        safe += char;
+      } else {
+        safe += ' ';
+      }
+    } else if (inBracket) {
+      if (char === ']') {
+        if (nextChar === ']') {
+          safe += '  ';
+          i++;
+        } else {
+          inBracket = false;
+          safe += ' ';
+        }
+      } else if (char === '\n' || char === '\r') {
+        safe += char;
+      } else {
+        safe += ' ';
+      }
+    } else {
+      if (char === "'" || char === '"') {
+        inString = true;
+        stringChar = char;
+        safe += ' ';
+      } else if (char === '[') {
+        inBracket = true;
+        safe += ' ';
+      } else if (char === '-' && nextChar === '-') {
+        inSingleLineComment = true;
+        safe += '  ';
+        i++;
+      } else if (char === '/' && nextChar === '*') {
+        inMultiLineComment = true;
+        safe += '  ';
+        i++;
+      } else {
+        safe += char;
+      }
+    }
+  }
+  return safe;
+}
+
 export function splitSqlBatches(sql: string): string[] {
-  const goRegex = /^\s*GO\s*$/gim;
-  return sql
-    .split(goRegex)
-    .map((batch) => batch.trim())
-    .filter((batch) => batch.length > 0);
+  const batches: string[] = [];
+  let startIndex = 0;
+
+  let inString = false;
+  let stringChar = '';
+  let inBracket = false;
+  let inSingleLineComment = false;
+  let inMultiLineComment = false;
+
+  for (let i = 0; i < sql.length; i++) {
+    const char = sql[i];
+    const nextChar = sql[i + 1] || '';
+
+    if (inSingleLineComment && (char === '\n' || char === '\r')) {
+      inSingleLineComment = false;
+    } else if (inMultiLineComment && char === '*' && nextChar === '/') {
+      inMultiLineComment = false;
+      i++;
+    } else if (inString && char === stringChar) {
+      if (nextChar === stringChar) {
+        i++;
+      } else {
+        inString = false;
+      }
+    } else if (inBracket && char === ']') {
+      if (nextChar === ']') {
+        i++;
+      } else {
+        inBracket = false;
+      }
+    } else if (!inString && !inBracket && !inSingleLineComment && !inMultiLineComment) {
+      if (char === "'" || char === '"') {
+        inString = true;
+        stringChar = char;
+      } else if (char === '[') {
+        inBracket = true;
+      } else if (char === '-' && nextChar === '-') {
+        inSingleLineComment = true;
+        i++;
+      } else if (char === '/' && nextChar === '*') {
+        inMultiLineComment = true;
+        i++;
+      } else if (char.toLowerCase() === 'g' && nextChar.toLowerCase() === 'o') {
+        const before = sql.substring(startIndex, i);
+        const lastNewlineBefore = before.lastIndexOf('\n');
+        const lineBefore = before.substring(lastNewlineBefore + 1);
+
+        let afterIdx = i + 2;
+        while (afterIdx < sql.length && sql[afterIdx] !== '\n' && sql[afterIdx] !== '\r') {
+          afterIdx++;
+        }
+        const lineAfter = sql.substring(i + 2, afterIdx);
+
+        if (lineBefore.trim() === '' && lineAfter.trim() === '') {
+          batches.push(sql.substring(startIndex, i).trim());
+          startIndex = afterIdx;
+          i = afterIdx - 1;
+        }
+      }
+    }
+  }
+
+  if (startIndex < sql.length) {
+    const lastBatch = sql.substring(startIndex).trim();
+    if (lastBatch.length > 0) {
+      batches.push(lastBatch);
+    }
+  }
+
+  return batches.filter(b => b.length > 0);
 }
 
 function wrapSqlList(
@@ -279,12 +425,14 @@ function styleTsqlControlFlow(sql: string): string {
 
 function reindentTsqlByContext(sql: string): string {
   const lines = sql.split('\n');
+  const safeLines = stripLiteralsAndComments(sql).split('\n');
   const output: string[] = [];
   const stack: Array<'BEGIN' | 'CASE'> = [];
 
   const makeIndent = (level: number): string => '\t'.repeat(Math.max(level, 0));
 
-  for (const rawLine of lines) {
+  for (let i = 0; i < lines.length; i++) {
+    const rawLine = lines[i];
     const trimmed = rawLine.trim();
     if (!trimmed) {
       if (output.length > 0 && output[output.length - 1] !== '') {
@@ -298,12 +446,8 @@ function reindentTsqlByContext(sql: string): string {
       (leading.match(/\t/g) || []).length +
       Math.floor((leading.match(/ /g) || []).length / 2);
 
-    const safeLine = trimmed
-      .replace(/N?'[^']*'/g, '')
-      .replace(/--.*/g, '')
-      .replace(/\/\*[\s\S]*?\*\//g, '')
-      .replace(/\[[^\]]*\]/g, '');
-    const isEndLine = /^END\b/i.test(trimmed);
+    const safeLine = safeLines[i].trim();
+    const isEndLine = /^END\b/i.test(safeLine);
 
     if (isEndLine && stack.length > 0) {
       stack.pop();
@@ -320,19 +464,19 @@ function reindentTsqlByContext(sql: string): string {
 
     if (isEndLine) {
       endCount = Math.max(0, endCount - 1);
-      if (/^END\s+ELSE\s+BEGIN\b/i.test(trimmed)) {
+      if (/^END\s+ELSE\s+BEGIN\b/i.test(safeLine)) {
         stack.push('BEGIN');
         beginCount = Math.max(0, beginCount - 1);
       }
     }
 
-    for (let i = 0; i < beginCount; i++) {
+    for (let j = 0; j < beginCount; j++) {
       stack.push('BEGIN');
     }
-    for (let i = 0; i < caseCount; i++) {
+    for (let j = 0; j < caseCount; j++) {
       stack.push('CASE');
     }
-    for (let i = 0; i < endCount; i++) {
+    for (let j = 0; j < endCount; j++) {
       if (stack.length > 0) {
         stack.pop();
       }

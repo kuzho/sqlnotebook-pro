@@ -3,19 +3,35 @@ import { SQLNotebookConnections } from './connections';
 import {
   deleteConnectionConfiguration,
   editConnectionConfiguration,
+  testConnectionConfiguration,
+  duplicateConnectionConfiguration,
   scriptSelectTop,
+  scriptCountRows,
+  scriptCreate,
+  scriptDrop,
+  scriptInsert,
+  copyObjectName,
+  insertIntoActiveCell,
+  newNotebookForConnection,
+  showExecutionPlan,
 } from './commands';
 import { ParameterProvider } from './ParameterProvider';
 import { activateFormProvider } from './form';
 import { SQLSerializer } from './serializer';
 import { KernelManager } from './controller';
-import { SqlCompletionItemProvider } from './completion';
+import { SqlCompletionItemProvider, SqlHoverProvider, refreshDiagnostics } from './completion';
 import { registerAiAssistant } from './aiAssistant';
 import * as XLSX from 'xlsx';
 import * as path from 'path';
 import * as fs from 'fs';
 import * as os from 'os';
-import { SQLNotebookReports, ReportData, ReportItem } from './reports';
+import {
+  SQLNotebookReports,
+  ReportData,
+  ReportItem,
+  exportReportToRdlXml,
+  importRdlXmlToReport,
+} from './reports';
 import { ConnData } from './connections';
 import { format as formatSql } from 'sql-formatter';
 import { embedImagesAsBase64 } from './embed-base64';
@@ -393,6 +409,49 @@ export function activate(context: vscode.ExtensionContext) {
 
   context.subscriptions.push(
     vscode.commands.registerCommand(
+      'sqlnotebook.exportRdl',
+      async (item?: ReportItem) => {
+        if (!item || !item.report) {
+          vscode.window.showErrorMessage('Please select a report to export to RDL.');
+          return;
+        }
+        const xml = exportReportToRdlXml(item.report);
+        const uri = await vscode.window.showSaveDialog({
+          defaultUri: vscode.Uri.file(`${item.report.name}.rdl`),
+          filters: { 'RDL Report Definition (*.rdl)': ['rdl'] },
+        });
+        if (uri) {
+          await fs.promises.writeFile(uri.fsPath, xml, 'utf-8');
+          vscode.window.showInformationMessage(
+            `Exported "${item.report.name}" to RDL: ${path.basename(uri.fsPath)}`,
+          );
+        }
+      },
+    ),
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand(
+      'sqlnotebook.importRdl',
+      async () => {
+        const uris = await vscode.window.showOpenDialog({
+          canSelectFiles: true,
+          canSelectFolders: false,
+          canSelectMany: false,
+          filters: { 'RDL Report Definition (*.rdl)': ['rdl', 'xml'] },
+        });
+        if (uris && uris.length > 0) {
+          const filePath = uris[0].fsPath;
+          const xmlContent = await fs.promises.readFile(filePath, 'utf-8');
+          const report = importRdlXmlToReport(xmlContent, path.basename(filePath));
+          await openReportBuilder(context, kernelManager, report);
+        }
+      },
+    ),
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand(
       'sqlnotebook.deleteReport',
       (item: ReportItem) => handleDeleteReport(item),
     ),
@@ -425,7 +484,7 @@ export function activate(context: vscode.ExtensionContext) {
   const kernelManager = new KernelManager(context, parameterProvider);
   context.subscriptions.push({ dispose: () => kernelManager.dispose() });
 
-  registerAiAssistant(context, kernelManager);
+  registerAiAssistant(context, kernelManager, parameterProvider);
 
   const messaging = vscode.notebooks.createRendererMessaging(
     'sqlnotebook-pro-interactive-renderer',
@@ -502,8 +561,8 @@ export function activate(context: vscode.ExtensionContext) {
                   editor.notebook.uri.toString(),
                   sql,
                 );
-              } catch (err) {
-                // Error handled silently or by kernel manager
+              } catch (err: any) {
+                vscode.window.showErrorMessage(`Background query failed: ${err.message || err}`);
               }
             },
           );
@@ -525,7 +584,24 @@ export function activate(context: vscode.ExtensionContext) {
       ',',
       '(',
       '\n',
+      '@',
     ),
+  );
+
+  const hoverProvider = new SqlHoverProvider(completionProvider);
+  context.subscriptions.push(
+    vscode.languages.registerHoverProvider('sql', hoverProvider)
+  );
+
+  const diagnosticCollection = vscode.languages.createDiagnosticCollection('sql');
+  context.subscriptions.push(diagnosticCollection);
+
+  context.subscriptions.push(
+    vscode.workspace.onDidChangeTextDocument((e) => {
+      if (e.document.languageId === 'sql') {
+        refreshDiagnostics(e.document, diagnosticCollection, completionProvider);
+      }
+    })
   );
 
   context.subscriptions.push(
@@ -687,6 +763,34 @@ export function activate(context: vscode.ExtensionContext) {
       markdownEmbedTimers.clear();
     },
   });
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand(
+      'sqlnotebook.scriptCreate',
+      scriptCreate(kernelManager),
+    ),
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand(
+      'sqlnotebook.scriptDrop',
+      scriptDrop(kernelManager),
+    ),
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand(
+      'sqlnotebook.scriptInsert',
+      scriptInsert(kernelManager),
+    ),
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand(
+      'sqlnotebook.showExecutionPlan',
+      showExecutionPlan(kernelManager),
+    ),
+  );
 
   context.subscriptions.push(
     vscode.commands.registerCommand(
@@ -908,8 +1012,50 @@ export function activate(context: vscode.ExtensionContext) {
 
   context.subscriptions.push(
     vscode.commands.registerCommand(
+      'sqlnotebook.testConnection',
+      testConnectionConfiguration(context),
+    ),
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand(
+      'sqlnotebook.duplicateConnection',
+      duplicateConnectionConfiguration(connectionsSidepanel),
+    ),
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand(
       'sqlnotebook.scriptSelectTop',
-      scriptSelectTop(),
+      scriptSelectTop(kernelManager),
+    ),
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand(
+      'sqlnotebook.scriptCountRows',
+      scriptCountRows(kernelManager),
+    ),
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand(
+      'sqlnotebook.newNotebookForConnection',
+      newNotebookForConnection(kernelManager),
+    ),
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand(
+      'sqlnotebook.copyObjectName',
+      copyObjectName(),
+    ),
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand(
+      'sqlnotebook.insertIntoActiveCell',
+      insertIntoActiveCell(),
     ),
   );
 

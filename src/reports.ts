@@ -84,6 +84,7 @@ export class ReportItem extends vscode.TreeItem {
     super(report.name, vscode.TreeItemCollapsibleState.None);
     this.contextValue = 'report';
     this.iconPath = new vscode.ThemeIcon('report');
+    this.tooltip = `Report: ${report.name} (${report.datasets?.length || 0} datasets)`;
     this.command = {
       command: 'sqlnotebook.openReport',
       title: 'Open Report',
@@ -91,3 +92,123 @@ export class ReportItem extends vscode.TreeItem {
     };
   }
 }
+
+export function exportReportToRdlXml(report: ReportData): string {
+  const dataSetsXml = (report.datasets || [])
+    .map((ds, idx) => {
+      const dsName =
+        ds.name.replace(/[^a-zA-Z0-9_]/g, '') || `DataSet${idx + 1}`;
+      return `    <DataSet Name="${escapeXml(dsName)}">
+      <Query>
+        <DataSourceName>SQLNotebookDataSource</DataSourceName>
+        <CommandText>${escapeXml(ds.query)}</CommandText>
+      </Query>
+    </DataSet>`;
+    })
+    .join('\n');
+
+  return `<?xml version="1.0" encoding="utf-8"?>
+<Report xmlns="http://schemas.microsoft.com/sqlserver/reporting/2016/01/reportdefinition" xmlns:rd="http://schemas.microsoft.com/SQLServer/reporting/reportdesigner">
+  <AutoRefresh>${report.refreshInterval || 0}</AutoRefresh>
+  <DataSources>
+    <DataSource Name="SQLNotebookDataSource">
+      <ConnectionProperties>
+        <DataProvider>SQL</DataProvider>
+        <ConnectString></ConnectString>
+      </ConnectionProperties>
+      <rd:SecurityType>None</rd:SecurityType>
+    </DataSource>
+  </DataSources>
+  <DataSets>
+${dataSetsXml}
+  </DataSets>
+  <ReportSections>
+    <ReportSection>
+      <Body>
+        <Height>8in</Height>
+      </Body>
+      <Width>10in</Width>
+      <Page>
+        <PageHeight>8.5in</PageHeight>
+        <PageWidth>11in</PageWidth>
+      </Page>
+    </ReportSection>
+  </ReportSections>
+</Report>`;
+}
+
+export function importRdlXmlToReport(
+  xmlText: string,
+  fileName: string,
+): ReportData {
+  const reportName = fileName.replace(/\.rdl$/i, '') || 'Imported RDL Report';
+  const datasets: ReportDataset[] = [];
+
+  const dsRegex = /<DataSet\s+Name=["']([^"']+)["']>([\s\S]*?)<\/DataSet>/gi;
+  let match: RegExpExecArray | null;
+
+  while ((match = dsRegex.exec(xmlText)) !== null) {
+    const dsName = match[1];
+    const dsBody = match[2];
+    const queryMatch = dsBody.match(/<CommandText>([\s\S]*?)<\/CommandText>/i);
+    const query = queryMatch ? unescapeXml(queryMatch[1].trim()) : 'SELECT 1;';
+
+    datasets.push({
+      name: dsName,
+      connectionName: '',
+      query: query,
+      width: 'full',
+      type: 'table',
+    });
+  }
+
+  if (datasets.length === 0) {
+    const simpleQueryMatch = xmlText.match(
+      /<CommandText>([\s\S]*?)<\/CommandText>/i,
+    );
+    if (simpleQueryMatch) {
+      datasets.push({
+        name: 'DataSet1',
+        connectionName: '',
+        query: unescapeXml(simpleQueryMatch[1].trim()),
+        width: 'full',
+        type: 'table',
+      });
+    }
+  }
+
+  return {
+    name: reportName,
+    datasets:
+      datasets.length > 0
+        ? datasets
+        : [
+            {
+              name: 'DataSet1',
+              connectionName: '',
+              query: 'SELECT 1;',
+              width: 'full',
+              type: 'table',
+            },
+          ],
+  };
+}
+
+function escapeXml(unsafe: string): string {
+  return (unsafe || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&apos;');
+}
+
+function unescapeXml(safe: string): string {
+  return (safe || '')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'")
+    .replace(/&amp;/g, '&');
+}
+

@@ -2291,6 +2291,88 @@ const TableApp = ({
     </div>
   );
 };
+const ExecutionPlanApp: React.FC<{ data: any }> = ({ data }) => {
+  const [expanded, setExpanded] = useState<Record<string, boolean>>({});
+
+  const toggle = (id: string) => {
+    setExpanded((prev) => ({ ...prev, [id]: !prev[id] }));
+  };
+
+  const renderNode = (node: any, depth: number, id: string) => {
+    let title = 'Node';
+    let details: any = { ...node };
+    let children: any[] = [];
+
+    if (data.driver === 'postgres') {
+      title = node['Node Type'] || 'Node';
+      delete details['Plans'];
+      children = node['Plans'] || [];
+    } else {
+      title = typeof node === 'object' && node !== null ? (node.id !== undefined ? `Node ${node.id}` : 'Plan Node') : 'Value';
+      if (node && typeof node === 'object') {
+        Object.keys(node).forEach(k => {
+           if (Array.isArray(node[k])) {
+             children = children.concat(node[k]);
+             delete details[k];
+           }
+        });
+      }
+    }
+
+    const isExpanded = expanded[id] !== false; // default true
+
+    return (
+      <div key={id} style={{ marginLeft: depth > 0 ? '20px' : '0', marginTop: '8px', fontFamily: 'var(--vscode-editor-font-family, monospace)', fontSize: '12px' }}>
+        <div
+          onClick={() => toggle(id)}
+          style={{
+            cursor: 'pointer',
+            padding: '8px 12px',
+            backgroundColor: 'var(--vscode-editorWidget-background, #252526)',
+            border: '1px solid var(--vscode-panel-border, #454545)',
+            borderLeft: '4px solid var(--vscode-textLink-foreground, #0078d4)',
+            borderRadius: '4px',
+            display: 'inline-flex',
+            alignItems: 'center',
+            minWidth: '200px',
+            userSelect: 'none',
+          }}
+        >
+          <span style={{ flex: 1, fontWeight: 'bold' }}>{title}</span>
+          <span style={{ fontSize: '10px', marginLeft: '10px', color: '#888' }}>
+            {isExpanded ? '▼' : '▶'}
+          </span>
+        </div>
+        {isExpanded && (
+          <div style={{ padding: '8px 0 8px 16px', borderLeft: '1px solid var(--vscode-panel-border, #454545)', marginLeft: '12px', marginTop: '4px' }}>
+            <div style={{ backgroundColor: 'var(--vscode-textCodeBlock-background, rgba(0,0,0,0.2))', padding: '8px', borderRadius: '4px', marginBottom: children.length > 0 ? '8px' : '0' }}>
+              <pre style={{ margin: 0, color: 'var(--vscode-descriptionForeground, #cccccc)', whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>
+                {JSON.stringify(details, null, 2)}
+              </pre>
+            </div>
+            {children.map((c, i) => renderNode(c, depth + 1, `${id}-${i}`))}
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  let rootNode = data.data;
+  if (data.driver === 'postgres' && Array.isArray(data.data)) {
+    rootNode = data.data[0]?.Plan || data.data;
+  }
+
+  return (
+    <div style={{ padding: '16px', background: 'var(--vscode-editor-background, #1e1e1e)', color: 'var(--vscode-editor-foreground, #cccccc)', overflow: 'auto', maxHeight: '500px' }}>
+      <h3 style={{ marginTop: 0, marginBottom: '16px', color: 'var(--vscode-textLink-foreground, #0078d4)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path fillRule="evenodd" clipRule="evenodd" d="M12 1L12.5 1.5L12.5 4.5L12 5L10 5L10 9L11 9L11.5 9.5L11.5 12.5L11 13L5 13L4.5 12.5L4.5 9.5L5 9L6 9L6 5L4 5L3.5 4.5L3.5 1.5L4 1L12 1ZM10 2L10 4L11.5 4L11.5 2L10 2ZM6 2L6 4L8 4L8 2L6 2ZM4.5 4L4.5 2L5 2L5 4L4.5 4ZM5 10L5 12L11 12L11 10L5 10Z"/></svg>
+        Execution Plan
+      </h3>
+      {Array.isArray(rootNode) ? rootNode.map((n, i) => renderNode(n, 0, `root-${i}`)) : renderNode(rootNode, 0, 'root')}
+    </div>
+  );
+};
+
 const roots = new WeakMap<HTMLElement, Root>();
 export const activate: ActivationFunction = (context) => {
   return {
@@ -2307,7 +2389,11 @@ export const activate: ActivationFunction = (context) => {
         root = createRoot(element);
         roots.set(element, root);
       }
-      root.render(<TableApp data={json} postMessage={context.postMessage} />);
+      if (json && json.isExplainPlan) {
+        root.render(<ExecutionPlanApp data={json} />);
+      } else {
+        root.render(<TableApp data={json} postMessage={context.postMessage} />);
+      }
     },
     disposeOutputItem(id) {
       //

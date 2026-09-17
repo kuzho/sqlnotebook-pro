@@ -6,6 +6,7 @@ import {
   ExecutionResult,
   PoolConfig,
   TableSchema,
+  splitSqlStatements,
 } from './driver';
 import { ParameterProvider } from './ParameterProvider';
 import { notebookType } from './main';
@@ -80,6 +81,19 @@ export class KernelManager {
     this.selectionDisposablesByKernel.clear();
     this.selectedKernelByNotebook.clear();
   }
+
+  public bindNotebookToConnection(
+    notebook: vscode.NotebookDocument,
+    connectionName: string,
+  ): void {
+    const kernel = this.controllers.get(connectionName);
+    if (kernel) {
+      const uri = notebook.uri.toString();
+      this.selectedKernelByNotebook.set(uri, kernel);
+      kernel.bindNotebook(notebook);
+    }
+  }
+
   public getDriverForNotebook(
     notebook: vscode.NotebookDocument | undefined,
   ): ConnData['driver'] | undefined {
@@ -125,6 +139,18 @@ export class KernelManager {
       throw new Error('No active database connection selected.');
     }
   }
+
+  public async runExecutionPlan(cell: vscode.NotebookCell): Promise<void> {
+    const notebookUri = cell.notebook.uri.toString();
+    const kernel = this.selectedKernelByNotebook.get(notebookUri);
+    if (kernel) {
+      await kernel.runExecutionPlan(cell);
+    } else if (this.controllers.size === 1) {
+      await [...this.controllers.values()][0].runExecutionPlan(cell);
+    } else {
+      throw new Error('No active database connection selected.');
+    }
+  }
 }
 export class SQLNotebookKernel {
   readonly id: string;
@@ -149,6 +175,13 @@ export class SQLNotebookKernel {
     this._controller.supportsExecutionOrder = true;
     this.updateDescription();
     this._controller.executeHandler = this._execute.bind(this);
+  }
+
+  public bindNotebook(notebook: vscode.NotebookDocument): void {
+    this._controller.updateNotebookAffinity(
+      notebook,
+      vscode.NotebookControllerAffinity.Preferred,
+    );
   }
   public updateConfiguration(newConfig: ConnData) {
     this.config = newConfig;
@@ -215,7 +248,12 @@ export class SQLNotebookKernel {
     const pool = await this.getPool();
     const conn = await pool.getConnection();
     try {
-      await conn.query(sql);
+      const statements = splitSqlStatements(sql);
+      for (const stmt of statements) {
+        if (stmt.trim().length > 0) {
+          await conn.query(stmt);
+        }
+      }
       vscode.window.showInformationMessage(
         '✅ Changes saved successfully to the database!',
       );
@@ -233,7 +271,7 @@ export class SQLNotebookKernel {
   ): Promise<void> {
     this.parameterProvider.notifyQueryExecutionStart();
     for (let cell of cells) {
-      await this.doExecution(cell);
+      await this.doExecution(cell, false);
     }
     if (!this.schemaCache) {
       const autoFetch =
@@ -271,7 +309,12 @@ export class SQLNotebookKernel {
     this.pool = await getPool(poolConfig);
     return this.pool;
   }
-  private async doExecution(cell: vscode.NotebookCell): Promise<void> {
+  public async runExecutionPlan(cell: vscode.NotebookCell): Promise<void> {
+    this.parameterProvider.notifyQueryExecutionStart();
+    await this.doExecution(cell, true);
+  }
+
+  private async doExecution(cell: vscode.NotebookCell, isExplainPlan: boolean = false): Promise<void> {
     const execution = this._controller.createNotebookCellExecution(cell);
     execution.executionOrder = ++this._executionOrder;
     execution.start(Date.now());
@@ -358,9 +401,24 @@ export class SQLNotebookKernel {
             conn.destroy();
           } catch (e) {}
         });
+        if (isExplainPlan) {
+          if (this.config.driver === 'postgres') {
+            batch = `EXPLAIN (FORMAT JSON) ${batch}`;
+          } else if (this.config.driver === 'mysql') {
+            batch = `EXPLAIN FORMAT=JSON ${batch}`;
+          } else if (this.config.driver === 'sqlite') {
+            batch = `EXPLAIN QUERY PLAN ${batch}`;
+          } else if (this.config.driver === 'mssql') {
+            await conn.query('SET SHOWPLAN_ALL ON');
+          }
+        }
+
         let result: ExecutionResult;
         try {
           result = await conn.query(batch);
+          if (isExplainPlan && this.config.driver === 'mssql') {
+            await conn.query('SET SHOWPLAN_ALL OFF');
+          }
           if (/\b(CREATE|ALTER|DROP|TRUNCATE)\b/i.test(strippedBatch)) {
             this.schemaCache = null;
           }
@@ -370,7 +428,7 @@ export class SQLNotebookKernel {
             conn.release();
           } catch (e) {}
         }
-        await this.appendExecutionResult(execution, result || [], batch);
+        await this.appendExecutionResult(execution, result || [], batch, isExplainPlan);
       } catch (err: unknown) {
         const errorMessage = err instanceof Error ? err.message : String(err);
         vscode.window.showErrorMessage(
@@ -386,6 +444,7 @@ export class SQLNotebookKernel {
     execution: vscode.NotebookCellExecution,
     result: ExecutionResult,
     query: string,
+    isExplainPlan: boolean = false,
   ): Promise<void> {
     const now = new Date();
     const newOutputs: vscode.NotebookCellOutput[] = [];
@@ -436,15 +495,31 @@ export class SQLNotebookKernel {
         if (primaryKeys) {
           info.primaryKeys = primaryKeys;
         }
-        newOutputs.push(
-          new vscode.NotebookCellOutput([
-            vscode.NotebookCellOutputItem.json(
-              { rows, columns, info },
-              'application/vnd.code-sql-notebook.table+json',
-            ),
-            vscode.NotebookCellOutputItem.json(rows, 'application/json'),
-          ]),
-        );
+        if (isExplainPlan) {
+          const jsonPayload = { 
+             isExplainPlan: true, 
+             driver: this.config.driver, 
+             data: rows 
+          };
+          newOutputs.push(
+            new vscode.NotebookCellOutput([
+              vscode.NotebookCellOutputItem.json(
+                jsonPayload,
+                'application/vnd.code-sql-notebook.plan+json',
+              ),
+            ]),
+          );
+        } else {
+          newOutputs.push(
+            new vscode.NotebookCellOutput([
+              vscode.NotebookCellOutputItem.json(
+                { rows, columns, info },
+                'application/vnd.code-sql-notebook.table+json',
+              ),
+              vscode.NotebookCellOutputItem.json(rows, 'application/json'),
+            ]),
+          );
+        }
       }
     }
     if (newOutputs.length === 0) {

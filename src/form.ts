@@ -293,16 +293,34 @@ function isValid(config: ConnData, isTest = false): boolean {
     return false;
   }
   if (!isTest && !config.name) {
-    vscode.window.showErrorMessage(`Invalid "Database Name".`);
+    vscode.window.showErrorMessage(`Invalid "Connection Name".`);
     return false;
   }
   if (!config.host) {
     vscode.window.showErrorMessage(`Invalid "Host".`);
     return false;
   }
-  if (isNaN(config.port)) {
+  if (isNaN(config.port) || config.port <= 0) {
     vscode.window.showErrorMessage(`Invalid "Port".`);
     return false;
+  }
+  if (!config.user) {
+    vscode.window.showErrorMessage(`Invalid "User".`);
+    return false;
+  }
+  if (config.enableSsh) {
+    if (!config.sshHost) {
+      vscode.window.showErrorMessage(`Invalid SSH "Host".`);
+      return false;
+    }
+    if (isNaN(config.sshPort as number) || (config.sshPort as number) <= 0) {
+      vscode.window.showErrorMessage(`Invalid SSH "Port".`);
+      return false;
+    }
+    if (!config.sshUser) {
+      vscode.window.showErrorMessage(`Invalid SSH "User".`);
+      return false;
+    }
   }
   return true;
 }

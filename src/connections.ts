@@ -6,6 +6,8 @@ export class ColumnsGroupItem extends vscode.TreeItem {
     super('Columns', vscode.TreeItemCollapsibleState.Collapsed);
     this.contextValue = 'columns-group';
     this.iconPath = new vscode.ThemeIcon('symbol-field');
+    const colCount = tableSchema.columns?.length || 0;
+    this.description = `${colCount}`;
   }
 }
 export class PrimaryKeysGroupItem extends vscode.TreeItem {
@@ -16,6 +18,8 @@ export class PrimaryKeysGroupItem extends vscode.TreeItem {
     super('Primary Keys', vscode.TreeItemCollapsibleState.Collapsed);
     this.contextValue = 'primary-keys-group';
     this.iconPath = new vscode.ThemeIcon('key');
+    const pkCount = tableSchema.primaryKeys?.length || 0;
+    this.description = `${pkCount}`;
   }
 }
 export class ForeignKeysGroupItem extends vscode.TreeItem {
@@ -26,6 +30,8 @@ export class ForeignKeysGroupItem extends vscode.TreeItem {
     super('Foreign Keys', vscode.TreeItemCollapsibleState.Collapsed);
     this.contextValue = 'foreign-keys-group';
     this.iconPath = new vscode.ThemeIcon('link');
+    const fkCount = tableSchema.foreignKeys?.length || 0;
+    this.description = `${fkCount}`;
   }
 }
 export class KeyItem extends vscode.TreeItem {
@@ -37,6 +43,7 @@ export class KeyItem extends vscode.TreeItem {
     this.contextValue = 'key';
     this.iconPath = new vscode.ThemeIcon('key');
     this.description = keyType;
+    this.tooltip = `Primary Key: ${columnName}`;
   }
 }
 export class ForeignKeyItem extends vscode.TreeItem {
@@ -48,7 +55,7 @@ export class ForeignKeyItem extends vscode.TreeItem {
     this.contextValue = 'foreign-key';
     this.iconPath = new vscode.ThemeIcon('link');
     this.tooltip =
-      `References ${fk.referencedTable}(${fk.referencedColumn})` +
+      `Foreign Key: ${fk.column} references ${fk.referencedTable}(${fk.referencedColumn})` +
       (fk.referencedSchema ? ` in schema ${fk.referencedSchema}` : '');
     this.description = fk.referencedTable;
   }
@@ -111,6 +118,20 @@ export class SQLNotebookConnections implements vscode.TreeDataProvider<vscode.Tr
             orphans.push(obj);
           }
         });
+
+        const isSingleSchemaEngine =
+          element.config.driver === 'mysql' ||
+          element.config.driver === 'sqlite' ||
+          (schemaGroups.size === 1 &&
+            (element.config as any).database &&
+            schemaGroups.has((element.config as any).database));
+
+        if (isSingleSchemaEngine && schemaGroups.size === 1) {
+          const singleSchemaObjects = Array.from(schemaGroups.values())[0];
+          orphans.push(...singleSchemaObjects);
+          schemaGroups.clear();
+        }
+
         const items: vscode.TreeItem[] = [];
         const sortedSchemas = Array.from(schemaGroups.keys()).sort();
         for (const schemaName of sortedSchemas) {
@@ -253,7 +274,10 @@ export class SQLNotebookConnections implements vscode.TreeDataProvider<vscode.Tr
         const isPk = element.tableSchema.primaryKeys
           ? element.tableSchema.primaryKeys.includes(c)
           : false;
-        return new ColumnItem(c, type, isPk);
+        const isFk = element.tableSchema.foreignKeys
+          ? element.tableSchema.foreignKeys.some((f) => f.column === c)
+          : false;
+        return new ColumnItem(c, type, isPk, isFk);
       });
     }
     if (element instanceof PrimaryKeysGroupItem) {
@@ -282,7 +306,13 @@ export class SQLNotebookConnections implements vscode.TreeDataProvider<vscode.Tr
         const type = element.tableSchema.columnTypes
           ? element.tableSchema.columnTypes[c]
           : undefined;
-        return new ColumnItem(c, type, false);
+        const isPk = element.tableSchema.primaryKeys
+          ? element.tableSchema.primaryKeys.includes(c)
+          : false;
+        const isFk = element.tableSchema.foreignKeys
+          ? element.tableSchema.foreignKeys.some((f) => f.column === c)
+          : false;
+        return new ColumnItem(c, type, isPk, isFk);
       });
     }
     let connections =
@@ -340,8 +370,15 @@ export type ConnData =
       user: string;
       passwordKey: string;
       database: string;
+      enableSsh?: boolean;
+      sshHost?: string;
+      sshPort?: number;
+      sshUser?: string;
+      sshKey?: string;
+      sshPasswordKey?: string;
     } & { [key: string]: any })
   | { driver: 'sqlite'; name: string; group?: string; path: string };
+
 export class GroupItem extends vscode.TreeItem {
   constructor(public readonly label: string) {
     super(label, vscode.TreeItemCollapsibleState.Collapsed);
@@ -359,7 +396,14 @@ export class ConnectionListItem extends vscode.TreeItem {
       dark: vscode.Uri.file(path.join(mediaDir, 'dark', 'database.svg')),
       light: vscode.Uri.file(path.join(mediaDir, 'light', 'database.svg')),
     };
-    this.description = config.driver;
+    if (config.driver === 'sqlite') {
+      this.description = `sqlite (${path.basename(config.path)})`;
+      this.tooltip = `Driver: sqlite\nPath: ${config.path}`;
+    } else {
+      const hostDisplay = config.port ? `${config.host}:${config.port}` : config.host;
+      this.description = `${config.driver} (${config.database})`;
+      this.tooltip = `Driver: ${config.driver}\nHost: ${hostDisplay}\nDatabase: ${config.database}\nUser: ${config.user || 'N/A'}`;
+    }
     this.contextValue = 'database';
   }
 }
@@ -372,6 +416,17 @@ export class SchemaItem extends vscode.TreeItem {
     super(schemaName, vscode.TreeItemCollapsibleState.Collapsed);
     this.contextValue = 'schema';
     this.iconPath = new vscode.ThemeIcon('symbol-namespace');
+    const tableCount = objects.filter((o) => o.type === 'table').length;
+    const viewCount = objects.filter((o) => o.type === 'view').length;
+    const procCount = objects.filter((o) => o.type === 'procedure').length;
+    const funcCount = objects.filter((o) => o.type === 'function').length;
+    const parts: string[] = [];
+    if (tableCount) parts.push(`${tableCount} tbls`);
+    if (viewCount) parts.push(`${viewCount} views`);
+    if (procCount) parts.push(`${procCount} procs`);
+    if (funcCount) parts.push(`${funcCount} funcs`);
+    this.description = parts.join(', ') || `${objects.length} items`;
+    this.tooltip = `Schema: ${schemaName} (${objects.length} total objects)`;
   }
 }
 export class ObjectGroupItem extends vscode.TreeItem {
@@ -392,6 +447,8 @@ export class ObjectGroupItem extends vscode.TreeItem {
             ? 'symbol-method'
             : 'symbol-function',
     );
+    this.description = `${objects.length}`;
+    this.tooltip = `${label}: ${objects.length} items`;
   }
 }
 export class TableItem extends vscode.TreeItem {
@@ -402,7 +459,15 @@ export class TableItem extends vscode.TreeItem {
     super(tableSchema.table, vscode.TreeItemCollapsibleState.Collapsed);
     this.contextValue = 'table';
     this.iconPath = new vscode.ThemeIcon('table');
-    this.description = tableSchema.schema ? undefined : '';
+    const colCount = tableSchema.columns?.length || 0;
+    this.description = `${colCount} cols`;
+    const pkStr = tableSchema.primaryKeys?.length
+      ? `\nPrimary Keys: ${tableSchema.primaryKeys.join(', ')}`
+      : '';
+    const fkStr = tableSchema.foreignKeys?.length
+      ? `\nForeign Keys: ${tableSchema.foreignKeys.length}`
+      : '';
+    this.tooltip = `Table: ${tableSchema.schema ? `${tableSchema.schema}.` : ''}${tableSchema.table}\nColumns: ${colCount}${pkStr}${fkStr}`;
   }
 }
 export class ViewItem extends vscode.TreeItem {
@@ -413,7 +478,9 @@ export class ViewItem extends vscode.TreeItem {
     super(tableSchema.table, vscode.TreeItemCollapsibleState.Collapsed);
     this.contextValue = 'view';
     this.iconPath = new vscode.ThemeIcon('eye');
-    this.description = tableSchema.schema ? undefined : '';
+    const colCount = tableSchema.columns?.length || 0;
+    this.description = `${colCount} cols`;
+    this.tooltip = `View: ${tableSchema.schema ? `${tableSchema.schema}.` : ''}${tableSchema.table}\nColumns: ${colCount}`;
   }
 }
 export class ProcedureItem extends vscode.TreeItem {
@@ -424,7 +491,7 @@ export class ProcedureItem extends vscode.TreeItem {
     super(tableSchema.table, vscode.TreeItemCollapsibleState.None);
     this.contextValue = 'procedure';
     this.iconPath = new vscode.ThemeIcon('symbol-method');
-    this.description = tableSchema.schema ? undefined : '';
+    this.tooltip = `Procedure: ${tableSchema.schema ? `${tableSchema.schema}.` : ''}${tableSchema.table}`;
   }
 }
 export class FunctionItem extends vscode.TreeItem {
@@ -435,7 +502,7 @@ export class FunctionItem extends vscode.TreeItem {
     super(tableSchema.table, vscode.TreeItemCollapsibleState.None);
     this.contextValue = 'function';
     this.iconPath = new vscode.ThemeIcon('symbol-function');
-    this.description = tableSchema.schema ? undefined : '';
+    this.tooltip = `Function: ${tableSchema.schema ? `${tableSchema.schema}.` : ''}${tableSchema.table}`;
   }
 }
 function createObjectTreeItem(
@@ -460,14 +527,21 @@ export class ColumnItem extends vscode.TreeItem {
     public readonly columnName: string,
     public readonly dataType?: string,
     public readonly isPrimaryKey: boolean = false,
+    public readonly isForeignKey: boolean = false,
   ) {
     super(columnName, vscode.TreeItemCollapsibleState.None);
     this.contextValue = 'column';
-    this.iconPath = new vscode.ThemeIcon(isPrimaryKey ? 'key' : 'symbol-field');
-    if (dataType) {
-      this.tooltip = `${columnName} (${dataType})`;
-      this.description = dataType;
-    }
+    this.iconPath = new vscode.ThemeIcon(
+      isPrimaryKey ? 'key' : isForeignKey ? 'link' : 'symbol-field',
+    );
+    this.description = dataType || '';
+    const keyInfo = isPrimaryKey
+      ? ' [🔑 Primary Key]'
+      : isForeignKey
+        ? ' [🔗 Foreign Key]'
+        : '';
+    this.tooltip = `Column: ${columnName}${dataType ? ` (${dataType})` : ''}${keyInfo}`;
   }
 }
 export const mediaDir = path.join(__filename, '..', '..', 'media');
+
