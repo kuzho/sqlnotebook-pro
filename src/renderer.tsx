@@ -42,6 +42,7 @@ import {
   ColumnFiltersState,
   ColumnSizingState,
 } from '@tanstack/react-table';
+import { useVirtualizer } from '@tanstack/react-virtual';
 const Portal = ({ children }: { children: React.ReactNode }) =>
   createPortal(children, window.document.body);
 const styles = `
@@ -122,44 +123,51 @@ const styles = `
     margin: 0;
     padding: 0;
   }
-  table {
-    border-collapse: separate;
-    table-layout: fixed;
+  .sql-grid-table {
+    display: grid;
+    width: 100%;
     margin: 0;
-    border-spacing: 0;
     border-style: hidden;
   }
-  th, td {
+  .sql-thead, .sql-tbody, .sql-tr {
+    display: contents;
+  }
+  /* Primera columna: ajustada estrictamente a su contenido y sin expandirse */
+  .sql-th:first-child,
+  .sql-td:first-child {
+    white-space: nowrap;
+  }
+  .sql-th, .sql-td {
     border-right: 1px solid var(--grid-border);
     border-bottom: 1px solid var(--grid-border);
     padding: 0;
     white-space: nowrap;
     height: var(--row-height);
+    max-height: var(--row-height);
     line-height: var(--row-height);
     box-sizing: border-box;
     cursor: default;
   }
-  td {
+  .sql-td {
     padding: 0 8px;
     text-align: left;
     overflow: hidden;
     text-overflow: ellipsis;
-    max-width: 500px;
   }
-  thead {
+  .sql-thead {
+    display: contents;
+  }
+  .sql-th {
     position: sticky;
     top: 0;
     z-index: 20;
     background: var(--grid-header-bg);
     box-shadow: 0 1px 0 var(--grid-border);
-  }
-  th {
     font-weight: 600;
     text-align: left;
     user-select: none;
     overflow: hidden;
     cursor: url('data:image/svg+xml;utf8,<svg width="16" height="16" viewBox="0 0 24 24" fill="%23858585" xmlns="http://www.w3.org/2000/svg"><path d="M12 2L12 22M12 22L7 17M12 22L17 17" stroke="%23858585" stroke-width="2"/></svg>') 8 8, pointer;
-    min-width: 80px;
   }
   .th-content {
     display: flex;
@@ -214,20 +222,21 @@ const styles = `
     color: var(--vscode-editor-foreground, #858585);
     border-right: 1px solid var(--grid-border);
     font-size: 11px;
+    z-index: 30;
     white-space: nowrap;
-    z-index: 10;
-    width: var(--index-width, 45px) !important;
-    min-width: var(--index-width, 45px) !important;
-    max-width: var(--index-width, 45px) !important;
     text-align: right !important;
     padding-right: 8px !important;
     padding-left: 4px;
     box-sizing: border-box;
   }
-  th:last-child, td:last-child {
+  /* Columnas de datos: se expanden proporcionalmente para llenar el 100% sobrante */
+  .sql-th:not(:first-child), .sql-td:not(:first-child) {
+    white-space: nowrap;
+  }
+  .sql-th:last-child, .sql-td:last-child {
     border-right: none;
   }
-  .corner-header { z-index: 30; cursor: pointer; }
+  .corner-header { z-index: 40 !important; cursor: pointer; }
   .corner-header:hover { background: var(--grid-hover); color: var(--vscode-editor-foreground, white); }
   .row-index { cursor: pointer; }
   .row-index:hover { background: var(--grid-hover); color: var(--vscode-editor-foreground, white); }
@@ -277,15 +286,15 @@ const styles = `
     background: #2d2415;
     border-bottom: 1px solid var(--grid-border);
   }
-  
+
   .table-wrapper,
-  .sql-grid-container table,
-  .sql-grid-container tbody,
-  .sql-grid-container tbody tr {
+  .sql-grid-container .sql-grid-table,
+  .sql-grid-container .sql-tbody,
+  .sql-grid-container .sql-tbody .sql-tr {
     background-color: var(--grid-bg) !important;
   }
-  .sql-grid-container thead tr,
-  .sql-grid-container thead th {
+  .sql-grid-container .sql-thead .sql-tr,
+  .sql-grid-container .sql-thead .sql-th {
     background-color: var(--grid-header-bg) !important;
   }
   .virtual-spacer-cell {
@@ -294,14 +303,15 @@ const styles = `
     height: 0;
     line-height: 0;
     background-color: var(--grid-bg) !important;
+    max-height: none !important;
   }
-  
-  .sql-grid-container tr:nth-child(even) td,
-  .sql-grid-container tr:nth-child(even) td,
-  .sql-grid-container tr:nth-child(odd) td {
+
+  .sql-grid-container .sql-tr:nth-child(even) .sql-td,
+  .sql-grid-container .sql-tr:nth-child(even) .sql-td,
+  .sql-grid-container .sql-tr:nth-child(odd) .sql-td {
     background-color: transparent;
   }
-  
+
   .sql-grid-container .row-index,
   .sql-grid-container .corner-header {
     background-color: var(--grid-header-bg) !important;
@@ -358,6 +368,38 @@ const FilterMenu = ({
   const clearFilter = () => {
     column.setFilterValue(undefined);
     setSearch('');
+  };
+
+  const listRef = useRef<HTMLDivElement>(null);
+  const rowVirtualizer = useVirtualizer({
+    count: filteredList.length,
+    getScrollElement: () => listRef.current,
+    estimateSize: () => 24,
+    overscan: 10,
+  });
+
+  const [activeIndex, setActiveIndex] = useState(-1);
+  useEffect(() => {
+    setActiveIndex(-1);
+  }, [search]);
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    e.stopPropagation();
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      setActiveIndex((prev) => Math.min(prev + 1, filteredList.length - 1));
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      setActiveIndex((prev) => Math.max(prev - 1, -1));
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      if (activeIndex >= 0 && activeIndex < filteredList.length) {
+        handleCheckbox(filteredList[activeIndex].raw);
+      }
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      onClose();
+    }
   };
   useEffect(() => {
     if (isOpen && triggerRef.current) {
@@ -422,41 +464,57 @@ const FilterMenu = ({
               marginBottom: coords.alignTop ? 4 : 0,
             }}
           >
-            <div className="popup-search">
+            <div className="popup-search" onKeyDown={handleKeyDown}>
               <input
                 placeholder="Search.."
                 value={search}
                 onChange={(e: any) => setSearch(e.target.value)}
-                onKeyDown={(e) => e.stopPropagation()}
                 autoFocus
               />
             </div>
-            <div className="popup-list">
+            <div
+              className="popup-item"
+              onClick={clearFilter}
+              style={{ fontStyle: 'italic', color: '#0078d4', borderBottom: '1px solid #333' }}
+            >
+              Clear
+            </div>
+            {isCapped && (
               <div
-                className="popup-item"
-                onClick={clearFilter}
-                style={{ fontStyle: 'italic', color: '#0078d4' }}
+                style={{ padding: '4px 8px', color: '#d7ba7d', fontSize: 11, borderBottom: '1px solid #333' }}
               >
-                Clear
+                Showing first {MAX_FILTER_OPTIONS.toLocaleString()} of{' '}
+                {totalUniqueValues.toLocaleString()} values
               </div>
-              {isCapped && (
-                <div
-                  style={{ padding: '4px 8px', color: '#d7ba7d', fontSize: 11 }}
-                >
-                  Showing first {MAX_FILTER_OPTIONS.toLocaleString()} of{' '}
-                  {totalUniqueValues.toLocaleString()} values
-                </div>
-              )}
-              {filteredList.map((item, idx) => (
-                <label key={idx} className="popup-item">
-                  <input
-                    type="checkbox"
-                    checked={currentFilter.includes(item.raw)}
-                    onChange={() => handleCheckbox(item.raw)}
-                  />
-                  <span>{item.label}</span>
-                </label>
-              ))}
+            )}
+            <div className="popup-list" onKeyDown={handleKeyDown} ref={listRef} style={{ height: 200, overflowY: 'auto' }}>
+              <div style={{ height: `${rowVirtualizer.getTotalSize()}px`, width: '100%', position: 'relative' }}>
+                {rowVirtualizer.getVirtualItems().map((virtualRow) => {
+                  const item = filteredList[virtualRow.index];
+                  const idx = virtualRow.index;
+                  return (
+                    <label
+                      key={idx}
+                      className={`popup-item ${activeIndex === idx ? 'active-item' : ''}`}
+                      style={{
+                        position: 'absolute',
+                        top: 0,
+                        left: 0,
+                        width: '100%',
+                        transform: `translateY(${virtualRow.start}px)`,
+                        ...(activeIndex === idx ? { backgroundColor: 'var(--vscode-list-activeSelectionBackground)', color: 'var(--vscode-list-activeSelectionForeground)' } : {})
+                      }}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={currentFilter.includes(item.raw)}
+                        onChange={() => handleCheckbox(item.raw)}
+                      />
+                      <span>{item.label}</span>
+                    </label>
+                  );
+                })}
+              </div>
               {filteredList.length === 0 && (
                 <div style={{ padding: 8, textAlign: 'center', color: '#888' }}>
                   0 Rows
@@ -652,26 +710,70 @@ const SmartCell = React.memo(
   },
 );
 const EditableCell = React.memo(
-  ({ initialValue, row, column, updateData, isEdited, badgeKeywords }: any) => {
+  ({ initialValue, row, column, updateData, isEdited, badgeKeywords, isEditingExternal, table }: any) => {
     const [value, setValue] = useState(initialValue);
     const [isEditing, setIsEditing] = useState(false);
+    const isSaving = useRef(false);
+
     useEffect(() => {
       setValue(initialValue);
     }, [initialValue]);
+
+    useEffect(() => {
+      if (isEditingExternal && !isEditing) {setIsEditing(true);}
+    }, [isEditingExternal]);
+
     const onBlur = () => {
+      if (isSaving.current) {return;}
+      isSaving.current = true;
       setIsEditing(false);
+
       if (value !== initialValue) {
         updateData(row.index, column.id, value);
       }
+      setTimeout(() => { isSaving.current = false; }, 0);
     };
+
     const handleKeyDown = (e: React.KeyboardEvent) => {
       if (e.key === 'Enter') {
+        e.stopPropagation();
         onBlur();
+        setTimeout(() => {
+          const wrapper = document.querySelector('.table-wrapper') as HTMLElement;
+          wrapper?.focus();
+        }, 10);
       } else if (e.key === 'Escape') {
+        e.stopPropagation();
         setValue(initialValue);
         setIsEditing(false);
+        setTimeout(() => {
+          const wrapper = document.querySelector('.table-wrapper') as HTMLElement;
+          wrapper?.focus();
+        }, 10);
+      } else if (e.key === 'Tab') {
+        e.stopPropagation();
+        e.preventDefault();
+        onBlur();
+
+        setTimeout(() => {
+          const columns = table.getVisibleLeafColumns();
+          const currentIndex = columns.findIndex((c: any) => c.id === column.id);
+          if (currentIndex !== -1 && currentIndex + 1 < columns.length) {
+            const nextColId = columns[currentIndex + 1].id;
+            table.options.meta?.setEditingCell({ r: row.index, cId: nextColId });
+
+            table.options.meta?.setSelection({
+              type: 'cell',
+              range: { r1: row.index, c1: currentIndex + 1, r2: row.index, c2: currentIndex + 1 }
+            });
+          } else {
+            const wrapper = document.querySelector('.table-wrapper') as HTMLElement;
+            wrapper?.focus();
+          }
+        }, 10);
       }
     };
+
     if (isEditing) {
       return (
         <input
@@ -751,17 +853,15 @@ const MemoTd = React.memo(
     isEdited,
   }: any) => {
     return (
-      <td
+      <div role="cell" className="sql-td"
         data-r={rIndex}
         data-c={cIndex}
         style={{
           ...selectionStyle,
-          width: customWidth,
-          minWidth: customWidth,
         }}
       >
         {flexRender(cell.column.columnDef.cell, cell.getContext())}
-      </td>
+      </div>
     );
   },
   (prev, next) => {
@@ -781,12 +881,12 @@ const MemoTd = React.memo(
 const MemoRowIndex = React.memo(
   ({ rIndex, isSelected }: any) => {
     return (
-      <td
-        className={`row-index ${isSelected ? 'selected-bg' : ''}`}
+      <div role="cell"
+        className={`sql-td row-index ${isSelected ? 'selected-bg' : ''}`}
         data-row-index={rIndex}
       >
         {rIndex + 1}
-      </td>
+      </div>
     );
   },
   (prev, next) =>
@@ -845,27 +945,40 @@ interface OutputPayload {
 const TableApp = ({
   data,
   postMessage,
+  onDidReceiveMessage,
 }: {
   data: OutputPayload | any[];
   postMessage?: (msg: any) => void;
+  onDidReceiveMessage?: any;
 }) => {
   const tableWrapperRef = useRef<HTMLDivElement>(null);
-  const scrollRafRef = useRef<number | null>(null);
-  const [scrollTop, setScrollTop] = useState(0);
-  const [scrollLeft, setScrollLeft] = useState(0);
+  const componentIdRef = useRef(`table_${Math.random().toString(36).substring(2, 9)}`);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const containerWidthRef = useRef(0);
   const [containerWidth, setContainerWidth] = useState(0);
   useLayoutEffect(() => {
-    if (!tableWrapperRef.current) {
+    const target = containerRef.current;
+    if (!target) {
       return;
     }
-    setContainerWidth((tableWrapperRef.current as HTMLElement).clientWidth);
+    const initialWidth = (target as HTMLElement).clientWidth;
+    containerWidthRef.current = initialWidth;
+    setContainerWidth(initialWidth);
+    let rafId = 0;
     const observer = new (window as any).ResizeObserver((entries: any[]) => {
-      for (const entry of entries) {
-        setContainerWidth(entry.contentRect.width);
-      }
+      cancelAnimationFrame(rafId);
+      rafId = requestAnimationFrame(() => {
+        for (const entry of entries) {
+          containerWidthRef.current = entry.contentRect.width;
+          setContainerWidth(entry.contentRect.width);
+        }
+      });
     });
-    observer.observe(tableWrapperRef.current);
-    return () => observer.disconnect();
+    observer.observe(target);
+    return () => {
+      observer.disconnect();
+      cancelAnimationFrame(rafId);
+    };
   }, []);
   const rawRows = Array.isArray(data) ? data : data.rows || [];
   const columnOrder =
@@ -875,9 +988,18 @@ const TableApp = ({
     [rawRows, columnOrder],
   );
   const [rows, setRows] = useState(normalizedRows);
+  const prevExecutionIdRef = useRef<string | undefined | null>(
+    !Array.isArray(data) ? data.info?.executionId : null
+  );
+
   useLayoutEffect(() => {
+    const currentExecutionId = !Array.isArray(data) ? data.info?.executionId : null;
+    if (currentExecutionId && prevExecutionIdRef.current === currentExecutionId) {
+      return;
+    }
     setRows(normalizedRows);
-  }, [normalizedRows]);
+    prevExecutionIdRef.current = currentExecutionId;
+  }, [normalizedRows, data]);
   const executionTimeFromBackend =
     !Array.isArray(data) && data.info?.executionTime;
   const executionDateFromBackend =
@@ -980,10 +1102,15 @@ const TableApp = ({
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
   const [columnSizing, setColumnSizing] = useState<ColumnSizingState>({});
   const [activeMenuId, setActiveMenuId] = useState<string | null>(null);
+  const [editingCell, setEditingCell] = useState<{ r: number; cId: string } | null>(null);
   const [exportSqlText, setExportSqlText] = useState('📝 To Insert');
   const [editedRows, setEditedRows] = useState<
     Record<number, Record<string, any>>
   >({});
+  const editedRowsRef = useRef(editedRows);
+  useLayoutEffect(() => {
+    editedRowsRef.current = editedRows;
+  }, [editedRows]);
   const [saveBtnText, setSaveBtnText] = useState('💾 Save Changes');
   const [themeColor, setThemeColor] = useState(() => {
     return (
@@ -1125,17 +1252,22 @@ const TableApp = ({
               accessorFn: (row: any) => row[colId],
               enableColumnFilter: true,
               filterFn: (row: any, id: string, filterValue: any[]) => {
-                return filterValue.includes(row.original[colId]);
+                const val = row.original[colId];
+                if ((val === null || val === undefined) && (filterValue.includes(null) || filterValue.includes(undefined))) {
+                  return true;
+                }
+                return filterValue.includes(val);
               },
               cell: (info: any) => {
                 const meta = info.table.options.meta as any;
                 const rowIndex = info.row.index;
                 const cId = info.column.id;
                 const isEdited =
-                  meta?.editedRows?.[rowIndex]?.[cId] !== undefined;
+                  meta?.editedRowsRef?.current?.[rowIndex]?.[cId] !== undefined;
                 const val = isEdited
-                  ? meta.editedRows[rowIndex][cId]
+                  ? meta.editedRowsRef.current[rowIndex][cId]
                   : info.getValue();
+                const isEditingExternal = meta?.editingCell?.r === rowIndex && meta?.editingCell?.cId === cId;
                 return (
                   <EditableCell
                     initialValue={val}
@@ -1144,6 +1276,7 @@ const TableApp = ({
                     updateData={meta?.updateData}
                     isEdited={isEdited}
                     badgeKeywords={meta?.badgeKeywords}
+                    isEditingExternal={isEditingExternal}
                   />
                 );
               },
@@ -1169,25 +1302,34 @@ const TableApp = ({
                 filterFn: (row: any, id: string, filterValue: any[]) => {
                   const arr = row.original[key];
                   const val = Array.isArray(arr) ? arr[subIndex] : arr;
+                  if ((val === null || val === undefined) && (filterValue.includes(null) || filterValue.includes(undefined))) {
+                    return true;
+                  }
                   return filterValue.includes(val);
                 },
                 cell: (info: any) => {
                   const meta = info.table.options.meta as any;
                   const rowIndex = info.row.index;
                   const cId = info.column.id;
+
                   const isEdited =
                     meta?.editedRows?.[rowIndex]?.[cId] !== undefined;
                   const val = isEdited
                     ? meta.editedRows[rowIndex][cId]
                     : info.getValue();
+
+                  const isEditingExternal = meta?.editingCell?.r === rowIndex && meta?.editingCell?.cId === cId;
+
                   return (
                     <EditableCell
                       initialValue={val}
                       row={info.row}
                       column={info.column}
+                      table={info.table}
                       updateData={meta?.updateData}
                       isEdited={isEdited}
                       badgeKeywords={meta?.badgeKeywords}
+                      isEditingExternal={isEditingExternal}
                     />
                   );
                 },
@@ -1203,25 +1345,35 @@ const TableApp = ({
                 accessorFn: (row: any) => row[key],
                 enableColumnFilter: true,
                 filterFn: (row: any, id: string, filterValue: any[]) => {
-                  return filterValue.includes(row.original[key]);
+                  const val = row.original[key];
+                  if ((val === null || val === undefined) && (filterValue.includes(null) || filterValue.includes(undefined))) {
+                    return true;
+                  }
+                  return filterValue.includes(val);
                 },
                 cell: (info: any) => {
                   const meta = info.table.options.meta as any;
                   const rowIndex = info.row.index;
                   const cId = info.column.id;
+
                   const isEdited =
                     meta?.editedRows?.[rowIndex]?.[cId] !== undefined;
                   const val = isEdited
                     ? meta.editedRows[rowIndex][cId]
                     : info.getValue();
+
+                  const isEditingExternal = meta?.editingCell?.r === rowIndex && meta?.editingCell?.cId === cId;
+
                   return (
                     <EditableCell
                       initialValue={val}
                       row={info.row}
                       column={info.column}
+                      table={info.table}
                       updateData={meta?.updateData}
                       isEdited={isEdited}
                       badgeKeywords={meta?.badgeKeywords}
+                      isEditingExternal={isEditingExternal}
                     />
                   );
                 },
@@ -1230,34 +1382,15 @@ const TableApp = ({
           });
         }
       }
-      let totalBaseSize = 0;
-      rawCols.forEach((c) => {
-        totalBaseSize += c.size;
-      });
-      const idxW = String(totalRowsFromBackend).length * 8 + 8;
-      const realIndexW = Math.max(28, idxW);
-      let extraAvailable = 0;
-      if (containerWidth > 0) {
-        const available = containerWidth - realIndexW - 2;
-        if (available > totalBaseSize && rawCols.length > 0) {
-          extraAvailable = available - totalBaseSize;
-        }
-      }
-      if (extraAvailable > 0 && totalBaseSize > 0) {
-        const extraPerCol = Math.floor(extraAvailable / rawCols.length);
-        rawCols.forEach((c) => {
-          c.size += extraPerCol;
-        });
-      }
       return rawCols;
     } catch (error) {
       console.error('Error generating columns:', error);
       return [];
     }
-  }, [rows, isSelectNoRows, columnOrder, containerWidth, totalRowsFromBackend]);
+  }, [rows, isSelectNoRows, columnOrder]);
   const tableMeta = useMemo(
-    () => ({ editedRows, updateData, badgeKeywords }),
-    [editedRows, updateData, badgeKeywords],
+    () => ({ editedRows, updateData, badgeKeywords, editingCell, setEditingCell, setSelection }),
+    [editedRows, updateData, badgeKeywords, editingCell, setEditingCell, setSelection],
   );
   const table = useReactTable({
     data: statusData,
@@ -1274,102 +1407,39 @@ const TableApp = ({
     getFacetedRowModel: getFacetedRowModel(),
     getFacetedUniqueValues: getFacetedUniqueValues(),
   });
-  const COL_VIRTUALIZATION_THRESHOLD = 10;
-  const COL_OVERSCAN = 4;
+
   const tableRows = table.getRowModel().rows;
   const visibleColumns = table.getVisibleFlatColumns();
-  const shouldVirtualize = tableRows.length > VIRTUALIZATION_THRESHOLD;
-  const shouldVirtualizeCols =
-    visibleColumns.length > COL_VIRTUALIZATION_THRESHOLD;
-  const viewportHeight = tableWrapperRef.current?.clientHeight ?? 390;
-  const visibleRowCount = Math.max(
-    20,
-    Math.ceil(viewportHeight / ROW_HEIGHT_PX) + VIRTUAL_OVERSCAN * 2,
-  );
-  const startIndex = shouldVirtualize
-    ? Math.max(0, Math.floor(scrollTop / ROW_HEIGHT_PX) - VIRTUAL_OVERSCAN)
-    : 0;
-  const endIndex = shouldVirtualize
-    ? Math.min(tableRows.length, startIndex + visibleRowCount)
-    : tableRows.length;
-  const renderedRows = shouldVirtualize
-    ? tableRows.slice(startIndex, endIndex)
-    : tableRows;
-  const topSpacerHeight = shouldVirtualize ? startIndex * ROW_HEIGHT_PX : 0;
-  const bottomSpacerHeight = shouldVirtualize
-    ? Math.max(0, (tableRows.length - endIndex) * ROW_HEIGHT_PX)
-    : 0;
-  const colPositions = useMemo(() => {
-    let currentLeft = 0;
-    return visibleColumns.map((c, index) => {
-      const width = c.getSize();
-      const pos = currentLeft;
-      currentLeft += width;
-      return { column: c, left: pos, width, index };
-    });
-  }, [visibleColumns, columnSizing]);
-  let startColIdx = 0;
-  let endColIdx = visibleColumns.length;
-  if (shouldVirtualizeCols) {
-    const viewPortWidth = containerWidth || 1000;
-    while (
-      startColIdx < colPositions.length &&
-      colPositions[startColIdx].left + colPositions[startColIdx].width <
-        scrollLeft
-    ) {
-      startColIdx++;
-    }
-    startColIdx = Math.max(0, startColIdx - COL_OVERSCAN);
-    endColIdx = startColIdx;
-    while (
-      endColIdx < colPositions.length &&
-      colPositions[endColIdx].left < scrollLeft + viewPortWidth
-    ) {
-      endColIdx++;
-    }
-    endColIdx = Math.min(colPositions.length, endColIdx + COL_OVERSCAN);
-  }
-  const renderedColumnsInfo = shouldVirtualizeCols
-    ? colPositions.slice(startColIdx, endColIdx)
-    : colPositions;
-  const leftSpacerWidth =
-    shouldVirtualizeCols && renderedColumnsInfo.length > 0
-      ? renderedColumnsInfo[0].left
+
+  const rowVirtualizer = useVirtualizer({
+    count: tableRows.length,
+    getScrollElement: () => tableWrapperRef.current,
+    estimateSize: () => ROW_HEIGHT_PX,
+    overscan: VIRTUAL_OVERSCAN,
+  });
+
+  const virtualRows = rowVirtualizer.getVirtualItems();
+
+  const topSpacerHeight = virtualRows.length > 0 ? virtualRows[0].start : 0;
+  const bottomSpacerHeight =
+    virtualRows.length > 0
+      ? rowVirtualizer.getTotalSize() - virtualRows[virtualRows.length - 1].end
       : 0;
-  const totalColsWidth =
-    colPositions.length > 0
-      ? colPositions[colPositions.length - 1].left +
-        colPositions[colPositions.length - 1].width
-      : 0;
-  const rightSpacerWidth =
-    shouldVirtualizeCols && renderedColumnsInfo.length > 0
-      ? totalColsWidth -
-        (renderedColumnsInfo[renderedColumnsInfo.length - 1].left +
-          renderedColumnsInfo[renderedColumnsInfo.length - 1].width)
-      : 0;
-  const colSpanCount =
-    renderedColumnsInfo.length +
-    (leftSpacerWidth > 0 ? 1 : 0) +
-    (rightSpacerWidth > 0 ? 1 : 0) +
-    1;
+
+  const colSpanCount = visibleColumns.length + 1;
   useEffect(() => {
-    setScrollTop(0);
-    setScrollLeft(0);
     if (tableWrapperRef.current) {
       tableWrapperRef.current.scrollTop = 0;
       tableWrapperRef.current.scrollLeft = 0;
     }
-    setEditedRows({});
     setSelection(null);
     setSorting([]);
     setColumnFilters([]);
     setColumnSizing({});
-    setActiveMenuId(null);
     setDragMode('none');
     setDragStart(null);
     setDragStartRow(null);
     setExportSqlText('📝 To Insert');
-    setSaveBtnText('💾 Save Changes');
   }, [executionId]);
   const handleSortClick = (column: any, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -1454,17 +1524,62 @@ const TableApp = ({
     }
     window.navigator.clipboard.writeText(rowsToText.join('\n'));
   }, [selection, tableRows, visibleColumns]);
-  useEffect(() => {
-    const k = (e: KeyboardEvent) => {
-      if ((e.ctrlKey || e.metaKey) && e.key === 'c') {
-        e.preventDefault();
-        handleCopy();
+  const handleTableKeyDown = useCallback((e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
+      return;
+    }
+    if ((e.ctrlKey || e.metaKey) && e.key === 'c') {
+      e.preventDefault();
+      handleCopy();
+      return;
+    }
+    if (selection?.type === 'range' && selection.range) {
+      const { r1, c1, r2, c2 } = selection.range;
+      if (r1 === r2 && c1 === c2) {
+        let nextR = r1;
+        let nextC = c1;
+        let moved = false;
+        if (e.key === 'ArrowUp') { nextR = Math.max(0, r1 - 1); moved = true; }
+        else if (e.key === 'ArrowDown') { nextR = Math.min(tableRows.length - 1, r1 + 1); moved = true; }
+        else if (e.key === 'ArrowLeft') { nextC = Math.max(0, c1 - 1); moved = true; }
+        else if (e.key === 'ArrowRight') { nextC = Math.min(visibleColumns.length - 1, c1 + 1); moved = true; }
+
+        if (moved) {
+          e.preventDefault();
+          e.stopPropagation();
+          setSelection({ type: 'range', range: { r1: nextR, c1: nextC, r2: nextR, c2: nextC } });
+          setEditingCell(null);
+
+          const wrapper = tableWrapperRef.current as HTMLElement;
+          if (wrapper) {
+            rowVirtualizer.scrollToIndex(nextR, { align: 'auto' });
+
+            const tdEl = wrapper.querySelector(`[data-r="${nextR}"][data-c="${nextC}"]`) as HTMLElement;
+            if (tdEl) {
+              const wrapperRect = wrapper.getBoundingClientRect();
+              const tdRect = tdEl.getBoundingClientRect();
+              if (tdRect.left < wrapperRect.left + 40) {
+                wrapper.scrollLeft -= (wrapperRect.left + 40 - tdRect.left);
+              } else if (tdRect.right > wrapperRect.right) {
+                wrapper.scrollLeft += (tdRect.right - wrapperRect.right);
+              }
+            }
+          }
+        } else if (e.key === 'Enter' || e.key === 'F2') {
+          e.preventDefault();
+          e.stopPropagation();
+          const colId = visibleColumns[c1]?.id;
+          if (colId) {setEditingCell({ r: r1, cId: colId });}
+        } else if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
+          e.stopPropagation();
+          const colId = visibleColumns[c1]?.id;
+          if (colId) {setEditingCell({ r: r1, cId: colId });}
+        }
       }
-    };
-    window.addEventListener('keydown', k);
-    return () => window.removeEventListener('keydown', k);
-  }, [handleCopy]);
+    }
+  }, [handleCopy, selection, tableRows.length, visibleColumns, rowVirtualizer]);
   const onMouseDown = (r: number, c: number, isCtrl: boolean) => {
+    tableWrapperRef.current?.focus();
     if (isCtrl && selection && selection.type === 'range' && selection.range) {
       setSelection((prev) => ({
         type: 'multi',
@@ -1559,6 +1674,7 @@ const TableApp = ({
     let lastX = 0;
     let lastY = 0;
     let isScrolling = false;
+    let lastSelectUpdate = 0;
     const handleMouseUpGlobal = () => {
       setDragMode('none');
       setDragStartRow(null);
@@ -1584,66 +1700,70 @@ const TableApp = ({
       }
       if (scrollX !== 0 || scrollY !== 0) {
         (wrapper as HTMLElement).scrollBy({ left: scrollX, top: scrollY });
-        const el = window.document.elementFromPoint(lastX, lastY);
-        if (el) {
-          const td = el.closest('td');
-          if (td) {
-            if (dragMode === 'cell' && dragStart) {
-              const rStr = td.getAttribute('data-r');
-              const cStr = td.getAttribute('data-c');
-              if (rStr && cStr) {
-                const r = parseInt(rStr, 10);
-                const c = parseInt(cStr, 10);
-                setSelection((prev) => {
-                  if (prev?.type === 'multi' && prev.ranges) {
-                    const lastRange = prev.ranges[prev.ranges.length - 1];
-                    if (lastRange.r2 === r && lastRange.c2 === c) {
+        const now = Date.now();
+        if (now - lastSelectUpdate > 50) {
+          lastSelectUpdate = now;
+          const el = window.document.elementFromPoint(lastX, lastY);
+          if (el) {
+            const td = el.closest('.sql-td');
+            if (td) {
+              if (dragMode === 'cell' && dragStart) {
+                const rStr = td.getAttribute('data-r');
+                const cStr = td.getAttribute('data-c');
+                if (rStr && cStr) {
+                  const r = parseInt(rStr, 10);
+                  const c = parseInt(cStr, 10);
+                  setSelection((prev) => {
+                    if (prev?.type === 'multi' && prev.ranges) {
+                      const lastRange = prev.ranges[prev.ranges.length - 1];
+                      if (lastRange.r2 === r && lastRange.c2 === c) {
+                        return prev;
+                      }
+                      const updatedRanges = [...prev.ranges];
+                      updatedRanges[updatedRanges.length - 1] = {
+                        r1: dragStart.r,
+                        c1: dragStart.c,
+                        r2: r,
+                        c2: c,
+                      };
+                      return { type: 'multi', ranges: updatedRanges };
+                    }
+                    if (
+                      prev?.type === 'range' &&
+                      prev.range?.r2 === r &&
+                      prev.range?.c2 === c
+                    ) {
                       return prev;
                     }
-                    const updatedRanges = [...prev.ranges];
-                    updatedRanges[updatedRanges.length - 1] = {
-                      r1: dragStart.r,
-                      c1: dragStart.c,
-                      r2: r,
-                      c2: c,
+                    return {
+                      type: 'range',
+                      range: { r1: dragStart.r, c1: dragStart.c, r2: r, c2: c },
                     };
-                    return { type: 'multi', ranges: updatedRanges };
-                  }
-                  if (
-                    prev?.type === 'range' &&
-                    prev.range?.r2 === r &&
-                    prev.range?.c2 === c
-                  ) {
-                    return prev;
-                  }
-                  return {
-                    type: 'range',
-                    range: { r1: dragStart.r, c1: dragStart.c, r2: r, c2: c },
-                  };
-                });
-              }
-            } else if (dragMode === 'row' && dragStartRow !== null) {
-              const rStr = td.getAttribute('data-row-index');
-              if (rStr) {
-                const r = parseInt(rStr, 10);
-                const minR = Math.min(dragStartRow, r);
-                const maxR = Math.max(dragStartRow, r);
-                setSelection((prev) => {
-                  if (
-                    prev?.type === 'row' &&
-                    prev.ids &&
-                    prev.ids.size === maxR - minR + 1 &&
-                    prev.ids.has(r) &&
-                    prev.ids.has(dragStartRow)
-                  ) {
-                    return prev;
-                  }
-                  const newIds = new Set<number>();
-                  for (let i = minR; i <= maxR; i++) {
-                    newIds.add(i);
-                  }
-                  return { type: 'row', ids: newIds };
-                });
+                  });
+                }
+              } else if (dragMode === 'row' && dragStartRow !== null) {
+                const rStr = td.getAttribute('data-row-index');
+                if (rStr) {
+                  const r = parseInt(rStr, 10);
+                  const minR = Math.min(dragStartRow, r);
+                  const maxR = Math.max(dragStartRow, r);
+                  setSelection((prev) => {
+                    if (
+                      prev?.type === 'row' &&
+                      prev.ids &&
+                      prev.ids.size === maxR - minR + 1 &&
+                      prev.ids.has(r) &&
+                      prev.ids.has(dragStartRow)
+                    ) {
+                      return prev;
+                    }
+                    const newIds = new Set<number>();
+                    for (let i = minR; i <= maxR; i++) {
+                      newIds.add(i);
+                    }
+                    return { type: 'row', ids: newIds };
+                  });
+                }
               }
             }
           }
@@ -1683,90 +1803,69 @@ const TableApp = ({
     }
   };
   const EMPTY_STYLE: React.CSSProperties = {};
-  const getCellSelectionStyle = (
-    r: number,
-    c: number,
-    colId: string,
-  ): React.CSSProperties => {
-    if (!selection) {
-      return EMPTY_STYLE;
-    }
-    let isSel = false;
-    let minR = -1,
-      maxR = -1,
-      minC = -1,
-      maxC = -1;
-    if (selection.type === 'all') {
-      isSel = true;
-      minR = 0;
-      maxR = tableRows.length - 1;
-      minC = 0;
-      maxC = visibleColumns.length - 1;
-    } else if (selection.type === 'row' && selection.ids?.has(r)) {
-      isSel = true;
-      minR = r;
-      maxR = r;
-      minC = 0;
-      maxC = visibleColumns.length - 1;
-    } else if (selection.type === 'col' && selection.ids?.has(colId)) {
-      isSel = true;
-      minR = 0;
-      maxR = tableRows.length - 1;
-      minC = visibleColumns.findIndex((col) => col.id === colId);
-      maxC = minC;
-    } else if (selection.type === 'range' && selection.range) {
-      const { r1, c1, r2, c2 } = selection.range;
-      if (
-        r >= Math.min(r1, r2) &&
-        r <= Math.max(r1, r2) &&
-        c >= Math.min(c1, c2) &&
-        c <= Math.max(c1, c2)
-      ) {
-        isSel = true;
-        minR = Math.min(r1, r2);
-        maxR = Math.max(r1, r2);
-        minC = Math.min(c1, c2);
-        maxC = Math.max(c1, c2);
-      }
-    } else if (selection.type === 'multi' && selection.ranges) {
-      for (const range of selection.ranges) {
-        const { r1, c1, r2, c2 } = range;
-        if (
-          r >= Math.min(r1, r2) &&
-          r <= Math.max(r1, r2) &&
-          c >= Math.min(c1, c2) &&
-          c <= Math.max(c1, c2)
-        ) {
-          isSel = true;
-          minR = Math.min(r1, r2);
-          maxR = Math.max(r1, r2);
-          minC = Math.min(c1, c2);
-          maxC = Math.max(c1, c2);
-          break;
+  const SELECTION_STYLES = useMemo(() => {
+    const styles: Record<number, React.CSSProperties> = {};
+    for (let top = 0; top < 2; top++) {
+      for (let bottom = 0; bottom < 2; bottom++) {
+        for (let left = 0; left < 2; left++) {
+          for (let right = 0; right < 2; right++) {
+            let shadows = [];
+            if (top) {shadows.push(`inset 0 1px 0 0 var(--selection-border)`);}
+            if (bottom) {shadows.push(`inset 0 -1px 0 0 var(--selection-border)`);}
+            if (left) {shadows.push(`inset 1px 0 0 0 var(--selection-border)`);}
+            if (right) {shadows.push(`inset -1px 0 0 0 var(--selection-border)`);}
+            const key = (top << 3) | (bottom << 2) | (left << 1) | right;
+            styles[key] = {
+              backgroundColor: 'var(--selection-bg-dim)',
+              boxShadow: shadows.length > 0 ? shadows.join(', ') : undefined,
+            };
+          }
         }
       }
     }
-    if (!isSel) {
-      return EMPTY_STYLE;
+    return styles;
+  }, []);
+
+  const selectionBoxes = useMemo(() => {
+    if (!selection) {return [];}
+    if (selection.type === 'all') {
+      return [{ minR: 0, maxR: tableRows.length - 1, minC: 0, maxC: visibleColumns.length - 1 }];
     }
-    let shadows = [];
-    const color = 'var(--selection-border)';
-    if (r === minR) {
-      shadows.push(`inset 0 1px 0 0 ${color}`);
+    if (selection.type === 'row' && selection.ids) {
+      return Array.from(selection.ids).map(r => ({ minR: r, maxR: r, minC: 0, maxC: visibleColumns.length - 1 }));
     }
-    if (r === maxR) {
-      shadows.push(`inset 0 -1px 0 0 ${color}`);
+    if (selection.type === 'col' && selection.ids) {
+      return Array.from(selection.ids).map(colId => {
+        const c = visibleColumns.findIndex((col) => col.id === colId);
+        return { minR: 0, maxR: tableRows.length - 1, minC: c, maxC: c };
+      });
     }
-    if (c === minC) {
-      shadows.push(`inset 1px 0 0 0 ${color}`);
+    if (selection.type === 'range' && selection.range) {
+      const { r1, c1, r2, c2 } = selection.range;
+      return [{ minR: Math.min(r1, r2), maxR: Math.max(r1, r2), minC: Math.min(c1, c2), maxC: Math.max(c1, c2) }];
     }
-    if (c === maxC) {
-      shadows.push(`inset -1px 0 0 0 ${color}`);
+    if (selection.type === 'multi' && selection.ranges) {
+      return selection.ranges.map(({ r1, c1, r2, c2 }) => ({
+        minR: Math.min(r1, r2), maxR: Math.max(r1, r2), minC: Math.min(c1, c2), maxC: Math.max(c1, c2)
+      }));
     }
-    return {
-      backgroundColor: 'var(--selection-bg-dim)',
-      boxShadow: shadows.length > 0 ? shadows.join(', ') : undefined,
-    };
+    return [];
+  }, [selection, tableRows.length, visibleColumns]);
+
+  const getCellSelectionStyle = (r: number, c: number, colId: string): React.CSSProperties => {
+    if (selectionBoxes.length === 0) {return EMPTY_STYLE;}
+
+    for (const box of selectionBoxes) {
+      if (r >= box.minR && r <= box.maxR && c >= box.minC && c <= box.maxC) {
+        const top = r === box.minR ? 1 : 0;
+        const bottom = r === box.maxR ? 1 : 0;
+        const left = c === box.minC ? 1 : 0;
+        const right = c === box.maxC ? 1 : 0;
+        const key = (top << 3) | (bottom << 2) | (left << 1) | right;
+        return SELECTION_STYLES[key];
+      }
+    }
+    return EMPTY_STYLE;
   };
   const exportCSV = () => {
     if (postMessage) {
@@ -1851,11 +1950,17 @@ const TableApp = ({
       );
     }
     const sql = `-- Exported from SQL Notebook Pro\n${chunks.join('\n\n')}`;
-    if (postMessage) {
-      postMessage({ type: 'export_sql', payload: { sql } });
-      setExportSqlText('⏳ Exporting...');
-      setTimeout(() => setExportSqlText('📝 To Insert'), 2000);
-    }
+    const blob = new Blob([sql], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${tableName}_export.sql`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    setExportSqlText('✅ Exported');
+    setTimeout(() => setExportSqlText('📝 To Insert'), 2000);
   };
   const generateUpdates = () => {
     const tableName = tableNameFromBackend;
@@ -1916,14 +2021,16 @@ const TableApp = ({
     if (updates.length > 0) {
       const finalSql = updates.join('\n');
       if (postMessage) {
-        postMessage({ type: 'apply_updates', payload: { sql: finalSql } });
+        setSaveBtnText('Saving...');
+        postMessage({ type: 'apply_updates', payload: { sql: finalSql, tableId: componentIdRef.current } });
+
         setSaveBtnText('✅ Saved!');
         const updatedRows = [...rows];
         Object.keys(editedRows).forEach((rIndexStr) => {
           const rIndex = parseInt(rIndexStr, 10);
           updatedRows[rIndex] = {
             ...(updatedRows[rIndex] as Record<string, any>),
-            ...editedRows[rIndex],
+            ...editedRows[rIndex as any],
           };
         });
         setRows(updatedRows);
@@ -1932,20 +2039,41 @@ const TableApp = ({
           setEditedRows({});
         }, 2000);
       }
+    } else {
+      setSaveBtnText('No Changes');
     }
   };
+
+  useEffect(() => {
+    if (!onDidReceiveMessage) {return;}
+    const disposable = onDidReceiveMessage((eventOrMessage: any) => {
+      const e = eventOrMessage.data ? eventOrMessage.data : eventOrMessage;
+      console.log('Received message in renderer:', e);
+      if (e.type === 'apply_updates_result') {
+        if (e.payload.tableId && e.payload.tableId !== componentIdRef.current) {
+          return;
+        }
+        if (!e.payload.success) {
+          setSaveBtnText('❌ Error');
+          setTimeout(() => setSaveBtnText('💾 Save Changes'), 3000);
+        }
+      }
+    });
+    return () => {
+      if (disposable && typeof (disposable as any).dispose === 'function') {
+        (disposable as any).dispose();
+      }
+    };
+  }, [onDidReceiveMessage]);
+
   const containerMinHeight = activeMenuId ? 360 : 'auto';
-  const indexWidth = useMemo(() => {
-    const digits = String(totalRowsFromBackend).length;
-    return Math.max(28, digits * 8 + 8);
-  }, [totalRowsFromBackend]);
   return (
     <div
+      ref={containerRef}
       className="sql-grid-container"
       style={
         {
           minHeight: containerMinHeight,
-          '--index-width': `${indexWidth}px`,
           '--selection-border': themeColor,
           '--selection-bg-dim': themeBgDim,
         } as React.CSSProperties
@@ -1964,12 +2092,15 @@ const TableApp = ({
         <div style={{ flex: 1 }} />
         {!isSelectNoRows && (
           <>
-            {Object.keys(editedRows).length > 0 && (
+            {(Object.keys(editedRows).length > 0 || ['Saving...', '✅ Saved!', '✔ Saved!', '❌ Error'].includes(saveBtnText)) && (
               <button
                 className="btn-action"
                 onClick={generateUpdates}
                 title="Generate UPDATE script"
-                style={{ color: '#d7ba7d', borderColor: '#d7ba7d' }}
+                style={{
+                  color: saveBtnText.includes('Error') ? '#f48771' : saveBtnText.includes('Saved') ? '#89d185' : '#d7ba7d',
+                  borderColor: saveBtnText.includes('Error') ? '#f48771' : saveBtnText.includes('Saved') ? '#89d185' : '#d7ba7d'
+                }}
               >
                 {saveBtnText}
               </button>
@@ -1998,65 +2129,45 @@ const TableApp = ({
       <div
         ref={tableWrapperRef}
         className="table-wrapper"
-        tabIndex={-1}
-        onScroll={(e) => {
-          if (shouldVirtualize || shouldVirtualizeCols) {
-            const currentScrollTop = (e.currentTarget as HTMLElement).scrollTop;
-            const currentScrollLeft = (e.currentTarget as HTMLElement)
-              .scrollLeft;
-            if (scrollRafRef.current) {
-              window.cancelAnimationFrame(scrollRafRef.current);
-            }
-            scrollRafRef.current = window.requestAnimationFrame(() => {
-              setScrollTop(currentScrollTop);
-              setScrollLeft(currentScrollLeft);
-            });
-          }
-        }}
+        tabIndex={0}
+        onKeyDown={handleTableKeyDown}
       >
-        <table
+        <div role="table" className="sql-grid-table"
           style={{
-            width: `calc(${table.getTotalSize()}px + var(--index-width, 45px))`,
+            gridTemplateColumns: `max-content ${visibleColumns
+              .map((column) => {
+                const isResized = table.getState().columnSizing[column.id] !== undefined;
+                return isResized ? `${column.getSize()}px` : `minmax(min-content, 1fr)`;
+              })
+              .join(' ')}`,
           }}
         >
-          <colgroup>
-            <col style={{ width: 'var(--index-width, 45px)' }} />
-            {leftSpacerWidth > 0 && <col style={{ width: leftSpacerWidth }} />}
-            {renderedColumnsInfo.map((cInfo) => (
-              <col key={cInfo.column.id} style={{ width: cInfo.width }} />
-            ))}
-            {rightSpacerWidth > 0 && (
-              <col style={{ width: rightSpacerWidth }} />
-            )}
-          </colgroup>
-          <thead>
+          <div role="rowgroup" className="sql-thead">
             {table.getHeaderGroups().map((hg) => (
-              <tr key={hg.id}>
-                <th className="corner-header" onClick={handleCornerClick}>
+              <div role="row" className="sql-tr" key={hg.id}>
+                <div role="columnheader" className="sql-th corner-header" onClick={handleCornerClick}>
                   ◢
-                </th>
-                {leftSpacerWidth > 0 && <th className="virtual-spacer-cell" />}
-                {renderedColumnsInfo.map((cInfo) => {
+                </div>
+                {visibleColumns.map((column) => {
                   const header = hg.headers.find(
-                    (h) => h.column.id === cInfo.column.id,
+                    (h) => h.column.id === column.id,
                   );
                   if (!header) {
                     return null;
                   }
-                  const customWidth = cInfo.width;
+                  const customWidth = column.getSize();
                   return (
-                    <th
+                    <div
+                      role="columnheader"
                       key={header.id}
-                      className={
+                      className={`sql-th${
                         selection &&
                         selection.type === 'col' &&
                         selection.ids?.has(header.id)
-                          ? 'selected-bg'
+                          ? ' selected-bg'
                           : ''
-                      }
+                      }`}
                       style={{
-                        width: customWidth,
-                        minWidth: customWidth,
                         position: 'relative',
                       }}
                     >
@@ -2136,11 +2247,11 @@ const TableApp = ({
                             const headerText =
                               titleSpan?.textContent ||
                               String(header.column.id);
-                            ctx.font = '600 13px "Segoe UI", sans-serif';
+                            ctx.font = '600 13px var(--vscode-editor-font-family, Consolas), monospace';
                             const headerTextWidth =
                               ctx.measureText(headerText).width;
-                            const finalHeaderWidth = headerTextWidth + 70;
-                            ctx.font = '13px "Segoe UI", sans-serif';
+                            const finalHeaderWidth = headerTextWidth + 40;
+                            ctx.font = '13px var(--vscode-editor-font-family, Consolas), monospace';
                             let textWidthData = 0;
                             const rowsToScan = tableRows.slice(0, 500);
                             for (const r of rowsToScan) {
@@ -2156,9 +2267,9 @@ const TableApp = ({
                                 }
                               }
                             }
-                            const finalDataWidth = textWidthData + 25;
+                            const finalDataWidth = textWidthData + 20;
                             const newWidth = Math.min(
-                              800,
+                              400,
                               Math.max(60, finalHeaderWidth, finalDataWidth),
                             );
                             setColumnSizing((old) => ({
@@ -2171,16 +2282,15 @@ const TableApp = ({
                           title="Drag to resize, Double-click to auto-fit"
                         />
                       </div>
-                    </th>
+                    </div>
                   );
                 })}
-                {rightSpacerWidth > 0 && <th className="virtual-spacer-cell" />}
-              </tr>
+              </div>
             ))}
-          </thead>
-          <tbody
+          </div>
+          <div role="rowgroup" className="sql-tbody"
             onMouseDown={(e) => {
-              const td = (e.target as HTMLElement).closest('td');
+              const td = (e.target as HTMLElement).closest('.sql-td');
               if (!td) {
                 return;
               }
@@ -2202,7 +2312,7 @@ const TableApp = ({
               }
             }}
             onMouseOver={(e) => {
-              const td = (e.target as HTMLElement).closest('td');
+              const td = (e.target as HTMLElement).closest('.sql-td');
               if (!td) {
                 return;
               }
@@ -2220,39 +2330,33 @@ const TableApp = ({
               }
             }}
           >
-            {shouldVirtualize && topSpacerHeight > 0 && (
-              <tr aria-hidden="true">
-                <td
-                  className="virtual-spacer-cell"
-                  colSpan={colSpanCount}
-                  style={{ height: `${topSpacerHeight}px` }}
+            {virtualRows.length > 0 && topSpacerHeight > 0 && (
+              <div role="row" className="sql-tr" aria-hidden="true">
+                <div role="cell" className="sql-td virtual-spacer-cell"
+                  style={{ height: `${topSpacerHeight}px`, minHeight: `${topSpacerHeight}px`, maxHeight: `${topSpacerHeight}px`, gridColumn: '1 / -1' }}
                 />
-              </tr>
+              </div>
             )}
-            {renderedRows.map((row, localIndex) => {
-              const rIndex = shouldVirtualize
-                ? startIndex + localIndex
-                : localIndex;
+            {virtualRows.map((virtualRow) => {
+              const rIndex = virtualRow.index;
+              const row = tableRows[rIndex];
               const isRowSelected =
                 selection &&
                 selection.type === 'row' &&
                 selection.ids?.has(rIndex);
 
               return (
-                <tr key={row.id}>
+                <div role="row" className="sql-tr" key={row.id}>
                   <MemoRowIndex rIndex={rIndex} isSelected={isRowSelected} />
-                  {leftSpacerWidth > 0 && (
-                    <td className="virtual-spacer-cell" />
-                  )}
-                  {renderedColumnsInfo.map((cInfo) => {
-                    const cell = row.getVisibleCells()[cInfo.index];
+                  {visibleColumns.map((column, colIndex) => {
+                    const cell = row.getVisibleCells()[colIndex];
                     if (!cell) {
                       return null;
                     }
-                    const customWidth = cInfo.width;
+                    const customWidth = column.getSize();
                     const selectionStyle = getCellSelectionStyle(
                       rIndex,
-                      cInfo.index,
+                      colIndex,
                       cell.column.id,
                     );
                     const isEdited =
@@ -2262,7 +2366,7 @@ const TableApp = ({
                         key={cell.id}
                         cell={cell}
                         rIndex={rIndex}
-                        cIndex={cInfo.index}
+                        cIndex={colIndex}
                         colId={cell.column.id}
                         customWidth={customWidth}
                         selectionStyle={selectionStyle}
@@ -2270,23 +2374,18 @@ const TableApp = ({
                       />
                     );
                   })}
-                  {rightSpacerWidth > 0 && (
-                    <td className="virtual-spacer-cell" />
-                  )}
-                </tr>
+                </div>
               );
             })}
-            {shouldVirtualize && bottomSpacerHeight > 0 && (
-              <tr aria-hidden="true">
-                <td
-                  className="virtual-spacer-cell"
-                  colSpan={colSpanCount}
-                  style={{ height: `${bottomSpacerHeight}px` }}
+            {virtualRows.length > 0 && bottomSpacerHeight > 0 && (
+              <div role="row" className="sql-tr" aria-hidden="true">
+                <div role="cell" className="sql-td virtual-spacer-cell"
+                  style={{ height: `${bottomSpacerHeight}px`, minHeight: `${bottomSpacerHeight}px`, maxHeight: `${bottomSpacerHeight}px`, gridColumn: '1 / -1' }}
                 />
-              </tr>
+              </div>
             )}
-          </tbody>
-        </table>
+          </div>
+        </div>
       </div>
     </div>
   );
@@ -2319,7 +2418,7 @@ const ExecutionPlanApp: React.FC<{ data: any }> = ({ data }) => {
       }
     }
 
-    const isExpanded = expanded[id] !== false; // default true
+    const isExpanded = expanded[id] !== false;
 
     return (
       <div key={id} style={{ marginLeft: depth > 0 ? '20px' : '0', marginTop: '8px', fontFamily: 'var(--vscode-editor-font-family, monospace)', fontSize: '12px' }}>
@@ -2392,7 +2491,7 @@ export const activate: ActivationFunction = (context) => {
       if (json && json.isExplainPlan) {
         root.render(<ExecutionPlanApp data={json} />);
       } else {
-        root.render(<TableApp data={json} postMessage={context.postMessage} />);
+        root.render(<TableApp data={json} postMessage={context.postMessage} onDidReceiveMessage={context.onDidReceiveMessage} />);
       }
     },
     disposeOutputItem(id) {

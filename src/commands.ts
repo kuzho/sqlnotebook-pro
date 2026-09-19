@@ -166,7 +166,7 @@ export function scriptCreate(kernelManager: KernelManager) {
     const schema = item.tableSchema.schema;
     const table = item.tableSchema.table;
     const fullTableName = schema ? `${schema}.${table}` : table;
-    
+
     let query = '';
     if (item.tableSchema.type === 'view') {
       query = `-- Definition of view ${fullTableName}\nCREATE VIEW ${fullTableName} AS\nSELECT * FROM ...; -- (Modify this)`;
@@ -197,7 +197,7 @@ export function scriptDrop(kernelManager: KernelManager) {
     const fullTableName = schema ? `${schema}.${table}` : table;
     const isView = item.tableSchema.type === 'view';
     const keyword = isView ? 'VIEW' : 'TABLE';
-    
+
     const query = `DROP ${keyword} IF EXISTS ${fullTableName};`;
     const cellData = new vscode.NotebookCellData(vscode.NotebookCellKind.Code, query, 'sql');
     const nbData = new vscode.NotebookData([cellData]);
@@ -216,7 +216,7 @@ export function scriptInsert(kernelManager: KernelManager) {
     const fullTableName = schema ? `${schema}.${table}` : table;
     const columns = item.tableSchema.columns || [];
     const placeholders = columns.map(() => '?').join(', ');
-    
+
     const query = `INSERT INTO ${fullTableName} (${columns.join(', ')}) \nVALUES (${placeholders});`;
     const cellData = new vscode.NotebookCellData(vscode.NotebookCellKind.Code, query, 'sql');
     const nbData = new vscode.NotebookData([cellData]);
@@ -285,7 +285,7 @@ export function insertIntoActiveCell() {
       textToInsert = item.label.toString();
     }
 
-    if (!textToInsert) return;
+    if (!textToInsert) {return;}
 
     const editor = vscode.window.activeTextEditor;
     if (editor) {

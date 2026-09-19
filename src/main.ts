@@ -549,23 +549,19 @@ export function activate(context: vscode.ExtensionContext) {
         const editor = vscode.window.activeNotebookEditor;
         if (editor) {
           const sql = message.payload.sql;
-          vscode.window.withProgress(
-            {
-              location: vscode.ProgressLocation.Notification,
-              title: 'Applying updates...',
-              cancellable: false,
-            },
-            async () => {
-              try {
-                await kernelManager.runBackgroundQuery(
-                  editor.notebook.uri.toString(),
-                  sql,
-                );
-              } catch (err: any) {
-                vscode.window.showErrorMessage(`Background query failed: ${err.message || err}`);
-              }
-            },
-          );
+          const tableId = message.payload.tableId;
+          (async () => {
+            try {
+              await kernelManager.runBackgroundQuery(
+                editor.notebook.uri.toString(),
+                sql,
+              );
+              messaging.postMessage({ type: 'apply_updates_result', payload: { success: true, tableId } });
+            } catch (err: any) {
+              vscode.window.showErrorMessage(`Background query failed: ${err.message || err}`);
+              messaging.postMessage({ type: 'apply_updates_result', payload: { success: false, tableId, error: err.message || String(err) } });
+            }
+          })();
         }
       }
     }),
@@ -1728,7 +1724,6 @@ async function openReportBuilder(
         `Dashboard "${message.payload.name}" saved!`,
       );
     } else if (message.type === 'remove_dataset') {
-      // Legacy handler: keep for backward compatibility (no-op now)
     } else if (message.type === 'update_datasets') {
       try {
         const reportName = message.payload?.reportName;
@@ -2160,7 +2155,6 @@ async function handleOpenReport(
           let rows = Array.isArray(tableData) ? tableData : (tableData.rows || []);
           if (rows.length === 0) return;
 
-          // Always use the computed color of .dataset-title (table header)
           let textColor = '#222';
           let bgColor = '#fff';
           try {
@@ -2174,7 +2168,6 @@ async function handleOpenReport(
             }
           } catch {}
 
-          // Heuristic: if text is very light or background is very dark, treat as dark theme
           function isColorDark(rgb) {
             if (!rgb) return false;
             let r=255,g=255,b=255;
@@ -2188,19 +2181,16 @@ async function handleOpenReport(
                 r = parseInt(rgb.substr(1,2),16); g = parseInt(rgb.substr(3,2),16); b = parseInt(rgb.substr(5,2),16);
               }
             }
-            // Perceived brightness
             return (r*0.299 + g*0.587 + b*0.114) < 140;
           }
           const darkTheme = isColorDark(bgColor) || !isColorDark(textColor);
 
-          // Vibrant palettes for both themes
           const paletteLight = ['#0078d4', '#28a745', '#ffc107', '#dc3545', '#6610f2', '#e83e8c', '#17a2b8', '#6f42c1', '#fd7e14', '#20c997'];
           const paletteDark  = ['#4fc3f7', '#81c784', '#ffd54f', '#ff8a65', '#ba68c8', '#f06292', '#4dd0e1', '#9575cd', '#ffb74d', '#aed581'];
           const palette = darkTheme ? paletteDark : paletteLight;
           const isDark = darkTheme;
           const borderColorBarPie = isDark ? '#222' : '#fff';
 
-          // Auto multi-series detection for bar/line
           let columns = [];
           if (tableData && !Array.isArray(tableData) && tableData.columns) {
             columns = tableData.columns;
@@ -2214,7 +2204,6 @@ async function handleOpenReport(
           let datasets = [];
 
           if (type === 'pie' && columns.length >= 2) {
-            // Pie: col0=label, col1=value
             chartLabels = rows.map(r => String(Array.isArray(r) ? r[0] : (r[columns[0]])));
             const data = rows.map(r => {
               const val = Array.isArray(r) ? r[1] : r[columns[1]];
@@ -2230,17 +2219,14 @@ async function handleOpenReport(
             }];
           }
           else if ((type === 'bar' || type === 'line') && columns.length >= 3) {
-            // Multi-series: col0=X, col1=series, col2=valor
             const xCol = columns[0];
             const seriesCol = columns[1];
             const valueCol = columns[2];
 
-            // Build set of unique X and series values
             const xVals = Array.from(new Set(rows.map(r => Array.isArray(r) ? r[0] : r[xCol])));
             const seriesVals = Array.from(new Set(rows.map(r => Array.isArray(r) ? r[1] : r[seriesCol])));
             chartLabels = xVals.map(String);
 
-            // Build a map: {serie: {x: valor}}
             const dataMap = {};
             rows.forEach(r => {
               const x = Array.isArray(r) ? r[0] : r[xCol];
@@ -2271,7 +2257,6 @@ async function handleOpenReport(
               return ds;
             });
           } else {
-            // Single series fallback
             let valueCol = columns[1] || 'Value';
             chartLabels = rows.map(r => String(Array.isArray(r) ? r[0] : Object.values(r)[0]));
             const data = rows.map(r => {
@@ -2330,7 +2315,6 @@ async function handleOpenReport(
             }
           }));
 
-          // Inject CSS for legend strikethrough color inversion
           setTimeout(() => {
             let styleTag = document.getElementById('chartjs-legend-strike-style');
             if (!styleTag) {

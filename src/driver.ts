@@ -75,7 +75,7 @@ export async function getPool(c: PoolConfig & any): Promise<Pool> {
       dstAddr: c.host,
       dstPort: c.port,
     };
-    
+
     try {
       const [server] = await createTunnel(tunnelOptions, serverOptions, sshOptions, forwardOptions);
       tunnelServer = server;

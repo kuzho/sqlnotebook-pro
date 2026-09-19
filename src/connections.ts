@@ -421,10 +421,10 @@ export class SchemaItem extends vscode.TreeItem {
     const procCount = objects.filter((o) => o.type === 'procedure').length;
     const funcCount = objects.filter((o) => o.type === 'function').length;
     const parts: string[] = [];
-    if (tableCount) parts.push(`${tableCount} tbls`);
-    if (viewCount) parts.push(`${viewCount} views`);
-    if (procCount) parts.push(`${procCount} procs`);
-    if (funcCount) parts.push(`${funcCount} funcs`);
+    if (tableCount) {parts.push(`${tableCount} tbls`);}
+    if (viewCount) {parts.push(`${viewCount} views`);}
+    if (procCount) {parts.push(`${procCount} procs`);}
+    if (funcCount) {parts.push(`${funcCount} funcs`);}
     this.description = parts.join(', ') || `${objects.length} items`;
     this.tooltip = `Schema: ${schemaName} (${objects.length} total objects)`;
   }

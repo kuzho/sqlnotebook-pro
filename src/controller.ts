@@ -496,10 +496,10 @@ export class SQLNotebookKernel {
           info.primaryKeys = primaryKeys;
         }
         if (isExplainPlan) {
-          const jsonPayload = { 
-             isExplainPlan: true, 
-             driver: this.config.driver, 
-             data: rows 
+          const jsonPayload = {
+             isExplainPlan: true,
+             driver: this.config.driver,
+             data: rows
           };
           newOutputs.push(
             new vscode.NotebookCellOutput([

@@ -1,5 +1,16 @@
 # Change Log
 
+## [3.5.1]
+
+### 🐛 Bug Fixes & UX Improvements
+
+- **Robust Inline Editing:** Refactored the data grid's internal state management. Edits now persist visually without race conditions (no "visual revert" bugs).
+- **Keyboard Navigation:** Improved data grid navigation by allowing the `Tab` key to quickly save the current cell and advance to the next cell. Pressing `Enter` or `Escape` returns focus to the grid cleanly.
+- **Isolated Error States:** Fixed a bug where a background save error on a specific data grid erroneously displayed an error state across all active tables in the notebook.
+- **Enhanced Column Resizing:**
+  - **Manual Resize Fix:** Manually resizing a column now locks its width explicitly rather than snapping back to fill the remaining table space, offering an Excel-like experience.
+  - **Auto-fit Accuracy:** Double-clicking a column divider to auto-fit now uses the accurate editor font metrics (Consolas/monospace) instead of a generic UI font, preventing excessive expansion, and includes a reasonable upper width limit.
+
 ## [3.5.0]
 
 ### ✨ Major Features & The "Complete IDE" Update

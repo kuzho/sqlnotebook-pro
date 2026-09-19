@@ -1920,7 +1920,7 @@ export class SqlHoverProvider implements vscode.HoverProvider {
 
   async provideHover(document: vscode.TextDocument, position: vscode.Position, token: vscode.CancellationToken): Promise<vscode.Hover | null> {
     const wordRange = document.getWordRangeAtPosition(position);
-    if (!wordRange) return null;
+    if (!wordRange) {return null;}
     const word = document.getText(wordRange);
 
     const schema = this.completionProvider.getConsolidatedSchema();
@@ -1936,11 +1936,11 @@ export class SqlHoverProvider implements vscode.HoverProvider {
              const type = t.columnTypes?.[c] || 'unknown';
              msString.appendMarkdown(`- \`${c}\`: *${type}*\n`);
           });
-          if (pkStr) msString.appendMarkdown(`\n${pkStr}`);
-          if (fkStr) msString.appendMarkdown(`${fkStr}`);
+          if (pkStr) {msString.appendMarkdown(`\n${pkStr}`);}
+          if (fkStr) {msString.appendMarkdown(`${fkStr}`);}
           return new vscode.Hover(msString);
         }
-        
+
         const cIdx = t.columns.findIndex(c => c.toLowerCase() === word.toLowerCase());
         if (cIdx !== -1) {
            const type = t.columnTypes?.[t.columns[cIdx]] || 'unknown';
@@ -1953,8 +1953,8 @@ export class SqlHoverProvider implements vscode.HoverProvider {
 }
 
 export function refreshDiagnostics(
-  doc: vscode.TextDocument, 
-  diagnosticCollection: vscode.DiagnosticCollection, 
+  doc: vscode.TextDocument,
+  diagnosticCollection: vscode.DiagnosticCollection,
   completionProvider: SqlCompletionItemProvider
 ) {
   if (doc.languageId !== 'sql') {
@@ -1962,13 +1962,13 @@ export function refreshDiagnostics(
   }
   const diagnostics: vscode.Diagnostic[] = [];
   const text = doc.getText();
-  
+
   const tablesInQuery = completionProvider.getTablesInQuery(text);
   if (tablesInQuery.size === 0) {
     diagnosticCollection.set(doc.uri, []);
     return;
   }
-  
+
   const schema = completionProvider.getConsolidatedSchema();
   if (schema.size === 0) {
     return;
@@ -2000,7 +2000,7 @@ export function refreshDiagnostics(
       }
     }
   }
-  
+
   diagnosticCollection.set(doc.uri, diagnostics);
 }
 

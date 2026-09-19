@@ -7,7 +7,7 @@
   "repository": {
     "url": "https://github.com/kuzho/sqlnotebook-pro.git"
   },
-  "version": "3.5.0",
+  "version": "3.5.1",
   "preview": false,
   "engines": {
     "vscode": "^1.95.0",
@@ -589,6 +589,7 @@
   },
   "dependencies": {
     "@tanstack/react-table": "^8.21.3",
+    "@tanstack/react-virtual": "^3.14.13",
     "@trinodb/trino-js-client": "^0.3.2",
     "@vscode/webview-ui-toolkit": "^1.4.0",
     "flatpickr": "^4.6.13",
