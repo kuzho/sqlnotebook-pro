@@ -139,13 +139,15 @@ const Form: React.FC<{
               config.multipleStatements !== undefined
                 ? !!config.multipleStatements
                 : true,
-            encrypt:
-              config.encrypt !== undefined ? !!config.encrypt : true,
+            encrypt: config.encrypt !== undefined ? !!config.encrypt : true,
             trustServerCertificate: !!config.trustServerCertificate,
             legacyTls10: !!config.legacyTls10,
             enableSsh: !!config.enableSsh,
             sshHost: config.sshHost || '',
-            sshPort: config.sshPort !== undefined && config.sshPort !== null ? String(config.sshPort) : '22',
+            sshPort:
+              config.sshPort !== undefined && config.sshPort !== null
+                ? String(config.sshPort)
+                : '22',
             sshUser: config.sshUser || '',
             sshKey: config.sshKey || '',
             sshPassword: '',
@@ -249,7 +251,15 @@ const Form: React.FC<{
           </VSCodeCheckbox>
 
           {formData.enableSsh && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '15px', paddingLeft: '15px', borderLeft: '2px solid var(--vscode-focusBorder)' }}>
+            <div
+              style={{
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '15px',
+                paddingLeft: '15px',
+                borderLeft: '2px solid var(--vscode-focusBorder)',
+              }}
+            >
               <TextOption
                 label="SSH Host"
                 objectKey="sshHost"

@@ -31,17 +31,12 @@ export function extractAttachmentsFromMarkdown(markdown: string): {
     const base64 = match[4];
     const filename = nextAvailableName(sanitize(alt), match[3]);
     attachments[filename] = { [mime]: base64 };
-    // Replace with attachment link
     result = result.replace(match[0], `![${alt}](attachment:${filename})`);
     imgCount++;
   }
   return { markdown: result, attachments };
 }
 
-/**
- * Rewrites markdown to use base64 data URIs from attachments.
- * Used for rendering or exporting to other formats.
- */
 export function injectAttachmentsIntoMarkdown(
   markdown: string,
   attachments: Record<string, Record<string, string>>,

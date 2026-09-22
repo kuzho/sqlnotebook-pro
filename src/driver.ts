@@ -24,7 +24,32 @@ export type TableSchema = {
   schema?: string;
   foreignKeys?: ForeignKey[];
   primaryKeys?: string[];
-  type?: 'table' | 'view' | 'procedure' | 'function';
+  indexes?: string[];
+  triggers?: string[];
+  keys?: { name: string; type: string }[];
+  constraints?: string[];
+  statistics?: string[];
+  type?:
+    | 'table'
+    | 'view'
+    | 'procedure'
+    | 'function'
+    | 'user'
+    | 'role'
+    | 'login'
+    | 'synonym'
+    | 'sequence'
+    | 'type'
+    | 'database_trigger'
+    | 'system_table'
+    | 'system_view'
+    | 'index'
+    | 'table_trigger'
+    | 'schema'
+    | 'agent_job'
+    | 'linked_server'
+    | 'server_trigger'
+    | 'endpoint';
 };
 export type ForeignKey = {
   table: string;
@@ -38,6 +63,23 @@ export interface Pool {
   getConnection: () => Promise<Conn>;
   end: () => void;
   getSchema: () => Promise<TableSchema[]>;
+
+  getTables?: () => Promise<TableSchema[]>;
+  getViews?: () => Promise<TableSchema[]>;
+  getProgrammability?: () => Promise<TableSchema[]>;
+  getSecurity?: () => Promise<TableSchema[]>;
+  getLogins?: () => Promise<TableSchema[]>;
+  getIndexes?: (table: string, schema?: string) => Promise<string[]>;
+  getTableTriggers?: (table: string, schema?: string) => Promise<string[]>;
+  getAgentJobs?: () => Promise<TableSchema[]>;
+  getLinkedServers?: () => Promise<TableSchema[]>;
+  getServerObjects?: () => Promise<TableSchema[]>;
+  getKeys?: (
+    table: string,
+    schema?: string,
+  ) => Promise<{ name: string; type: string }[]>;
+  getConstraints?: (table: string, schema?: string) => Promise<string[]>;
+  getStatistics?: (table: string, schema?: string) => Promise<string[]>;
 }
 export type ExecutionResult = TabularResult[];
 export type TableData = {
@@ -77,7 +119,12 @@ export async function getPool(c: PoolConfig & any): Promise<Pool> {
     };
 
     try {
-      const [server] = await createTunnel(tunnelOptions, serverOptions, sshOptions, forwardOptions);
+      const [server] = await createTunnel(
+        tunnelOptions,
+        serverOptions,
+        sshOptions,
+        forwardOptions,
+      );
       tunnelServer = server;
       c.host = '127.0.0.1';
       c.port = (server?.address() as any)?.port;
@@ -89,15 +136,20 @@ export async function getPool(c: PoolConfig & any): Promise<Pool> {
   let pool: Pool;
   switch (c.driver) {
     case 'mysql':
-      pool = await createMySQLPool(c); break;
+      pool = await createMySQLPool(c);
+      break;
     case 'mssql':
-      pool = await createMSSQLPool(c); break;
+      pool = await createMSSQLPool(c);
+      break;
     case 'postgres':
-      pool = await createPostgresPool(c); break;
+      pool = await createPostgresPool(c);
+      break;
     case 'sqlite':
-      pool = await createSqLitePool(c); break;
+      pool = await createSqLitePool(c);
+      break;
     case 'trino':
-      pool = await createTrinoPool(c); break;
+      pool = await createTrinoPool(c);
+      break;
     default:
       throw Error('invalid driver key');
   }
@@ -105,8 +157,12 @@ export async function getPool(c: PoolConfig & any): Promise<Pool> {
   if (tunnelServer) {
     const originalEnd = pool.end;
     pool.end = () => {
-      try { originalEnd.call(pool); } catch (e) {}
-      try { tunnelServer.close(); } catch (e) {}
+      try {
+        originalEnd.call(pool);
+      } catch (e) {}
+      try {
+        tunnelServer.close();
+      } catch (e) {}
     };
   }
   return pool;
@@ -169,7 +225,9 @@ function sqlitePool(pool: SqliteDatabase, dbFile?: string): Pool {
         if (resTables.length && resTables[0].values) {
           for (const row of resTables[0].values) {
             const tableName = row[0] as string;
-            const resCols = pool.exec(`PRAGMA table_info("${tableName.replace(/"/g, '""')}")`);
+            const resCols = pool.exec(
+              `PRAGMA table_info("${tableName.replace(/"/g, '""')}")`,
+            );
             const columns: string[] = [];
             const columnTypes: Record<string, string> = {};
             const primaryKeys: string[] = [];
@@ -200,7 +258,9 @@ function sqlitePool(pool: SqliteDatabase, dbFile?: string): Pool {
         if (resViews.length && resViews[0].values) {
           for (const row of resViews[0].values) {
             const viewName = row[0] as string;
-            const resCols = pool.exec(`PRAGMA table_info("${viewName.replace(/"/g, '""')}")`);
+            const resCols = pool.exec(
+              `PRAGMA table_info("${viewName.replace(/"/g, '""')}")`,
+            );
             const columns: string[] = [];
             const columnTypes: Record<string, string> = {};
             if (resCols.length && resCols[0].values) {
@@ -637,6 +697,19 @@ function postgresPool(pool: any, queryTimeout: number): Pool {
             type: r.routine_type === 'PROCEDURE' ? 'procedure' : 'function',
           });
         });
+
+        const rolesRes = await pool.query(`
+          SELECT rolname, rolcanlogin
+          FROM pg_roles
+        `);
+        rolesRes.rows.forEach((r: any) => {
+          map.set(`__login_${r.rolname}`, {
+            table: r.rolname,
+            columns: [],
+            schema: '',
+            type: 'login',
+          });
+        });
         return Array.from(map.values());
       } catch (e) {
         console.error('Error fetching postgres schema', e);
@@ -684,13 +757,19 @@ function mssqlPool(pool: mssql.ConnectionPool): Pool {
     },
     async getSchema(): Promise<TableSchema[]> {
       try {
-        // Tables and Views
         const res = await pool.query(`
           SELECT t.TABLE_NAME, c.COLUMN_NAME, c.DATA_TYPE, t.TABLE_SCHEMA, t.TABLE_TYPE
           FROM INFORMATION_SCHEMA.COLUMNS c
           JOIN INFORMATION_SCHEMA.TABLES t ON c.TABLE_SCHEMA = t.TABLE_SCHEMA AND c.TABLE_NAME = t.TABLE_NAME
         `);
-        // Foreign Keys
+
+        const sysObjRes = await pool.query(`
+          SELECT sch.name AS schema_name, o.name AS object_name, o.type
+          FROM sys.objects o
+          JOIN sys.schemas sch ON o.schema_id = sch.schema_id
+          WHERE o.is_ms_shipped = 1 AND o.type IN ('U', 'V')
+        `);
+
         const fkRes = await pool.query(`
           SELECT
             sch.name AS table_schema,
@@ -707,7 +786,7 @@ function mssqlPool(pool: mssql.ConnectionPool): Pool {
           JOIN sys.schemas ref_sch ON rt.schema_id = ref_sch.schema_id
           JOIN sys.columns rc ON fkc.referenced_object_id = rc.object_id AND fkc.referenced_column_id = rc.column_id
         `);
-        // Primary Keys
+
         const pkRes = await pool.query(`
           SELECT
             sch.name AS table_schema,
@@ -720,11 +799,73 @@ function mssqlPool(pool: mssql.ConnectionPool): Pool {
           JOIN sys.schemas sch ON t.schema_id = sch.schema_id
           WHERE i.is_primary_key = 1
         `);
-        // Procedures and Functions
+
+        const idxRes = await pool.query(`
+          SELECT
+            sch.name AS table_schema,
+            t.name AS table_name,
+            i.name AS index_name
+          FROM sys.indexes i
+          JOIN sys.tables t ON i.object_id = t.object_id
+          JOIN sys.schemas sch ON t.schema_id = sch.schema_id
+          WHERE i.is_primary_key = 0 AND i.type > 0
+        `);
+
+        const trgRes = await pool.query(`
+          SELECT
+            sch.name AS table_schema,
+            t.name AS table_name,
+            tr.name AS trigger_name
+          FROM sys.triggers tr
+          JOIN sys.tables t ON tr.parent_id = t.object_id
+          JOIN sys.schemas sch ON t.schema_id = sch.schema_id
+        `);
+
         const routinesRes = await pool.query(`
           SELECT SPECIFIC_NAME, ROUTINE_TYPE, ROUTINE_SCHEMA
           FROM INFORMATION_SCHEMA.ROUTINES
         `);
+
+        const secRes = await pool.query(`
+          SELECT name, type, type_desc
+          FROM sys.database_principals
+          WHERE type IN ('S', 'U', 'R', 'G')
+        `);
+
+        let loginsRes: any = { recordset: [] };
+        try {
+          loginsRes = await pool.query(`
+             SELECT name, type_desc, is_disabled
+             FROM sys.server_principals
+             WHERE type IN ('S', 'U', 'G')
+           `);
+        } catch (e) {}
+
+        const synRes = await pool.query(`
+          SELECT sch.name AS schema_name, s.name AS synonym_name
+          FROM sys.synonyms s
+          JOIN sys.schemas sch ON s.schema_id = sch.schema_id
+        `);
+
+        const seqRes = await pool.query(`
+          SELECT sch.name AS schema_name, s.name AS sequence_name
+          FROM sys.sequences s
+          JOIN sys.schemas sch ON s.schema_id = sch.schema_id
+        `);
+
+        const typRes = await pool.query(`
+          SELECT sch.name AS schema_name, t.name AS type_name
+          FROM sys.types t
+          JOIN sys.schemas sch ON t.schema_id = sch.schema_id
+          WHERE t.is_user_defined = 1
+        `);
+
+        const dbTrgRes = await pool.query(`
+          SELECT name AS trigger_name
+          FROM sys.triggers
+          WHERE parent_class_desc = 'DATABASE'
+        `);
+
         const map = new Map<string, TableSchema>();
         res.recordset.forEach((r: any) => {
           const key = r.TABLE_NAME;
@@ -773,9 +914,230 @@ function mssqlPool(pool: mssql.ConnectionPool): Pool {
             type: r.ROUTINE_TYPE === 'PROCEDURE' ? 'procedure' : 'function',
           });
         });
+        idxRes.recordset.forEach((r: any) => {
+          if (map.has(r.table_name)) {
+            map.get(r.table_name)!.indexes =
+              map.get(r.table_name)!.indexes || [];
+            map.get(r.table_name)!.indexes!.push(r.index_name);
+          }
+        });
+        trgRes.recordset.forEach((r: any) => {
+          if (map.has(r.table_name)) {
+            map.get(r.table_name)!.triggers =
+              map.get(r.table_name)!.triggers || [];
+            map.get(r.table_name)!.triggers!.push(r.trigger_name);
+          }
+        });
+        secRes.recordset.forEach((r: any) => {
+          map.set(`__security_${r.name}`, {
+            table: r.name,
+            columns: [],
+            type: r.type === 'R' ? 'role' : 'user',
+          });
+        });
+
+        sysObjRes.recordset.forEach((r: any) => {
+          const key = r.object_name;
+          if (map.has(key)) {
+            const obj = map.get(key)!;
+            if (obj.type === 'table') obj.type = 'system_table';
+            if (obj.type === 'view') obj.type = 'system_view';
+          }
+        });
+        synRes.recordset.forEach((r: any) => {
+          map.set(`__synonym_${r.schema_name}.${r.synonym_name}`, {
+            table: r.synonym_name,
+            schema: r.schema_name,
+            columns: [],
+            type: 'synonym',
+          });
+        });
+        seqRes.recordset.forEach((r: any) => {
+          map.set(`__sequence_${r.schema_name}.${r.sequence_name}`, {
+            table: r.sequence_name,
+            schema: r.schema_name,
+            columns: [],
+            type: 'sequence',
+          });
+        });
+        typRes.recordset.forEach((r: any) => {
+          map.set(`__type_${r.schema_name}.${r.type_name}`, {
+            table: r.type_name,
+            schema: r.schema_name,
+            columns: [],
+            type: 'type',
+          });
+        });
+        dbTrgRes.recordset.forEach((r: any) => {
+          map.set(`__dbtrigger_${r.trigger_name}`, {
+            table: r.trigger_name,
+            columns: [],
+            type: 'database_trigger',
+          });
+        });
+        if (loginsRes && loginsRes.recordset) {
+          loginsRes.recordset.forEach((r: any) => {
+            map.set(`__login_${r.name}`, {
+              table: r.name,
+              columns: [],
+              schema: '',
+              type: 'login',
+            });
+          });
+        }
         return Array.from(map.values());
       } catch (e) {
         console.error('Error fetching mssql schema', e);
+        return [];
+      }
+    },
+    getKeys: async (table: string, schema?: string) => {
+      try {
+        const res = await pool.query(`
+          SELECT kc.name, kc.type
+          FROM sys.key_constraints kc
+          JOIN sys.objects t ON kc.parent_object_id = t.object_id
+          JOIN sys.schemas s ON t.schema_id = s.schema_id
+          WHERE t.name = '${table.replace(/'/g, "''")}' AND s.name = '${(schema || 'dbo').replace(/'/g, "''")}'
+          UNION ALL
+          SELECT fkc.name, 'F' as type
+          FROM sys.foreign_keys fkc
+          JOIN sys.objects t ON fkc.parent_object_id = t.object_id
+          JOIN sys.schemas s ON t.schema_id = s.schema_id
+          WHERE t.name = '${table.replace(/'/g, "''")}' AND s.name = '${(schema || 'dbo').replace(/'/g, "''")}'
+        `);
+        return (res.recordset || []).map((r: any) => ({
+          name: r.name,
+          type: r.type.trim(),
+        }));
+      } catch (e) {
+        return [];
+      }
+    },
+    getConstraints: async (table: string, schema?: string) => {
+      try {
+        const res = await pool.query(`
+          SELECT cc.name
+          FROM sys.check_constraints cc
+          JOIN sys.objects t ON cc.parent_object_id = t.object_id
+          JOIN sys.schemas s ON t.schema_id = s.schema_id
+          WHERE t.name = '${table.replace(/'/g, "''")}' AND s.name = '${(schema || 'dbo').replace(/'/g, "''")}'
+          UNION ALL
+          SELECT dc.name
+          FROM sys.default_constraints dc
+          JOIN sys.objects t ON dc.parent_object_id = t.object_id
+          JOIN sys.schemas s ON t.schema_id = s.schema_id
+          WHERE t.name = '${table.replace(/'/g, "''")}' AND s.name = '${(schema || 'dbo').replace(/'/g, "''")}'
+        `);
+        return (res.recordset || []).map((r: any) => r.name);
+      } catch (e) {
+        return [];
+      }
+    },
+    getStatistics: async (table: string, schema?: string) => {
+      try {
+        const res = await pool.query(`
+          SELECT st.name
+          FROM sys.stats st
+          JOIN sys.objects t ON st.object_id = t.object_id
+          JOIN sys.schemas s ON t.schema_id = s.schema_id
+          WHERE t.name = '${table.replace(/'/g, "''")}' AND s.name = '${(schema || 'dbo').replace(/'/g, "''")}'
+        `);
+        return (res.recordset || []).map((r: any) => r.name);
+      } catch (e) {
+        return [];
+      }
+    },
+    getIndexes: async (table: string, schema?: string) => {
+      try {
+        const res = await pool.query(`
+          SELECT i.name
+          FROM sys.indexes i
+          JOIN sys.objects t ON i.object_id = t.object_id
+          JOIN sys.schemas s ON t.schema_id = s.schema_id
+          WHERE t.name = '${table.replace(/'/g, "''")}' AND s.name = '${(schema || 'dbo').replace(/'/g, "''")}'
+          AND i.name IS NOT NULL
+        `);
+        return (res.recordset || []).map((r: any) => r.name);
+      } catch (e) {
+        return [];
+      }
+    },
+    getTableTriggers: async (table: string, schema?: string) => {
+      try {
+        const res = await pool.query(`
+          SELECT tr.name
+          FROM sys.triggers tr
+          JOIN sys.objects t ON tr.parent_id = t.object_id
+          JOIN sys.schemas s ON t.schema_id = s.schema_id
+          WHERE t.name = '${table.replace(/'/g, "''")}' AND s.name = '${(schema || 'dbo').replace(/'/g, "''")}'
+        `);
+        return (res.recordset || []).map((r: any) => r.name);
+      } catch (e) {
+        return [];
+      }
+    },
+    getSecurity: async () => {
+      try {
+        const schemasRes = await pool.query(`SELECT name FROM sys.schemas`);
+        const usersRes = await pool.query(
+          `SELECT name, type FROM sys.database_principals WHERE type IN ('S', 'U', 'R', 'G')`,
+        );
+        const items: TableSchema[] = [];
+        (schemasRes.recordset || []).forEach((r: any) =>
+          items.push({ table: r.name, columns: [], type: 'schema' }),
+        );
+        (usersRes.recordset || []).forEach((r: any) =>
+          items.push({
+            table: r.name,
+            columns: [],
+            type: r.type === 'R' ? 'role' : 'user',
+          }),
+        );
+        return items;
+      } catch (e) {
+        return [];
+      }
+    },
+    getAgentJobs: async () => {
+      try {
+        const res = await pool.query(`SELECT name FROM msdb.dbo.sysjobs`);
+        return (res.recordset || []).map((r: any) => ({
+          table: r.name,
+          columns: [],
+          type: 'agent_job',
+        }));
+      } catch (e) {
+        return [];
+      }
+    },
+    getLinkedServers: async () => {
+      try {
+        const res = await pool.query(
+          `SELECT name FROM sys.servers WHERE is_linked = 1`,
+        );
+        return (res.recordset || []).map((r: any) => ({
+          table: r.name,
+          columns: [],
+          type: 'linked_server',
+        }));
+      } catch (e) {
+        return [];
+      }
+    },
+    getServerObjects: async () => {
+      try {
+        const items: TableSchema[] = [];
+        const endpointsRes = await pool.query(`SELECT name FROM sys.endpoints`);
+        (endpointsRes.recordset || []).forEach((r: any) =>
+          items.push({ table: r.name, columns: [], type: 'endpoint' }),
+        );
+        const trgRes = await pool.query(`SELECT name FROM sys.server_triggers`);
+        (trgRes.recordset || []).forEach((r: any) =>
+          items.push({ table: r.name, columns: [], type: 'server_trigger' }),
+        );
+        return items;
+      } catch (e) {
         return [];
       }
     },
@@ -1323,4 +1685,54 @@ async function runTrinoQuery(client: any, q: string): Promise<ExecutionResult> {
     console.error('Trino Query Error:', err);
     throw err;
   }
+}
+
+export function escapeIdentifier(
+  driver: DriverKey,
+  identifier: string,
+): string {
+  if (!identifier) return identifier;
+  switch (driver) {
+    case 'postgres':
+    case 'trino':
+      return `"${identifier.replace(/"/g, '""')}"`;
+    case 'mssql':
+      return `[${identifier.replace(/\]/g, ']]')}]`;
+    case 'mysql':
+    case 'sqlite':
+      return `\`${identifier.replace(/`/g, '``')}\``;
+    default:
+      return identifier;
+  }
+}
+
+export function mapDialectType(driver: DriverKey, typeStr: string): string {
+  let t = typeStr;
+  if (driver === 'postgres') {
+    if (t === 'datetime') t = 'timestamp';
+    if (t === 'uniqueidentifier') t = 'uuid';
+    if (t === 'bit') t = 'boolean';
+    if (t === 'nvarchar') t = 'varchar';
+  } else if (driver === 'mysql') {
+    if (t === 'uniqueidentifier') t = 'varchar(36)';
+    if (t === 'nvarchar') t = 'varchar';
+  } else if (driver === 'sqlite') {
+    if (t === 'uniqueidentifier') t = 'text';
+    if (t === 'bit') t = 'integer';
+    if (t === 'datetime') t = 'text';
+  }
+  return t;
+}
+
+export function escapeLiteral(str: string): string {
+  if (typeof str !== 'string') return str;
+  return str.replace(/'/g, "''");
+}
+
+export function normalizeRows(res: any): any[] {
+  if (!res) return [];
+  if (Array.isArray(res)) {
+    return res.length > 0 ? (res[0] as any).rows || res[0] : [];
+  }
+  return res.recordset || res.rows || [];
 }

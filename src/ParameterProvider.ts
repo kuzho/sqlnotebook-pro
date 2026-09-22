@@ -294,8 +294,8 @@ export class ParameterProvider implements vscode.WebviewViewProvider {
     if (editor && editor.notebook.notebookType === 'sql-notebook') {
       this._activeUri = editor.notebook.uri.toString();
       const notebook = editor.notebook;
-      const savedParams = (notebook.metadata?.custom?.parameters || {}) as
-        Record<string, StoredParameter>;
+      const savedParams = (notebook.metadata?.custom?.parameters ||
+        {}) as Record<string, StoredParameter>;
       this._savedParamsByUri.set(this._activeUri, savedParams);
       const runtimeParams = this._runtimeParamsByUri.get(this._activeUri);
       const displayParams =

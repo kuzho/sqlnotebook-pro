@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { SQLNotebookConnections } from './connections';
+import { SQLNotebookConnections, resolveConfigPassword } from './connections';
 import {
   deleteConnectionConfiguration,
   editConnectionConfiguration,
@@ -19,7 +19,11 @@ import { ParameterProvider } from './ParameterProvider';
 import { activateFormProvider } from './form';
 import { SQLSerializer } from './serializer';
 import { KernelManager } from './controller';
-import { SqlCompletionItemProvider, SqlHoverProvider, refreshDiagnostics } from './completion';
+import {
+  SqlCompletionItemProvider,
+  SqlHoverProvider,
+  refreshDiagnostics,
+} from './completion';
 import { registerAiAssistant } from './aiAssistant';
 import * as XLSX from 'xlsx';
 import * as path from 'path';
@@ -38,6 +42,12 @@ import { embedImagesAsBase64 } from './embed-base64';
 import { extractAttachmentsFromMarkdown } from './attachments-util';
 import { splitSqlBatches, compactFormattedSql } from './utils/sqlUtils';
 import { getPool } from './driver';
+import { DataEditorPanel } from './dataEditorPanel';
+import { ActivityMonitorPanel } from './activityMonitorPanel';
+import { TableDesignerPanel } from './tableDesignerPanel';
+import { ImportWizardPanel } from './importWizardPanel';
+import { PropertiesPanel } from './propertiesPanel';
+import { SecurityPanel } from './securityPanel';
 
 export const notebookType = 'sql-notebook';
 export const storageKey = 'sqlnotebook-connections';
@@ -91,9 +101,7 @@ async function cleanupTemporaryEmbeddedFiles(files: string[]): Promise<void> {
 
       try {
         await fs.promises.unlink(filePath);
-      } catch {
-        // Ignore cleanup failures. Markdown already has embedded data URI.
-      }
+      } catch {}
     }),
   );
 }
@@ -119,9 +127,7 @@ function findNotebookForCellDocument(
   );
 }
 
-function findNotebookCellByDocument(
-  docUri: vscode.Uri,
-):
+function findNotebookCellByDocument(docUri: vscode.Uri):
   | {
       notebook: vscode.NotebookDocument;
       cell: vscode.NotebookCell;
@@ -412,7 +418,9 @@ export function activate(context: vscode.ExtensionContext) {
       'sqlnotebook.exportRdl',
       async (item?: ReportItem) => {
         if (!item || !item.report) {
-          vscode.window.showErrorMessage('Please select a report to export to RDL.');
+          vscode.window.showErrorMessage(
+            'Please select a report to export to RDL.',
+          );
           return;
         }
         const xml = exportReportToRdlXml(item.report);
@@ -431,23 +439,23 @@ export function activate(context: vscode.ExtensionContext) {
   );
 
   context.subscriptions.push(
-    vscode.commands.registerCommand(
-      'sqlnotebook.importRdl',
-      async () => {
-        const uris = await vscode.window.showOpenDialog({
-          canSelectFiles: true,
-          canSelectFolders: false,
-          canSelectMany: false,
-          filters: { 'RDL Report Definition (*.rdl)': ['rdl', 'xml'] },
-        });
-        if (uris && uris.length > 0) {
-          const filePath = uris[0].fsPath;
-          const xmlContent = await fs.promises.readFile(filePath, 'utf-8');
-          const report = importRdlXmlToReport(xmlContent, path.basename(filePath));
-          await openReportBuilder(context, kernelManager, report);
-        }
-      },
-    ),
+    vscode.commands.registerCommand('sqlnotebook.importRdl', async () => {
+      const uris = await vscode.window.showOpenDialog({
+        canSelectFiles: true,
+        canSelectFolders: false,
+        canSelectMany: false,
+        filters: { 'RDL Report Definition (*.rdl)': ['rdl', 'xml'] },
+      });
+      if (uris && uris.length > 0) {
+        const filePath = uris[0].fsPath;
+        const xmlContent = await fs.promises.readFile(filePath, 'utf-8');
+        const report = importRdlXmlToReport(
+          xmlContent,
+          path.basename(filePath),
+        );
+        await openReportBuilder(context, kernelManager, report);
+      }
+    }),
   );
 
   context.subscriptions.push(
@@ -556,10 +564,22 @@ export function activate(context: vscode.ExtensionContext) {
                 editor.notebook.uri.toString(),
                 sql,
               );
-              messaging.postMessage({ type: 'apply_updates_result', payload: { success: true, tableId } });
+              messaging.postMessage({
+                type: 'apply_updates_result',
+                payload: { success: true, tableId },
+              });
             } catch (err: any) {
-              vscode.window.showErrorMessage(`Background query failed: ${err.message || err}`);
-              messaging.postMessage({ type: 'apply_updates_result', payload: { success: false, tableId, error: err.message || String(err) } });
+              vscode.window.showErrorMessage(
+                `Background query failed: ${err.message || err}`,
+              );
+              messaging.postMessage({
+                type: 'apply_updates_result',
+                payload: {
+                  success: false,
+                  tableId,
+                  error: err.message || String(err),
+                },
+              });
             }
           })();
         }
@@ -586,18 +606,23 @@ export function activate(context: vscode.ExtensionContext) {
 
   const hoverProvider = new SqlHoverProvider(completionProvider);
   context.subscriptions.push(
-    vscode.languages.registerHoverProvider('sql', hoverProvider)
+    vscode.languages.registerHoverProvider('sql', hoverProvider),
   );
 
-  const diagnosticCollection = vscode.languages.createDiagnosticCollection('sql');
+  const diagnosticCollection =
+    vscode.languages.createDiagnosticCollection('sql');
   context.subscriptions.push(diagnosticCollection);
 
   context.subscriptions.push(
     vscode.workspace.onDidChangeTextDocument((e) => {
       if (e.document.languageId === 'sql') {
-        refreshDiagnostics(e.document, diagnosticCollection, completionProvider);
+        refreshDiagnostics(
+          e.document,
+          diagnosticCollection,
+          completionProvider,
+        );
       }
-    })
+    }),
   );
 
   context.subscriptions.push(
@@ -771,6 +796,205 @@ export function activate(context: vscode.ExtensionContext) {
     vscode.commands.registerCommand(
       'sqlnotebook.scriptDrop',
       scriptDrop(kernelManager),
+    ),
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand(
+      'sqlnotebook.showProperties',
+      async (item: any) => {
+        if (!item || !item.config) {
+          vscode.window.showErrorMessage('No item selected.');
+          return;
+        }
+        const resolvedConfig = await resolveConfigPassword(
+          context,
+          item.config,
+        );
+        await PropertiesPanel.createOrShow(context.extensionUri, {
+          ...item,
+          config: resolvedConfig,
+        });
+      },
+    ),
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand(
+      'sqlnotebook.securityManager',
+      async (item: any) => {
+        if (!item || !item.config) {
+          vscode.window.showErrorMessage('No connection selected.');
+          return;
+        }
+        const resolvedConfig = await resolveConfigPassword(
+          context,
+          item.config,
+        );
+        const loginName = item.loginName || item.label || item.table;
+        await SecurityPanel.createOrShow(
+          context.extensionUri,
+          resolvedConfig,
+          loginName,
+        );
+      },
+    ),
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand(
+      'sqlnotebook.newLogin',
+      async (item: any) => {
+        if (!item || !item.config) {
+          vscode.window.showErrorMessage('No connection selected.');
+          return;
+        }
+
+        const loginName = await vscode.window.showInputBox({
+          prompt: 'Enter the new login/username',
+          placeHolder: 'e.g. jdoe',
+        });
+
+        if (!loginName) return;
+
+        const password = await vscode.window.showInputBox({
+          prompt: 'Enter the password for the new login',
+          password: true,
+        });
+
+        if (!password) return;
+
+        const resolvedConfig = await resolveConfigPassword(
+          context,
+          item.config,
+        );
+
+        try {
+          const pool = await getPool(resolvedConfig);
+          const conn = await pool.getConnection();
+          try {
+            if (resolvedConfig.driver === 'mssql') {
+              await conn.query(
+                `CREATE LOGIN [${loginName}] WITH PASSWORD = '${password}'`,
+              );
+            } else if (resolvedConfig.driver === 'postgres') {
+              await conn.query(
+                `CREATE ROLE "${loginName}" WITH LOGIN PASSWORD '${password}'`,
+              );
+            }
+            vscode.window.showInformationMessage(
+              `Login '${loginName}' created successfully.`,
+            );
+            connectionsSidepanel.refresh();
+          } finally {
+            if (conn) conn.release();
+          }
+        } catch (e: any) {
+          vscode.window.showErrorMessage(
+            `Failed to create login: ${e.message}`,
+          );
+        }
+      },
+    ),
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand(
+      'sqlnotebook.importCsv',
+      async (item: any) => {
+        if (!item || !item.config) {
+          vscode.window.showErrorMessage('No connection selected.');
+          return;
+        }
+        const uri = await vscode.window.showOpenDialog({
+          canSelectMany: false,
+          openLabel: 'Import',
+          filters: {
+            'CSV Files': ['csv', 'txt'],
+          },
+        });
+        if (uri && uri[0]) {
+          const resolvedConfig = await resolveConfigPassword(
+            context,
+            item.config,
+          );
+          await ImportWizardPanel.createOrShow(
+            context.extensionUri,
+            resolvedConfig,
+            uri[0].fsPath,
+          );
+        }
+      },
+    ),
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand(
+      'sqlnotebook.newTable',
+      async (item: any) => {
+        if (!item || !item.config) {
+          vscode.window.showErrorMessage('No connection selected.');
+          return;
+        }
+        const resolvedConfig = await resolveConfigPassword(
+          context,
+          item.config,
+        );
+        await TableDesignerPanel.createOrShow(
+          context.extensionUri,
+          resolvedConfig,
+        );
+      },
+    ),
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand(
+      'sqlnotebook.openActivityMonitor',
+      async (item: any) => {
+        if (!item || !item.config) {
+          vscode.window.showErrorMessage('No connection selected.');
+          return;
+        }
+        const resolvedConfig = await resolveConfigPassword(
+          context,
+          item.config,
+        );
+        await ActivityMonitorPanel.createOrShow(
+          context.extensionUri,
+          resolvedConfig,
+        );
+      },
+    ),
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand(
+      'sqlnotebook.editTop200Rows',
+      async (item: any) => {
+        if (!item || !item.config || !item.tableSchema) {
+          vscode.window.showErrorMessage('No table selected.');
+          return;
+        }
+        const schema = item.tableSchema.schema;
+        const table =
+          item.tableSchema.table || item.tableSchema.name || item.label;
+        const fullTableName =
+          schema && schema !== 'dbo' && schema !== 'public'
+            ? `${schema}.${table}`
+            : table;
+        const primaryKeys = item.tableSchema.primaryKeys || [];
+        const resolvedConfig = await resolveConfigPassword(
+          context,
+          item.config,
+        );
+        await DataEditorPanel.createOrShow(
+          context.extensionUri,
+          resolvedConfig,
+          fullTableName,
+          primaryKeys,
+        );
+      },
     ),
   );
 

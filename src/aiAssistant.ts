@@ -75,8 +75,7 @@ export function registerAiAssistant(
           if (val && typeof val === 'object') {
             const typeStr = val.type ? ` (${val.type})` : '';
             const reqStr = val.required ? ' [required]' : '';
-            const valStr =
-              val.value !== undefined ? ` = "${val.value}"` : '';
+            const valStr = val.value !== undefined ? ` = "${val.value}"` : '';
             return `  - ${paramName}${typeStr}${valStr}${reqStr}`;
           }
           return `  - ${paramName} = "${val}"`;

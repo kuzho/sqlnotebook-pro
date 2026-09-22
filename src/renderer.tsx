@@ -1,4 +1,3 @@
-/// <reference lib="dom" />
 import React, {
   useState,
   useMemo,
@@ -132,7 +131,7 @@ const styles = `
   .sql-thead, .sql-tbody, .sql-tr {
     display: contents;
   }
-  /* Primera columna: ajustada estrictamente a su contenido y sin expandirse */
+
   .sql-th:first-child,
   .sql-td:first-child {
     white-space: nowrap;
@@ -229,7 +228,7 @@ const styles = `
     padding-left: 4px;
     box-sizing: border-box;
   }
-  /* Columnas de datos: se expanden proporcionalmente para llenar el 100% sobrante */
+
   .sql-th:not(:first-child), .sql-td:not(:first-child) {
     white-space: nowrap;
   }
@@ -475,20 +474,40 @@ const FilterMenu = ({
             <div
               className="popup-item"
               onClick={clearFilter}
-              style={{ fontStyle: 'italic', color: '#0078d4', borderBottom: '1px solid #333' }}
+              style={{
+                fontStyle: 'italic',
+                color: '#0078d4',
+                borderBottom: '1px solid #333',
+              }}
             >
               Clear
             </div>
             {isCapped && (
               <div
-                style={{ padding: '4px 8px', color: '#d7ba7d', fontSize: 11, borderBottom: '1px solid #333' }}
+                style={{
+                  padding: '4px 8px',
+                  color: '#d7ba7d',
+                  fontSize: 11,
+                  borderBottom: '1px solid #333',
+                }}
               >
                 Showing first {MAX_FILTER_OPTIONS.toLocaleString()} of{' '}
                 {totalUniqueValues.toLocaleString()} values
               </div>
             )}
-            <div className="popup-list" onKeyDown={handleKeyDown} ref={listRef} style={{ height: 200, overflowY: 'auto' }}>
-              <div style={{ height: `${rowVirtualizer.getTotalSize()}px`, width: '100%', position: 'relative' }}>
+            <div
+              className="popup-list"
+              onKeyDown={handleKeyDown}
+              ref={listRef}
+              style={{ height: 200, overflowY: 'auto' }}
+            >
+              <div
+                style={{
+                  height: `${rowVirtualizer.getTotalSize()}px`,
+                  width: '100%',
+                  position: 'relative',
+                }}
+              >
                 {rowVirtualizer.getVirtualItems().map((virtualRow) => {
                   const item = filteredList[virtualRow.index];
                   const idx = virtualRow.index;
@@ -502,7 +521,14 @@ const FilterMenu = ({
                         left: 0,
                         width: '100%',
                         transform: `translateY(${virtualRow.start}px)`,
-                        ...(activeIndex === idx ? { backgroundColor: 'var(--vscode-list-activeSelectionBackground)', color: 'var(--vscode-list-activeSelectionForeground)' } : {})
+                        ...(activeIndex === idx
+                          ? {
+                              backgroundColor:
+                                'var(--vscode-list-activeSelectionBackground)',
+                              color:
+                                'var(--vscode-list-activeSelectionForeground)',
+                            }
+                          : {}),
                       }}
                     >
                       <input
@@ -710,7 +736,16 @@ const SmartCell = React.memo(
   },
 );
 const EditableCell = React.memo(
-  ({ initialValue, row, column, updateData, isEdited, badgeKeywords, isEditingExternal, table }: any) => {
+  ({
+    initialValue,
+    row,
+    column,
+    updateData,
+    isEdited,
+    badgeKeywords,
+    isEditingExternal,
+    table,
+  }: any) => {
     const [value, setValue] = useState(initialValue);
     const [isEditing, setIsEditing] = useState(false);
     const isSaving = useRef(false);
@@ -720,18 +755,24 @@ const EditableCell = React.memo(
     }, [initialValue]);
 
     useEffect(() => {
-      if (isEditingExternal && !isEditing) {setIsEditing(true);}
+      if (isEditingExternal && !isEditing) {
+        setIsEditing(true);
+      }
     }, [isEditingExternal]);
 
     const onBlur = () => {
-      if (isSaving.current) {return;}
+      if (isSaving.current) {
+        return;
+      }
       isSaving.current = true;
       setIsEditing(false);
 
       if (value !== initialValue) {
         updateData(row.index, column.id, value);
       }
-      setTimeout(() => { isSaving.current = false; }, 0);
+      setTimeout(() => {
+        isSaving.current = false;
+      }, 0);
     };
 
     const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -739,7 +780,9 @@ const EditableCell = React.memo(
         e.stopPropagation();
         onBlur();
         setTimeout(() => {
-          const wrapper = document.querySelector('.table-wrapper') as HTMLElement;
+          const wrapper = document.querySelector(
+            '.table-wrapper',
+          ) as HTMLElement;
           wrapper?.focus();
         }, 10);
       } else if (e.key === 'Escape') {
@@ -747,7 +790,9 @@ const EditableCell = React.memo(
         setValue(initialValue);
         setIsEditing(false);
         setTimeout(() => {
-          const wrapper = document.querySelector('.table-wrapper') as HTMLElement;
+          const wrapper = document.querySelector(
+            '.table-wrapper',
+          ) as HTMLElement;
           wrapper?.focus();
         }, 10);
       } else if (e.key === 'Tab') {
@@ -757,17 +802,29 @@ const EditableCell = React.memo(
 
         setTimeout(() => {
           const columns = table.getVisibleLeafColumns();
-          const currentIndex = columns.findIndex((c: any) => c.id === column.id);
+          const currentIndex = columns.findIndex(
+            (c: any) => c.id === column.id,
+          );
           if (currentIndex !== -1 && currentIndex + 1 < columns.length) {
             const nextColId = columns[currentIndex + 1].id;
-            table.options.meta?.setEditingCell({ r: row.index, cId: nextColId });
+            table.options.meta?.setEditingCell({
+              r: row.index,
+              cId: nextColId,
+            });
 
             table.options.meta?.setSelection({
               type: 'cell',
-              range: { r1: row.index, c1: currentIndex + 1, r2: row.index, c2: currentIndex + 1 }
+              range: {
+                r1: row.index,
+                c1: currentIndex + 1,
+                r2: row.index,
+                c2: currentIndex + 1,
+              },
             });
           } else {
-            const wrapper = document.querySelector('.table-wrapper') as HTMLElement;
+            const wrapper = document.querySelector(
+              '.table-wrapper',
+            ) as HTMLElement;
             wrapper?.focus();
           }
         }, 10);
@@ -853,7 +910,9 @@ const MemoTd = React.memo(
     isEdited,
   }: any) => {
     return (
-      <div role="cell" className="sql-td"
+      <div
+        role="cell"
+        className="sql-td"
         data-r={rIndex}
         data-c={cIndex}
         style={{
@@ -881,7 +940,8 @@ const MemoTd = React.memo(
 const MemoRowIndex = React.memo(
   ({ rIndex, isSelected }: any) => {
     return (
-      <div role="cell"
+      <div
+        role="cell"
         className={`sql-td row-index ${isSelected ? 'selected-bg' : ''}`}
         data-row-index={rIndex}
       >
@@ -952,7 +1012,9 @@ const TableApp = ({
   onDidReceiveMessage?: any;
 }) => {
   const tableWrapperRef = useRef<HTMLDivElement>(null);
-  const componentIdRef = useRef(`table_${Math.random().toString(36).substring(2, 9)}`);
+  const componentIdRef = useRef(
+    `table_${Math.random().toString(36).substring(2, 9)}`,
+  );
   const containerRef = useRef<HTMLDivElement>(null);
   const containerWidthRef = useRef(0);
   const [containerWidth, setContainerWidth] = useState(0);
@@ -989,12 +1051,17 @@ const TableApp = ({
   );
   const [rows, setRows] = useState(normalizedRows);
   const prevExecutionIdRef = useRef<string | undefined | null>(
-    !Array.isArray(data) ? data.info?.executionId : null
+    !Array.isArray(data) ? data.info?.executionId : null,
   );
 
   useLayoutEffect(() => {
-    const currentExecutionId = !Array.isArray(data) ? data.info?.executionId : null;
-    if (currentExecutionId && prevExecutionIdRef.current === currentExecutionId) {
+    const currentExecutionId = !Array.isArray(data)
+      ? data.info?.executionId
+      : null;
+    if (
+      currentExecutionId &&
+      prevExecutionIdRef.current === currentExecutionId
+    ) {
       return;
     }
     setRows(normalizedRows);
@@ -1102,7 +1169,10 @@ const TableApp = ({
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
   const [columnSizing, setColumnSizing] = useState<ColumnSizingState>({});
   const [activeMenuId, setActiveMenuId] = useState<string | null>(null);
-  const [editingCell, setEditingCell] = useState<{ r: number; cId: string } | null>(null);
+  const [editingCell, setEditingCell] = useState<{
+    r: number;
+    cId: string;
+  } | null>(null);
   const [exportSqlText, setExportSqlText] = useState('📝 To Insert');
   const [editedRows, setEditedRows] = useState<
     Record<number, Record<string, any>>
@@ -1253,7 +1323,11 @@ const TableApp = ({
               enableColumnFilter: true,
               filterFn: (row: any, id: string, filterValue: any[]) => {
                 const val = row.original[colId];
-                if ((val === null || val === undefined) && (filterValue.includes(null) || filterValue.includes(undefined))) {
+                if (
+                  (val === null || val === undefined) &&
+                  (filterValue.includes(null) ||
+                    filterValue.includes(undefined))
+                ) {
                   return true;
                 }
                 return filterValue.includes(val);
@@ -1267,7 +1341,9 @@ const TableApp = ({
                 const val = isEdited
                   ? meta.editedRowsRef.current[rowIndex][cId]
                   : info.getValue();
-                const isEditingExternal = meta?.editingCell?.r === rowIndex && meta?.editingCell?.cId === cId;
+                const isEditingExternal =
+                  meta?.editingCell?.r === rowIndex &&
+                  meta?.editingCell?.cId === cId;
                 return (
                   <EditableCell
                     initialValue={val}
@@ -1302,7 +1378,11 @@ const TableApp = ({
                 filterFn: (row: any, id: string, filterValue: any[]) => {
                   const arr = row.original[key];
                   const val = Array.isArray(arr) ? arr[subIndex] : arr;
-                  if ((val === null || val === undefined) && (filterValue.includes(null) || filterValue.includes(undefined))) {
+                  if (
+                    (val === null || val === undefined) &&
+                    (filterValue.includes(null) ||
+                      filterValue.includes(undefined))
+                  ) {
                     return true;
                   }
                   return filterValue.includes(val);
@@ -1318,7 +1398,9 @@ const TableApp = ({
                     ? meta.editedRows[rowIndex][cId]
                     : info.getValue();
 
-                  const isEditingExternal = meta?.editingCell?.r === rowIndex && meta?.editingCell?.cId === cId;
+                  const isEditingExternal =
+                    meta?.editingCell?.r === rowIndex &&
+                    meta?.editingCell?.cId === cId;
 
                   return (
                     <EditableCell
@@ -1346,7 +1428,11 @@ const TableApp = ({
                 enableColumnFilter: true,
                 filterFn: (row: any, id: string, filterValue: any[]) => {
                   const val = row.original[key];
-                  if ((val === null || val === undefined) && (filterValue.includes(null) || filterValue.includes(undefined))) {
+                  if (
+                    (val === null || val === undefined) &&
+                    (filterValue.includes(null) ||
+                      filterValue.includes(undefined))
+                  ) {
                     return true;
                   }
                   return filterValue.includes(val);
@@ -1362,7 +1448,9 @@ const TableApp = ({
                     ? meta.editedRows[rowIndex][cId]
                     : info.getValue();
 
-                  const isEditingExternal = meta?.editingCell?.r === rowIndex && meta?.editingCell?.cId === cId;
+                  const isEditingExternal =
+                    meta?.editingCell?.r === rowIndex &&
+                    meta?.editingCell?.cId === cId;
 
                   return (
                     <EditableCell
@@ -1389,8 +1477,22 @@ const TableApp = ({
     }
   }, [rows, isSelectNoRows, columnOrder]);
   const tableMeta = useMemo(
-    () => ({ editedRows, updateData, badgeKeywords, editingCell, setEditingCell, setSelection }),
-    [editedRows, updateData, badgeKeywords, editingCell, setEditingCell, setSelection],
+    () => ({
+      editedRows,
+      updateData,
+      badgeKeywords,
+      editingCell,
+      setEditingCell,
+      setSelection,
+    }),
+    [
+      editedRows,
+      updateData,
+      badgeKeywords,
+      editingCell,
+      setEditingCell,
+      setSelection,
+    ],
   );
   const table = useReactTable({
     data: statusData,
@@ -1524,60 +1626,89 @@ const TableApp = ({
     }
     window.navigator.clipboard.writeText(rowsToText.join('\n'));
   }, [selection, tableRows, visibleColumns]);
-  const handleTableKeyDown = useCallback((e: React.KeyboardEvent<HTMLDivElement>) => {
-    if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
-      return;
-    }
-    if ((e.ctrlKey || e.metaKey) && e.key === 'c') {
-      e.preventDefault();
-      handleCopy();
-      return;
-    }
-    if (selection?.type === 'range' && selection.range) {
-      const { r1, c1, r2, c2 } = selection.range;
-      if (r1 === r2 && c1 === c2) {
-        let nextR = r1;
-        let nextC = c1;
-        let moved = false;
-        if (e.key === 'ArrowUp') { nextR = Math.max(0, r1 - 1); moved = true; }
-        else if (e.key === 'ArrowDown') { nextR = Math.min(tableRows.length - 1, r1 + 1); moved = true; }
-        else if (e.key === 'ArrowLeft') { nextC = Math.max(0, c1 - 1); moved = true; }
-        else if (e.key === 'ArrowRight') { nextC = Math.min(visibleColumns.length - 1, c1 + 1); moved = true; }
+  const handleTableKeyDown = useCallback(
+    (e: React.KeyboardEvent<HTMLDivElement>) => {
+      if (
+        e.target instanceof HTMLInputElement ||
+        e.target instanceof HTMLTextAreaElement
+      ) {
+        return;
+      }
+      if ((e.ctrlKey || e.metaKey) && e.key === 'c') {
+        e.preventDefault();
+        handleCopy();
+        return;
+      }
+      if (selection?.type === 'range' && selection.range) {
+        const { r1, c1, r2, c2 } = selection.range;
+        if (r1 === r2 && c1 === c2) {
+          let nextR = r1;
+          let nextC = c1;
+          let moved = false;
+          if (e.key === 'ArrowUp') {
+            nextR = Math.max(0, r1 - 1);
+            moved = true;
+          } else if (e.key === 'ArrowDown') {
+            nextR = Math.min(tableRows.length - 1, r1 + 1);
+            moved = true;
+          } else if (e.key === 'ArrowLeft') {
+            nextC = Math.max(0, c1 - 1);
+            moved = true;
+          } else if (e.key === 'ArrowRight') {
+            nextC = Math.min(visibleColumns.length - 1, c1 + 1);
+            moved = true;
+          }
 
-        if (moved) {
-          e.preventDefault();
-          e.stopPropagation();
-          setSelection({ type: 'range', range: { r1: nextR, c1: nextC, r2: nextR, c2: nextC } });
-          setEditingCell(null);
+          if (moved) {
+            e.preventDefault();
+            e.stopPropagation();
+            setSelection({
+              type: 'range',
+              range: { r1: nextR, c1: nextC, r2: nextR, c2: nextC },
+            });
+            setEditingCell(null);
 
-          const wrapper = tableWrapperRef.current as HTMLElement;
-          if (wrapper) {
-            rowVirtualizer.scrollToIndex(nextR, { align: 'auto' });
+            const wrapper = tableWrapperRef.current as HTMLElement;
+            if (wrapper) {
+              rowVirtualizer.scrollToIndex(nextR, { align: 'auto' });
 
-            const tdEl = wrapper.querySelector(`[data-r="${nextR}"][data-c="${nextC}"]`) as HTMLElement;
-            if (tdEl) {
-              const wrapperRect = wrapper.getBoundingClientRect();
-              const tdRect = tdEl.getBoundingClientRect();
-              if (tdRect.left < wrapperRect.left + 40) {
-                wrapper.scrollLeft -= (wrapperRect.left + 40 - tdRect.left);
-              } else if (tdRect.right > wrapperRect.right) {
-                wrapper.scrollLeft += (tdRect.right - wrapperRect.right);
+              const tdEl = wrapper.querySelector(
+                `[data-r="${nextR}"][data-c="${nextC}"]`,
+              ) as HTMLElement;
+              if (tdEl) {
+                const wrapperRect = wrapper.getBoundingClientRect();
+                const tdRect = tdEl.getBoundingClientRect();
+                if (tdRect.left < wrapperRect.left + 40) {
+                  wrapper.scrollLeft -= wrapperRect.left + 40 - tdRect.left;
+                } else if (tdRect.right > wrapperRect.right) {
+                  wrapper.scrollLeft += tdRect.right - wrapperRect.right;
+                }
               }
             }
+          } else if (e.key === 'Enter' || e.key === 'F2') {
+            e.preventDefault();
+            e.stopPropagation();
+            const colId = visibleColumns[c1]?.id;
+            if (colId) {
+              setEditingCell({ r: r1, cId: colId });
+            }
+          } else if (
+            e.key.length === 1 &&
+            !e.ctrlKey &&
+            !e.metaKey &&
+            !e.altKey
+          ) {
+            e.stopPropagation();
+            const colId = visibleColumns[c1]?.id;
+            if (colId) {
+              setEditingCell({ r: r1, cId: colId });
+            }
           }
-        } else if (e.key === 'Enter' || e.key === 'F2') {
-          e.preventDefault();
-          e.stopPropagation();
-          const colId = visibleColumns[c1]?.id;
-          if (colId) {setEditingCell({ r: r1, cId: colId });}
-        } else if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
-          e.stopPropagation();
-          const colId = visibleColumns[c1]?.id;
-          if (colId) {setEditingCell({ r: r1, cId: colId });}
         }
       }
-    }
-  }, [handleCopy, selection, tableRows.length, visibleColumns, rowVirtualizer]);
+    },
+    [handleCopy, selection, tableRows.length, visibleColumns, rowVirtualizer],
+  );
   const onMouseDown = (r: number, c: number, isCtrl: boolean) => {
     tableWrapperRef.current?.focus();
     if (isCtrl && selection && selection.type === 'range' && selection.range) {
@@ -1810,10 +1941,18 @@ const TableApp = ({
         for (let left = 0; left < 2; left++) {
           for (let right = 0; right < 2; right++) {
             let shadows = [];
-            if (top) {shadows.push(`inset 0 1px 0 0 var(--selection-border)`);}
-            if (bottom) {shadows.push(`inset 0 -1px 0 0 var(--selection-border)`);}
-            if (left) {shadows.push(`inset 1px 0 0 0 var(--selection-border)`);}
-            if (right) {shadows.push(`inset -1px 0 0 0 var(--selection-border)`);}
+            if (top) {
+              shadows.push(`inset 0 1px 0 0 var(--selection-border)`);
+            }
+            if (bottom) {
+              shadows.push(`inset 0 -1px 0 0 var(--selection-border)`);
+            }
+            if (left) {
+              shadows.push(`inset 1px 0 0 0 var(--selection-border)`);
+            }
+            if (right) {
+              shadows.push(`inset -1px 0 0 0 var(--selection-border)`);
+            }
             const key = (top << 3) | (bottom << 2) | (left << 1) | right;
             styles[key] = {
               backgroundColor: 'var(--selection-bg-dim)',
@@ -1827,33 +1966,63 @@ const TableApp = ({
   }, []);
 
   const selectionBoxes = useMemo(() => {
-    if (!selection) {return [];}
+    if (!selection) {
+      return [];
+    }
     if (selection.type === 'all') {
-      return [{ minR: 0, maxR: tableRows.length - 1, minC: 0, maxC: visibleColumns.length - 1 }];
+      return [
+        {
+          minR: 0,
+          maxR: tableRows.length - 1,
+          minC: 0,
+          maxC: visibleColumns.length - 1,
+        },
+      ];
     }
     if (selection.type === 'row' && selection.ids) {
-      return Array.from(selection.ids).map(r => ({ minR: r, maxR: r, minC: 0, maxC: visibleColumns.length - 1 }));
+      return Array.from(selection.ids).map((r) => ({
+        minR: r,
+        maxR: r,
+        minC: 0,
+        maxC: visibleColumns.length - 1,
+      }));
     }
     if (selection.type === 'col' && selection.ids) {
-      return Array.from(selection.ids).map(colId => {
+      return Array.from(selection.ids).map((colId) => {
         const c = visibleColumns.findIndex((col) => col.id === colId);
         return { minR: 0, maxR: tableRows.length - 1, minC: c, maxC: c };
       });
     }
     if (selection.type === 'range' && selection.range) {
       const { r1, c1, r2, c2 } = selection.range;
-      return [{ minR: Math.min(r1, r2), maxR: Math.max(r1, r2), minC: Math.min(c1, c2), maxC: Math.max(c1, c2) }];
+      return [
+        {
+          minR: Math.min(r1, r2),
+          maxR: Math.max(r1, r2),
+          minC: Math.min(c1, c2),
+          maxC: Math.max(c1, c2),
+        },
+      ];
     }
     if (selection.type === 'multi' && selection.ranges) {
       return selection.ranges.map(({ r1, c1, r2, c2 }) => ({
-        minR: Math.min(r1, r2), maxR: Math.max(r1, r2), minC: Math.min(c1, c2), maxC: Math.max(c1, c2)
+        minR: Math.min(r1, r2),
+        maxR: Math.max(r1, r2),
+        minC: Math.min(c1, c2),
+        maxC: Math.max(c1, c2),
       }));
     }
     return [];
   }, [selection, tableRows.length, visibleColumns]);
 
-  const getCellSelectionStyle = (r: number, c: number, colId: string): React.CSSProperties => {
-    if (selectionBoxes.length === 0) {return EMPTY_STYLE;}
+  const getCellSelectionStyle = (
+    r: number,
+    c: number,
+    colId: string,
+  ): React.CSSProperties => {
+    if (selectionBoxes.length === 0) {
+      return EMPTY_STYLE;
+    }
 
     for (const box of selectionBoxes) {
       if (r >= box.minR && r <= box.maxR && c >= box.minC && c <= box.maxC) {
@@ -2022,7 +2191,10 @@ const TableApp = ({
       const finalSql = updates.join('\n');
       if (postMessage) {
         setSaveBtnText('Saving...');
-        postMessage({ type: 'apply_updates', payload: { sql: finalSql, tableId: componentIdRef.current } });
+        postMessage({
+          type: 'apply_updates',
+          payload: { sql: finalSql, tableId: componentIdRef.current },
+        });
 
         setSaveBtnText('✅ Saved!');
         const updatedRows = [...rows];
@@ -2045,7 +2217,9 @@ const TableApp = ({
   };
 
   useEffect(() => {
-    if (!onDidReceiveMessage) {return;}
+    if (!onDidReceiveMessage) {
+      return;
+    }
     const disposable = onDidReceiveMessage((eventOrMessage: any) => {
       const e = eventOrMessage.data ? eventOrMessage.data : eventOrMessage;
       console.log('Received message in renderer:', e);
@@ -2092,14 +2266,25 @@ const TableApp = ({
         <div style={{ flex: 1 }} />
         {!isSelectNoRows && (
           <>
-            {(Object.keys(editedRows).length > 0 || ['Saving...', '✅ Saved!', '✔ Saved!', '❌ Error'].includes(saveBtnText)) && (
+            {(Object.keys(editedRows).length > 0 ||
+              ['Saving...', '✅ Saved!', '✔ Saved!', '❌ Error'].includes(
+                saveBtnText,
+              )) && (
               <button
                 className="btn-action"
                 onClick={generateUpdates}
                 title="Generate UPDATE script"
                 style={{
-                  color: saveBtnText.includes('Error') ? '#f48771' : saveBtnText.includes('Saved') ? '#89d185' : '#d7ba7d',
-                  borderColor: saveBtnText.includes('Error') ? '#f48771' : saveBtnText.includes('Saved') ? '#89d185' : '#d7ba7d'
+                  color: saveBtnText.includes('Error')
+                    ? '#f48771'
+                    : saveBtnText.includes('Saved')
+                      ? '#89d185'
+                      : '#d7ba7d',
+                  borderColor: saveBtnText.includes('Error')
+                    ? '#f48771'
+                    : saveBtnText.includes('Saved')
+                      ? '#89d185'
+                      : '#d7ba7d',
                 }}
               >
                 {saveBtnText}
@@ -2132,12 +2317,17 @@ const TableApp = ({
         tabIndex={0}
         onKeyDown={handleTableKeyDown}
       >
-        <div role="table" className="sql-grid-table"
+        <div
+          role="table"
+          className="sql-grid-table"
           style={{
             gridTemplateColumns: `max-content ${visibleColumns
               .map((column) => {
-                const isResized = table.getState().columnSizing[column.id] !== undefined;
-                return isResized ? `${column.getSize()}px` : `minmax(min-content, 1fr)`;
+                const isResized =
+                  table.getState().columnSizing[column.id] !== undefined;
+                return isResized
+                  ? `${column.getSize()}px`
+                  : `minmax(min-content, 1fr)`;
               })
               .join(' ')}`,
           }}
@@ -2145,7 +2335,11 @@ const TableApp = ({
           <div role="rowgroup" className="sql-thead">
             {table.getHeaderGroups().map((hg) => (
               <div role="row" className="sql-tr" key={hg.id}>
-                <div role="columnheader" className="sql-th corner-header" onClick={handleCornerClick}>
+                <div
+                  role="columnheader"
+                  className="sql-th corner-header"
+                  onClick={handleCornerClick}
+                >
                   ◢
                 </div>
                 {visibleColumns.map((column) => {
@@ -2247,11 +2441,13 @@ const TableApp = ({
                             const headerText =
                               titleSpan?.textContent ||
                               String(header.column.id);
-                            ctx.font = '600 13px var(--vscode-editor-font-family, Consolas), monospace';
+                            ctx.font =
+                              '600 13px var(--vscode-editor-font-family, Consolas), monospace';
                             const headerTextWidth =
                               ctx.measureText(headerText).width;
                             const finalHeaderWidth = headerTextWidth + 40;
-                            ctx.font = '13px var(--vscode-editor-font-family, Consolas), monospace';
+                            ctx.font =
+                              '13px var(--vscode-editor-font-family, Consolas), monospace';
                             let textWidthData = 0;
                             const rowsToScan = tableRows.slice(0, 500);
                             for (const r of rowsToScan) {
@@ -2288,7 +2484,9 @@ const TableApp = ({
               </div>
             ))}
           </div>
-          <div role="rowgroup" className="sql-tbody"
+          <div
+            role="rowgroup"
+            className="sql-tbody"
             onMouseDown={(e) => {
               const td = (e.target as HTMLElement).closest('.sql-td');
               if (!td) {
@@ -2332,8 +2530,15 @@ const TableApp = ({
           >
             {virtualRows.length > 0 && topSpacerHeight > 0 && (
               <div role="row" className="sql-tr" aria-hidden="true">
-                <div role="cell" className="sql-td virtual-spacer-cell"
-                  style={{ height: `${topSpacerHeight}px`, minHeight: `${topSpacerHeight}px`, maxHeight: `${topSpacerHeight}px`, gridColumn: '1 / -1' }}
+                <div
+                  role="cell"
+                  className="sql-td virtual-spacer-cell"
+                  style={{
+                    height: `${topSpacerHeight}px`,
+                    minHeight: `${topSpacerHeight}px`,
+                    maxHeight: `${topSpacerHeight}px`,
+                    gridColumn: '1 / -1',
+                  }}
                 />
               </div>
             )}
@@ -2379,8 +2584,15 @@ const TableApp = ({
             })}
             {virtualRows.length > 0 && bottomSpacerHeight > 0 && (
               <div role="row" className="sql-tr" aria-hidden="true">
-                <div role="cell" className="sql-td virtual-spacer-cell"
-                  style={{ height: `${bottomSpacerHeight}px`, minHeight: `${bottomSpacerHeight}px`, maxHeight: `${bottomSpacerHeight}px`, gridColumn: '1 / -1' }}
+                <div
+                  role="cell"
+                  className="sql-td virtual-spacer-cell"
+                  style={{
+                    height: `${bottomSpacerHeight}px`,
+                    minHeight: `${bottomSpacerHeight}px`,
+                    maxHeight: `${bottomSpacerHeight}px`,
+                    gridColumn: '1 / -1',
+                  }}
                 />
               </div>
             )}
@@ -2407,13 +2619,19 @@ const ExecutionPlanApp: React.FC<{ data: any }> = ({ data }) => {
       delete details['Plans'];
       children = node['Plans'] || [];
     } else {
-      title = typeof node === 'object' && node !== null ? (node.id !== undefined ? `Node ${node.id}` : 'Plan Node') : 'Value';
+      title =
+        typeof node === 'object' && node !== null
+          ? node.StmtText ||
+            node.PhysicalOp ||
+            node.LogicalOp ||
+            (node.id !== undefined ? `Node ${node.id}` : 'Plan Node')
+          : 'Value';
       if (node && typeof node === 'object') {
-        Object.keys(node).forEach(k => {
-           if (Array.isArray(node[k])) {
-             children = children.concat(node[k]);
-             delete details[k];
-           }
+        Object.keys(node).forEach((k) => {
+          if (Array.isArray(node[k])) {
+            children = children.concat(node[k]);
+            delete details[k];
+          }
         });
       }
     }
@@ -2421,33 +2639,104 @@ const ExecutionPlanApp: React.FC<{ data: any }> = ({ data }) => {
     const isExpanded = expanded[id] !== false;
 
     return (
-      <div key={id} style={{ marginLeft: depth > 0 ? '20px' : '0', marginTop: '8px', fontFamily: 'var(--vscode-editor-font-family, monospace)', fontSize: '12px' }}>
+      <div
+        key={id}
+        style={{
+          marginLeft: depth > 0 ? '24px' : '0',
+          marginTop: '12px',
+          fontFamily: 'var(--vscode-editor-font-family, monospace)',
+          fontSize: '12px',
+        }}
+      >
         <div
           onClick={() => toggle(id)}
           style={{
             cursor: 'pointer',
             padding: '8px 12px',
-            backgroundColor: 'var(--vscode-editorWidget-background, #252526)',
+            backgroundColor:
+              'var(--vscode-list-inactiveSelectionBackground, #37373d)',
             border: '1px solid var(--vscode-panel-border, #454545)',
-            borderLeft: '4px solid var(--vscode-textLink-foreground, #0078d4)',
-            borderRadius: '4px',
+            borderLeft: '4px solid var(--vscode-charts-blue, #0078d4)',
+            borderRadius: '6px',
             display: 'inline-flex',
             alignItems: 'center',
-            minWidth: '200px',
+            minWidth: '250px',
             userSelect: 'none',
+            boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
           }}
         >
-          <span style={{ flex: 1, fontWeight: 'bold' }}>{title}</span>
-          <span style={{ fontSize: '10px', marginLeft: '10px', color: '#888' }}>
+          <span style={{ fontSize: '14px', marginRight: '8px' }}>⚡</span>
+          <span
+            style={{
+              flex: 1,
+              fontWeight: 'bold',
+              color: 'var(--vscode-foreground)',
+            }}
+          >
+            {title}
+          </span>
+          <span
+            style={{
+              fontSize: '10px',
+              marginLeft: '16px',
+              color: 'var(--vscode-descriptionForeground)',
+            }}
+          >
             {isExpanded ? '▼' : '▶'}
           </span>
         </div>
         {isExpanded && (
-          <div style={{ padding: '8px 0 8px 16px', borderLeft: '1px solid var(--vscode-panel-border, #454545)', marginLeft: '12px', marginTop: '4px' }}>
-            <div style={{ backgroundColor: 'var(--vscode-textCodeBlock-background, rgba(0,0,0,0.2))', padding: '8px', borderRadius: '4px', marginBottom: children.length > 0 ? '8px' : '0' }}>
-              <pre style={{ margin: 0, color: 'var(--vscode-descriptionForeground, #cccccc)', whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>
-                {JSON.stringify(details, null, 2)}
-              </pre>
+          <div
+            style={{
+              padding: '12px 0 12px 20px',
+              borderLeft: '2px dashed var(--vscode-panel-border, #454545)',
+              marginLeft: '12px',
+              marginTop: '4px',
+            }}
+          >
+            <div
+              style={{
+                backgroundColor:
+                  'var(--vscode-editor-background, rgba(0,0,0,0.2))',
+                padding: '12px',
+                borderRadius: '4px',
+                border: '1px solid var(--vscode-panel-border)',
+              }}
+            >
+              <table style={{ borderCollapse: 'collapse', width: '100%' }}>
+                <tbody>
+                  {Object.keys(details)
+                    .filter((k) => details[k] !== null && details[k] !== '')
+                    .map((k) => (
+                      <tr key={k}>
+                        <td
+                          style={{
+                            padding: '4px 8px',
+                            fontWeight: 'bold',
+                            color: 'var(--vscode-textPreformat-foreground)',
+                            borderBottom:
+                              '1px solid var(--vscode-panel-border)',
+                            width: '30%',
+                          }}
+                        >
+                          {k}
+                        </td>
+                        <td
+                          style={{
+                            padding: '4px 8px',
+                            color: 'var(--vscode-foreground)',
+                            borderBottom:
+                              '1px solid var(--vscode-panel-border)',
+                          }}
+                        >
+                          {typeof details[k] === 'object'
+                            ? JSON.stringify(details[k])
+                            : String(details[k])}
+                        </td>
+                      </tr>
+                    ))}
+                </tbody>
+              </table>
             </div>
             {children.map((c, i) => renderNode(c, depth + 1, `${id}-${i}`))}
           </div>
@@ -2462,12 +2751,37 @@ const ExecutionPlanApp: React.FC<{ data: any }> = ({ data }) => {
   }
 
   return (
-    <div style={{ padding: '16px', background: 'var(--vscode-editor-background, #1e1e1e)', color: 'var(--vscode-editor-foreground, #cccccc)', overflow: 'auto', maxHeight: '500px' }}>
-      <h3 style={{ marginTop: 0, marginBottom: '16px', color: 'var(--vscode-textLink-foreground, #0078d4)', display: 'flex', alignItems: 'center', gap: '8px' }}>
-        <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path fillRule="evenodd" clipRule="evenodd" d="M12 1L12.5 1.5L12.5 4.5L12 5L10 5L10 9L11 9L11.5 9.5L11.5 12.5L11 13L5 13L4.5 12.5L4.5 9.5L5 9L6 9L6 5L4 5L3.5 4.5L3.5 1.5L4 1L12 1ZM10 2L10 4L11.5 4L11.5 2L10 2ZM6 2L6 4L8 4L8 2L6 2ZM4.5 4L4.5 2L5 2L5 4L4.5 4ZM5 10L5 12L11 12L11 10L5 10Z"/></svg>
-        Execution Plan
+    <div
+      style={{
+        padding: '16px',
+        background: 'var(--vscode-editor-background, #1e1e1e)',
+        color: 'var(--vscode-editor-foreground, #cccccc)',
+        overflow: 'auto',
+        maxHeight: '500px',
+      }}
+    >
+      <h3
+        style={{
+          marginTop: 0,
+          marginBottom: '16px',
+          color: 'var(--vscode-textLink-foreground, #0078d4)',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '8px',
+        }}
+      >
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+          <path
+            fillRule="evenodd"
+            clipRule="evenodd"
+            d="M12 1L12.5 1.5L12.5 4.5L12 5L10 5L10 9L11 9L11.5 9.5L11.5 12.5L11 13L5 13L4.5 12.5L4.5 9.5L5 9L6 9L6 5L4 5L3.5 4.5L3.5 1.5L4 1L12 1ZM10 2L10 4L11.5 4L11.5 2L10 2ZM6 2L6 4L8 4L8 2L6 2ZM4.5 4L4.5 2L5 2L5 4L4.5 4ZM5 10L5 12L11 12L11 10L5 10Z"
+          />
+        </svg>
+        Execution Plan (Tree View)
       </h3>
-      {Array.isArray(rootNode) ? rootNode.map((n, i) => renderNode(n, 0, `root-${i}`)) : renderNode(rootNode, 0, 'root')}
+      {Array.isArray(rootNode)
+        ? rootNode.map((n, i) => renderNode(n, 0, `root-${i}`))
+        : renderNode(rootNode, 0, 'root')}
     </div>
   );
 };
@@ -2491,11 +2805,15 @@ export const activate: ActivationFunction = (context) => {
       if (json && json.isExplainPlan) {
         root.render(<ExecutionPlanApp data={json} />);
       } else {
-        root.render(<TableApp data={json} postMessage={context.postMessage} onDidReceiveMessage={context.onDidReceiveMessage} />);
+        root.render(
+          <TableApp
+            data={json}
+            postMessage={context.postMessage}
+            onDidReceiveMessage={context.onDidReceiveMessage}
+          />,
+        );
       }
     },
-    disposeOutputItem(id) {
-      //
-    },
+    disposeOutputItem(id) {},
   };
 };

@@ -7,7 +7,7 @@
   "repository": {
     "url": "https://github.com/kuzho/sqlnotebook-pro.git"
   },
-  "version": "3.5.1",
+  "version": "3.5.2",
   "preview": false,
   "engines": {
     "vscode": "^1.95.0",
@@ -171,8 +171,18 @@
         },
         {
           "command": "sqlnotebook.copyObjectName",
-          "when": "view == sqlnotebook-connections && (viewItem == table || viewItem == view || viewItem == column || viewItem == schema)",
+          "when": "view == sqlnotebook-connections && (viewItem == table || viewItem == view || viewItem == column || viewItem == procedure || viewItem == function || viewItem == trigger || viewItem == index || viewItem == user || viewItem == role || viewItem == login || viewItem == synonym || viewItem == sequence || viewItem == type || viewItem == database_trigger || viewItem == system_table || viewItem == system_view)",
           "group": "2_action@2"
+        },
+        {
+          "command": "sqlnotebook.securityManager",
+          "when": "view == sqlnotebook-connections && viewItem == login",
+          "group": "1_modification@1"
+        },
+        {
+          "command": "sqlnotebook.newLogin",
+          "when": "view == sqlnotebook-connections && viewItem == logins",
+          "group": "1_modification@1"
         },
         {
           "command": "sqlnotebook.showERDiagram",
@@ -228,6 +238,18 @@
         "command": "sqlnotebook.newNotebookForConnection",
         "title": "New Notebook with this Connection",
         "icon": "$(new-file)"
+      },
+      {
+        "command": "sqlnotebook.securityManager",
+        "title": "Properties",
+        "category": "SQL Notebook",
+        "icon": "$(gear)"
+      },
+      {
+        "command": "sqlnotebook.newLogin",
+        "title": "New Login...",
+        "category": "SQL Notebook",
+        "icon": "$(add)"
       },
       {
         "command": "sqlnotebook.testConnection",
@@ -550,14 +572,15 @@
   "scripts": {
     "build": "npm run compile && npx @vscode/vsce package",
     "vscode:prepublish": "npm run compile",
-    "compile": "npm run build:server && npm run build:webview && npm run build:parameters && npm run build:renderer && shx mkdir -p dist/node_modules && shx cp -r node_modules/sql.js dist/node_modules",
+    "compile": "npm run build:server && npm run build:webview && npm run build:parameters && npm run build:security && npm run build:renderer && shx mkdir -p dist/node_modules && shx cp -r node_modules/sql.js dist/node_modules",
     "build:server": "esbuild ./src/main.ts --sourcemap --minify --bundle --platform=node --external:vscode --external:pg-native --outfile=./dist/index.js",
     "build:webview": "esbuild ./webview/main.tsx --sourcemap --minify --bundle --outfile=./dist/webview/main-bundle.js",
     "build:parameters": "esbuild ./webview/parameters-main.tsx --sourcemap --minify --bundle --outfile=./dist/webview/parameters-bundle.js",
+    "build:security": "esbuild ./webview/security-main.tsx --sourcemap --minify --bundle --outfile=./dist/webview/security-bundle.js",
     "build:renderer": "esbuild ./src/renderer.tsx --bundle --outfile=./dist/renderer.js --format=esm --platform=browser",
     "clean": "rm -rf ./dist",
     "lint": "eslint src --ext ts",
-    "watch": "npm run build:server -- --watch & npm run build:webview -- --watch & npm run build:parameters -- --watch & npm run build:renderer -- --watch",
+    "watch": "npm run build:server -- --watch & npm run build:webview -- --watch & npm run build:parameters -- --watch & npm run build:security -- --watch & npm run build:renderer -- --watch",
     "fmt": "prettier --write --ignore-path .gitignore ."
   },
   "devDependencies": {

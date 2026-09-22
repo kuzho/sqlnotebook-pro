@@ -774,7 +774,6 @@ export class SqlCompletionItemProvider
     const keywordItems = this.getKeywordItems(driver, queryContext);
     const snippets = this.getSnippets(queryContext, driver);
 
-    // Expand * snippet in SELECT context
     if (queryContext === 'select' || /\bSELECT\s+$/i.test(textBefore)) {
       const selectAllSnippet = this.getSelectAllColumnsSnippet(
         aliasMap,
@@ -812,7 +811,6 @@ export class SqlCompletionItemProvider
           : keywordItems;
 
     if (queryContext === 'from') {
-      // FROM/JOIN style ranking like SQL editors: tables first, then clauses.
       const relatedTables = this.getRelatedTables(tablesInQuery);
       const joinClauseSnippets = this.getJoinClauseSnippets(currentStatement);
       this.sortByRelevance(allTables, relatedTables, currentIdentifier);
@@ -845,7 +843,6 @@ export class SqlCompletionItemProvider
       queryContext === 'order' ||
       queryContext === 'group'
     ) {
-      // SELECT/WHERE style ranking: alias token -> alias columns -> scoped columns -> keywords.
       const columns = scopedColumns.length > 0 ? scopedColumns : allColumns;
       const qualifiedColumns =
         aliasMap.size > 0 ? this.getQualifiedColumnsForAliases(aliasMap) : [];
@@ -979,7 +976,9 @@ export class SqlCompletionItemProvider
       item.detail = `Column in: ${tableList}${moreCount}${typeDisplay}`;
       const doc = new vscode.MarkdownString();
       doc.appendMarkdown(`### Column \`${colName}\`\n\n`);
-      doc.appendMarkdown(`- **Found in tables:** \`${Array.from(info.tables).join('`, `')}\`\n`);
+      doc.appendMarkdown(
+        `- **Found in tables:** \`${Array.from(info.tables).join('`, `')}\`\n`,
+      );
       if (info.typeStr) {
         doc.appendMarkdown(`- **Type:** \`${info.typeStr}\`\n`);
       }
@@ -1139,7 +1138,9 @@ export class SqlCompletionItemProvider
     return columnItems;
   }
 
-  private getUnaggregatedSelectColumns(textBefore: string): vscode.CompletionItem[] {
+  private getUnaggregatedSelectColumns(
+    textBefore: string,
+  ): vscode.CompletionItem[] {
     const selectMatch = textBefore.match(/\bSELECT\s+([\s\S]*?)\bFROM\b/i);
     if (!selectMatch) {
       return [];
@@ -1292,7 +1293,9 @@ export class SqlCompletionItemProvider
         doc.appendMarkdown(`- 🔑 **Primary Key**\n`);
       }
       if (fk) {
-        doc.appendMarkdown(`- 🔗 **Foreign Key:** \`-> ${fk.referencedTable}.${fk.referencedColumn}\`\n`);
+        doc.appendMarkdown(
+          `- 🔗 **Foreign Key:** \`-> ${fk.referencedTable}.${fk.referencedColumn}\`\n`,
+        );
       }
 
       item.documentation = doc;
@@ -1354,16 +1357,27 @@ export class SqlCompletionItemProvider
           : `Table (${connectionName})`;
 
         const doc = new vscode.MarkdownString();
-        doc.appendMarkdown(`### ${t.type === 'view' ? 'View' : 'Table'} \`${label}\`\n\n`);
+        doc.appendMarkdown(
+          `### ${t.type === 'view' ? 'View' : 'Table'} \`${label}\`\n\n`,
+        );
         if (t.schema) {
           doc.appendMarkdown(`- **Schema:** \`${t.schema}\`\n`);
         }
-        doc.appendMarkdown(`- **Columns (${t.columns.length}):** ${t.columns.slice(0, 10).map((c) => `\`${c}\``).join(', ')}${t.columns.length > 10 ? '...' : ''}\n`);
+        doc.appendMarkdown(
+          `- **Columns (${t.columns.length}):** ${t.columns
+            .slice(0, 10)
+            .map((c) => `\`${c}\``)
+            .join(', ')}${t.columns.length > 10 ? '...' : ''}\n`,
+        );
         if (t.primaryKeys && t.primaryKeys.length > 0) {
-          doc.appendMarkdown(`- 🔑 **Primary Key:** ${t.primaryKeys.map((k) => `\`${k}\``).join(', ')}\n`);
+          doc.appendMarkdown(
+            `- 🔑 **Primary Key:** ${t.primaryKeys.map((k) => `\`${k}\``).join(', ')}\n`,
+          );
         }
         if (t.foreignKeys && t.foreignKeys.length > 0) {
-          doc.appendMarkdown(`- 🔗 **Foreign Keys (${t.foreignKeys.length}):** ${t.foreignKeys.map((fk) => `\`${fk.column} -> ${fk.referencedTable}.${fk.referencedColumn}\``).join(', ')}\n`);
+          doc.appendMarkdown(
+            `- 🔗 **Foreign Keys (${t.foreignKeys.length}):** ${t.foreignKeys.map((fk) => `\`${fk.column} -> ${fk.referencedTable}.${fk.referencedColumn}\``).join(', ')}\n`,
+          );
         }
         tableItem.documentation = doc;
 
@@ -1456,7 +1470,9 @@ export class SqlCompletionItemProvider
       item.detail = `Column in: ${tableList}${moreCount}${typeDisplay}`;
       const doc = new vscode.MarkdownString();
       doc.appendMarkdown(`### Column \`${colName}\`\n\n`);
-      doc.appendMarkdown(`- **Found in tables:** \`${Array.from(info.tables).join('`, `')}\`\n`);
+      doc.appendMarkdown(
+        `- **Found in tables:** \`${Array.from(info.tables).join('`, `')}\`\n`,
+      );
       if (info.typeStr) {
         doc.appendMarkdown(`- **Type:** \`${info.typeStr}\`\n`);
       }
@@ -1521,30 +1537,103 @@ export class SqlCompletionItemProvider
       string,
       { snippet: string; doc: string }
     > = {
-      COUNT: { snippet: 'COUNT(${1:*})', doc: 'Returns the number of rows or non-null values.' },
-      SUM: { snippet: 'SUM(${1:expression})', doc: 'Calculates the total sum of a numeric column.' },
-      AVG: { snippet: 'AVG(${1:expression})', doc: 'Calculates the average value of a numeric column.' },
-      MIN: { snippet: 'MIN(${1:expression})', doc: 'Returns the minimum value in a column.' },
-      MAX: { snippet: 'MAX(${1:expression})', doc: 'Returns the maximum value in a column.' },
-      COALESCE: { snippet: 'COALESCE(${1:expr1}, ${2:default_val})', doc: 'Returns the first non-null expression.' },
-      NULLIF: { snippet: 'NULLIF(${1:expr1}, ${2:expr2})', doc: 'Returns NULL if expr1 equals expr2.' },
-      CAST: { snippet: 'CAST(${1:expression} AS ${2:DATA_TYPE})', doc: 'Converts an expression to a specified data type.' },
-      CONVERT: { snippet: 'CONVERT(${1:DATA_TYPE}, ${2:expression})', doc: 'Converts an expression to a data type (MSSQL).' },
-      ISNULL: { snippet: 'ISNULL(${1:check_expression}, ${2:replacement_value})', doc: 'Replaces NULL with a specified value (MSSQL).' },
-      IFNULL: { snippet: 'IFNULL(${1:expr1}, ${2:expr2})', doc: 'Returns expr2 if expr1 is NULL.' },
-      GETDATE: { snippet: 'GETDATE()', doc: 'Returns current system date and time (MSSQL).' },
+      COUNT: {
+        snippet: 'COUNT(${1:*})',
+        doc: 'Returns the number of rows or non-null values.',
+      },
+      SUM: {
+        snippet: 'SUM(${1:expression})',
+        doc: 'Calculates the total sum of a numeric column.',
+      },
+      AVG: {
+        snippet: 'AVG(${1:expression})',
+        doc: 'Calculates the average value of a numeric column.',
+      },
+      MIN: {
+        snippet: 'MIN(${1:expression})',
+        doc: 'Returns the minimum value in a column.',
+      },
+      MAX: {
+        snippet: 'MAX(${1:expression})',
+        doc: 'Returns the maximum value in a column.',
+      },
+      COALESCE: {
+        snippet: 'COALESCE(${1:expr1}, ${2:default_val})',
+        doc: 'Returns the first non-null expression.',
+      },
+      NULLIF: {
+        snippet: 'NULLIF(${1:expr1}, ${2:expr2})',
+        doc: 'Returns NULL if expr1 equals expr2.',
+      },
+      CAST: {
+        snippet: 'CAST(${1:expression} AS ${2:DATA_TYPE})',
+        doc: 'Converts an expression to a specified data type.',
+      },
+      CONVERT: {
+        snippet: 'CONVERT(${1:DATA_TYPE}, ${2:expression})',
+        doc: 'Converts an expression to a data type (MSSQL).',
+      },
+      ISNULL: {
+        snippet: 'ISNULL(${1:check_expression}, ${2:replacement_value})',
+        doc: 'Replaces NULL with a specified value (MSSQL).',
+      },
+      IFNULL: {
+        snippet: 'IFNULL(${1:expr1}, ${2:expr2})',
+        doc: 'Returns expr2 if expr1 is NULL.',
+      },
+      GETDATE: {
+        snippet: 'GETDATE()',
+        doc: 'Returns current system date and time (MSSQL).',
+      },
       NOW: { snippet: 'NOW()', doc: 'Returns current date and time.' },
-      DATEADD: { snippet: 'DATEADD(${1:datepart}, ${2:number}, ${3:date})', doc: 'Adds an interval to a date (MSSQL).' },
-      DATEDIFF: { snippet: 'DATEDIFF(${1:datepart}, ${2:startdate}, ${3:enddate})', doc: 'Calculates difference between dates (MSSQL).' },
-      DATE_TRUNC: { snippet: "DATE_TRUNC('${1:day}', ${2:timestamp})", doc: 'Truncates timestamp to specified precision.' },
-      IIF: { snippet: 'IIF(${1:boolean_expression}, ${2:true_value}, ${3:false_value})', doc: 'Returns one of two values depending on evaluation.' },
-      ROW_NUMBER: { snippet: 'ROW_NUMBER() OVER (PARTITION BY ${1:column} ORDER BY ${2:column})', doc: 'Numbers rows sequentially.' },
-      RANK: { snippet: 'RANK() OVER (PARTITION BY ${1:column} ORDER BY ${2:column})', doc: 'Ranks rows with gaps for duplicate values.' },
-      DENSE_RANK: { snippet: 'DENSE_RANK() OVER (PARTITION BY ${1:column} ORDER BY ${2:column})', doc: 'Ranks rows without gaps for duplicate values.' },
-      STRING_AGG: { snippet: "STRING_AGG(${1:expression}, '${2:,}')", doc: 'Concatenates string expressions.' },
-      CONCAT: { snippet: 'CONCAT(${1:str1}, ${2:str2})', doc: 'Concatenates two or more strings.' },
-      SUBSTRING: { snippet: 'SUBSTRING(${1:expression}, ${2:start}, ${3:length})', doc: 'Extracts substring from string.' },
-      REPLACE: { snippet: 'REPLACE(${1:string_expression}, ${2:pattern}, ${3:replacement})', doc: 'Replaces all occurrences of substring.' },
+      DATEADD: {
+        snippet: 'DATEADD(${1:datepart}, ${2:number}, ${3:date})',
+        doc: 'Adds an interval to a date (MSSQL).',
+      },
+      DATEDIFF: {
+        snippet: 'DATEDIFF(${1:datepart}, ${2:startdate}, ${3:enddate})',
+        doc: 'Calculates difference between dates (MSSQL).',
+      },
+      DATE_TRUNC: {
+        snippet: "DATE_TRUNC('${1:day}', ${2:timestamp})",
+        doc: 'Truncates timestamp to specified precision.',
+      },
+      IIF: {
+        snippet:
+          'IIF(${1:boolean_expression}, ${2:true_value}, ${3:false_value})',
+        doc: 'Returns one of two values depending on evaluation.',
+      },
+      ROW_NUMBER: {
+        snippet:
+          'ROW_NUMBER() OVER (PARTITION BY ${1:column} ORDER BY ${2:column})',
+        doc: 'Numbers rows sequentially.',
+      },
+      RANK: {
+        snippet: 'RANK() OVER (PARTITION BY ${1:column} ORDER BY ${2:column})',
+        doc: 'Ranks rows with gaps for duplicate values.',
+      },
+      DENSE_RANK: {
+        snippet:
+          'DENSE_RANK() OVER (PARTITION BY ${1:column} ORDER BY ${2:column})',
+        doc: 'Ranks rows without gaps for duplicate values.',
+      },
+      STRING_AGG: {
+        snippet: "STRING_AGG(${1:expression}, '${2:,}')",
+        doc: 'Concatenates string expressions.',
+      },
+      CONCAT: {
+        snippet: 'CONCAT(${1:str1}, ${2:str2})',
+        doc: 'Concatenates two or more strings.',
+      },
+      SUBSTRING: {
+        snippet: 'SUBSTRING(${1:expression}, ${2:start}, ${3:length})',
+        doc: 'Extracts substring from string.',
+      },
+      REPLACE: {
+        snippet:
+          'REPLACE(${1:string_expression}, ${2:pattern}, ${3:replacement})',
+        doc: 'Replaces all occurrences of substring.',
+      },
     };
 
     const keywordItems = keywords.map((k) => {
@@ -1703,7 +1792,6 @@ export class SqlCompletionItemProvider
       return;
     }
     const current = store.get(key) || 0;
-    // Cap counts to avoid integer growth during long sessions.
     store.set(key, Math.min(current + delta, 100000));
   }
 
@@ -1721,7 +1809,6 @@ export class SqlCompletionItemProvider
       return;
     }
 
-    // Prevent memory bloat: Clear usage maps if they grow too large
     if (this.usageByTable.size > 1000) {
       this.usageByTable.clear();
     }
@@ -1859,11 +1946,9 @@ export class SqlCompletionItemProvider
 
       for (const table of tablesInQuery) {
         const queryTableNorm = table.toLowerCase();
-        // If query table is the source of a FK, add the referenced table
         if (queryTableNorm === tableNorm) {
           related.add(refTableNorm);
         }
-        // If query table is the target of a FK, add the source table (for JOINS)
         if (queryTableNorm === refTableNorm) {
           related.add(tableNorm);
         }
@@ -1878,8 +1963,6 @@ export class SqlCompletionItemProvider
     relatedTables: Set<string>,
     currentIdentifier: string,
   ): void {
-    // Assign sortText so VS Code orders them correctly:
-    // tier 1 = prefix match, tier 2 = FK-related, tier 3 = rest
     const currentId = this.normalizeName(currentIdentifier).toLowerCase();
 
     items.forEach((item) => {
@@ -1918,33 +2001,53 @@ function generateTableAlias(tableName: string): string {
 export class SqlHoverProvider implements vscode.HoverProvider {
   constructor(private completionProvider: SqlCompletionItemProvider) {}
 
-  async provideHover(document: vscode.TextDocument, position: vscode.Position, token: vscode.CancellationToken): Promise<vscode.Hover | null> {
+  async provideHover(
+    document: vscode.TextDocument,
+    position: vscode.Position,
+    token: vscode.CancellationToken,
+  ): Promise<vscode.Hover | null> {
     const wordRange = document.getWordRangeAtPosition(position);
-    if (!wordRange) {return null;}
+    if (!wordRange) {
+      return null;
+    }
     const word = document.getText(wordRange);
 
     const schema = this.completionProvider.getConsolidatedSchema();
     for (const [conn, tables] of schema) {
       for (const t of tables) {
         if (t.table.toLowerCase() === word.toLowerCase()) {
-          const pkStr = t.primaryKeys?.length ? `\nPrimary Keys: ${t.primaryKeys.join(', ')}` : '';
-          const fkStr = t.foreignKeys?.length ? `\nForeign Keys: ${t.foreignKeys.length}` : '';
+          const pkStr = t.primaryKeys?.length
+            ? `\nPrimary Keys: ${t.primaryKeys.join(', ')}`
+            : '';
+          const fkStr = t.foreignKeys?.length
+            ? `\nForeign Keys: ${t.foreignKeys.length}`
+            : '';
           const msString = new vscode.MarkdownString();
           msString.appendMarkdown(`**Table**: \`${t.table}\`\n\n`);
           msString.appendMarkdown(`**Columns**:\n`);
-          t.columns.forEach(c => {
-             const type = t.columnTypes?.[c] || 'unknown';
-             msString.appendMarkdown(`- \`${c}\`: *${type}*\n`);
+          t.columns.forEach((c) => {
+            const type = t.columnTypes?.[c] || 'unknown';
+            msString.appendMarkdown(`- \`${c}\`: *${type}*\n`);
           });
-          if (pkStr) {msString.appendMarkdown(`\n${pkStr}`);}
-          if (fkStr) {msString.appendMarkdown(`${fkStr}`);}
+          if (pkStr) {
+            msString.appendMarkdown(`\n${pkStr}`);
+          }
+          if (fkStr) {
+            msString.appendMarkdown(`${fkStr}`);
+          }
           return new vscode.Hover(msString);
         }
 
-        const cIdx = t.columns.findIndex(c => c.toLowerCase() === word.toLowerCase());
+        const cIdx = t.columns.findIndex(
+          (c) => c.toLowerCase() === word.toLowerCase(),
+        );
         if (cIdx !== -1) {
-           const type = t.columnTypes?.[t.columns[cIdx]] || 'unknown';
-           return new vscode.Hover(new vscode.MarkdownString(`**Column**: \`${t.columns[cIdx]}\`\n**Type**: *${type}*\n**Table**: \`${t.table}\``));
+          const type = t.columnTypes?.[t.columns[cIdx]] || 'unknown';
+          return new vscode.Hover(
+            new vscode.MarkdownString(
+              `**Column**: \`${t.columns[cIdx]}\`\n**Type**: *${type}*\n**Table**: \`${t.table}\``,
+            ),
+          );
         }
       }
     }
@@ -1955,7 +2058,7 @@ export class SqlHoverProvider implements vscode.HoverProvider {
 export function refreshDiagnostics(
   doc: vscode.TextDocument,
   diagnosticCollection: vscode.DiagnosticCollection,
-  completionProvider: SqlCompletionItemProvider
+  completionProvider: SqlCompletionItemProvider,
 ) {
   if (doc.languageId !== 'sql') {
     return;
@@ -1984,7 +2087,6 @@ export function refreshDiagnostics(
   for (const table of tablesInQuery) {
     const lowerTable = table.toLowerCase();
     if (!existingTables.has(lowerTable)) {
-      // Find where this table is in the text
       const regex = new RegExp(`\\b${table}\\b`, 'g');
       let match;
       while ((match = regex.exec(text)) !== null) {
@@ -1994,7 +2096,7 @@ export function refreshDiagnostics(
         const diagnostic = new vscode.Diagnostic(
           range,
           `Table or view '${table}' does not exist in the current schema cache.`,
-          vscode.DiagnosticSeverity.Warning
+          vscode.DiagnosticSeverity.Warning,
         );
         diagnostics.push(diagnostic);
       }
@@ -2003,4 +2105,3 @@ export function refreshDiagnostics(
 
   diagnosticCollection.set(doc.uri, diagnostics);
 }
-

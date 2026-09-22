@@ -211,4 +211,3 @@ function unescapeXml(safe: string): string {
     .replace(/&apos;/g, "'")
     .replace(/&amp;/g, '&');
 }
-

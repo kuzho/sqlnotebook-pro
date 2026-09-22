@@ -112,7 +112,7 @@ export function duplicateConnectionConfiguration(
 import { KernelManager } from './controller';
 
 export function scriptSelectTop(kernelManager: KernelManager) {
-  return async (item: TableItem | ViewItem) => {
+  return async (item: any) => {
     const driver = item.config.driver;
     const schema = item.tableSchema.schema;
     const table = item.tableSchema.table;
@@ -139,7 +139,7 @@ export function scriptSelectTop(kernelManager: KernelManager) {
 }
 
 export function scriptCountRows(kernelManager: KernelManager) {
-  return async (item: TableItem | ViewItem) => {
+  return async (item: any) => {
     const schema = item.tableSchema.schema;
     const table = item.tableSchema.table;
     const fullTableName = schema ? `${schema}.${table}` : table;
@@ -162,27 +162,92 @@ export function scriptCountRows(kernelManager: KernelManager) {
 }
 
 export function scriptCreate(kernelManager: KernelManager) {
-  return async (item: TableItem | ViewItem) => {
-    const schema = item.tableSchema.schema;
-    const table = item.tableSchema.table;
-    const fullTableName = schema ? `${schema}.${table}` : table;
+  return async (item: any) => {
+    const schema = item.tableSchema?.schema;
+    const table = item.tableSchema?.table || item.label;
+    const fullTableName =
+      schema && schema !== 'dbo' && schema !== 'public'
+        ? `${schema}.${table}`
+        : table;
+    const type = item.tableSchema?.type || 'table';
 
     let query = '';
-    if (item.tableSchema.type === 'view') {
+
+    if (
+      [
+        'view',
+        'system_view',
+        'procedure',
+        'function',
+        'database_trigger',
+        'trigger',
+      ].includes(type) &&
+      item.config?.driver === 'mssql'
+    ) {
+      try {
+        const pool = await getPool(item.config);
+        const objectName =
+          type === 'database_trigger'
+            ? table
+            : schema
+              ? `${schema}.${table}`
+              : table;
+        const conn = await pool.getConnection();
+        let res: any;
+        try {
+          res = await conn.query(
+            `SELECT OBJECT_DEFINITION(OBJECT_ID('${objectName}')) AS def`,
+          );
+        } finally {
+          conn.release();
+        }
+        const firstResult = res[0];
+        let firstRow: any;
+        if (Array.isArray(firstResult)) {
+          firstRow = firstResult[0];
+        } else if (firstResult && firstResult.rows) {
+          const rowArr = firstResult.rows;
+          if (Array.isArray(rowArr)) {
+             firstRow = rowArr[0];
+             if (Array.isArray(firstRow)) {
+               // Sqlite might return array of values, but here it's an array of objects
+               // wait, in sqlite, row is array. But this is mssql only block.
+             }
+          }
+        }
+        
+        if (firstRow && firstRow.def) {
+          query = firstRow.def;
+        } else {
+          query = `-- Definition not found for ${objectName}`;
+        }
+      } catch (e) {
+        query = `-- Error fetching definition: ${e}`;
+      }
+    } else if (type === 'view' || type === 'system_view') {
       query = `-- Definition of view ${fullTableName}\nCREATE VIEW ${fullTableName} AS\nSELECT * FROM ...; -- (Modify this)`;
-    } else {
-      const columns = item.tableSchema.columns || [];
-      const colDefs = columns.map(col => {
-        const type = item.tableSchema.columnTypes?.[col] || 'VARCHAR(255)';
-        const isPk = item.tableSchema.primaryKeys?.includes(col);
-        return `    ${col} ${type}${isPk ? ' PRIMARY KEY' : ''}`;
+    } else if (type === 'table' || type === 'system_table') {
+      const columns = item.tableSchema?.columns || [];
+      const colDefs = columns.map((col: string) => {
+        const cType = item.tableSchema?.columnTypes?.[col] || 'VARCHAR(255)';
+        const isPk = item.tableSchema?.primaryKeys?.includes(col);
+        return `    ${col} ${cType}${isPk ? ' PRIMARY KEY' : ''}`;
       });
       query = `CREATE TABLE ${fullTableName} (\n${colDefs.join(',\n')}\n);`;
+    } else {
+      query = `-- Scripting for type ${type} is not fully supported yet.\nCREATE ${type.toUpperCase()} ${fullTableName} ...`;
     }
 
-    const cellData = new vscode.NotebookCellData(vscode.NotebookCellKind.Code, query, 'sql');
+    const cellData = new vscode.NotebookCellData(
+      vscode.NotebookCellKind.Code,
+      query,
+      'sql',
+    );
     const nbData = new vscode.NotebookData([cellData]);
-    const doc = await vscode.workspace.openNotebookDocument('sql-notebook', nbData);
+    const doc = await vscode.workspace.openNotebookDocument(
+      'sql-notebook',
+      nbData,
+    );
     if (item.config?.name) {
       kernelManager.bindNotebookToConnection(doc, item.config.name);
     }
@@ -191,17 +256,40 @@ export function scriptCreate(kernelManager: KernelManager) {
 }
 
 export function scriptDrop(kernelManager: KernelManager) {
-  return async (item: TableItem | ViewItem) => {
-    const schema = item.tableSchema.schema;
-    const table = item.tableSchema.table;
-    const fullTableName = schema ? `${schema}.${table}` : table;
-    const isView = item.tableSchema.type === 'view';
-    const keyword = isView ? 'VIEW' : 'TABLE';
+  return async (item: any) => {
+    const schema = item.tableSchema?.schema;
+    const table = item.tableSchema?.table || item.label;
+    const fullTableName =
+      schema && schema !== 'dbo' && schema !== 'public'
+        ? `${schema}.${table}`
+        : table;
+    const type = item.tableSchema?.type || 'table';
 
-    const query = `DROP ${keyword} IF EXISTS ${fullTableName};`;
-    const cellData = new vscode.NotebookCellData(vscode.NotebookCellKind.Code, query, 'sql');
+    let keyword = 'TABLE';
+    if (type === 'view' || type === 'system_view') keyword = 'VIEW';
+    else if (type === 'procedure') keyword = 'PROCEDURE';
+    else if (type === 'function') keyword = 'FUNCTION';
+    else if (type === 'trigger' || type === 'database_trigger')
+      keyword = 'TRIGGER';
+    else if (type === 'synonym') keyword = 'SYNONYM';
+    else if (type === 'sequence') keyword = 'SEQUENCE';
+    else if (type === 'type') keyword = 'TYPE';
+
+    let query = `DROP ${keyword} IF EXISTS ${fullTableName};`;
+    if (item.config?.driver === 'mssql') {
+      query = `DROP ${keyword} ${fullTableName};`;
+    }
+
+    const cellData = new vscode.NotebookCellData(
+      vscode.NotebookCellKind.Code,
+      query,
+      'sql',
+    );
     const nbData = new vscode.NotebookData([cellData]);
-    const doc = await vscode.workspace.openNotebookDocument('sql-notebook', nbData);
+    const doc = await vscode.workspace.openNotebookDocument(
+      'sql-notebook',
+      nbData,
+    );
     if (item.config?.name) {
       kernelManager.bindNotebookToConnection(doc, item.config.name);
     }
@@ -210,7 +298,7 @@ export function scriptDrop(kernelManager: KernelManager) {
 }
 
 export function scriptInsert(kernelManager: KernelManager) {
-  return async (item: TableItem) => {
+  return async (item: any) => {
     const schema = item.tableSchema.schema;
     const table = item.tableSchema.table;
     const fullTableName = schema ? `${schema}.${table}` : table;
@@ -218,9 +306,16 @@ export function scriptInsert(kernelManager: KernelManager) {
     const placeholders = columns.map(() => '?').join(', ');
 
     const query = `INSERT INTO ${fullTableName} (${columns.join(', ')}) \nVALUES (${placeholders});`;
-    const cellData = new vscode.NotebookCellData(vscode.NotebookCellKind.Code, query, 'sql');
+    const cellData = new vscode.NotebookCellData(
+      vscode.NotebookCellKind.Code,
+      query,
+      'sql',
+    );
     const nbData = new vscode.NotebookData([cellData]);
-    const doc = await vscode.workspace.openNotebookDocument('sql-notebook', nbData);
+    const doc = await vscode.workspace.openNotebookDocument(
+      'sql-notebook',
+      nbData,
+    );
     if (item.config?.name) {
       kernelManager.bindNotebookToConnection(doc, item.config.name);
     }
@@ -260,7 +355,9 @@ export function copyObjectName() {
     let nameToCopy = '';
     if (item instanceof TableItem || item instanceof ViewItem) {
       const schema = item.tableSchema.schema;
-      nameToCopy = schema ? `${schema}.${item.tableSchema.table}` : item.tableSchema.table;
+      nameToCopy = schema
+        ? `${schema}.${item.tableSchema.table}`
+        : item.tableSchema.table;
     } else if (item instanceof ColumnItem) {
       nameToCopy = item.columnName;
     } else if (item?.label) {
@@ -268,7 +365,9 @@ export function copyObjectName() {
     }
     if (nameToCopy) {
       await vscode.env.clipboard.writeText(nameToCopy);
-      vscode.window.showInformationMessage(`Copied "${nameToCopy}" to clipboard`);
+      vscode.window.showInformationMessage(
+        `Copied "${nameToCopy}" to clipboard`,
+      );
     }
   };
 }
@@ -278,14 +377,18 @@ export function insertIntoActiveCell() {
     let textToInsert = '';
     if (item instanceof TableItem || item instanceof ViewItem) {
       const schema = item.tableSchema.schema;
-      textToInsert = schema ? `${schema}.${item.tableSchema.table}` : item.tableSchema.table;
+      textToInsert = schema
+        ? `${schema}.${item.tableSchema.table}`
+        : item.tableSchema.table;
     } else if (item instanceof ColumnItem) {
       textToInsert = item.columnName;
     } else if (item?.label) {
       textToInsert = item.label.toString();
     }
 
-    if (!textToInsert) {return;}
+    if (!textToInsert) {
+      return;
+    }
 
     const editor = vscode.window.activeTextEditor;
     if (editor) {
@@ -297,4 +400,3 @@ export function insertIntoActiveCell() {
     }
   };
 }
-

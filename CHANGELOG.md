@@ -1,5 +1,20 @@
 # Change Log
 
+## [3.5.2]
+
+### ✨ Major Features: SSMS Parity & Deep Architecture
+
+- **Lazy Loading Explorer (Performance):** The entire connection tree was re-architected. Massive databases (e.g. 10,000+ tables) now connect instantly without freezing VS Code. Objects are only queried and fetched dynamically when you expand folders.
+- **SSMS Table Explorer Parity:**
+  - Consolidated Primary, Foreign, and Unique Keys into a unified `Keys` folder.
+  - Added full support for extracting `Constraints` (Check and Default constraints) natively.
+  - Added full support for extracting table and view `Statistics`.
+- **SSMS Server Explorer Parity (DBA Level):**
+  - **SQL Server Agent:** View your Agent Jobs directly from the side panel.
+  - **Linked Servers:** Explore your linked servers seamlessly.
+  - **Server Objects:** Gain visibility into `Endpoints` and `Server Triggers`.
+  - Safely falls back (hides empty folders) if your database user lacks `msdb` or sysadmin privileges.
+
 ## [3.5.1]
 
 ### 🐛 Bug Fixes & UX Improvements

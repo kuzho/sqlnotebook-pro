@@ -110,7 +110,12 @@ export function splitSqlBatches(sql: string): string[] {
       } else {
         inBracket = false;
       }
-    } else if (!inString && !inBracket && !inSingleLineComment && !inMultiLineComment) {
+    } else if (
+      !inString &&
+      !inBracket &&
+      !inSingleLineComment &&
+      !inMultiLineComment
+    ) {
       if (char === "'" || char === '"') {
         inString = true;
         stringChar = char;
@@ -128,7 +133,11 @@ export function splitSqlBatches(sql: string): string[] {
         const lineBefore = before.substring(lastNewlineBefore + 1);
 
         let afterIdx = i + 2;
-        while (afterIdx < sql.length && sql[afterIdx] !== '\n' && sql[afterIdx] !== '\r') {
+        while (
+          afterIdx < sql.length &&
+          sql[afterIdx] !== '\n' &&
+          sql[afterIdx] !== '\r'
+        ) {
           afterIdx++;
         }
         const lineAfter = sql.substring(i + 2, afterIdx);
@@ -149,7 +158,7 @@ export function splitSqlBatches(sql: string): string[] {
     }
   }
 
-  return batches.filter(b => b.length > 0);
+  return batches.filter((b) => b.length > 0);
 }
 
 function wrapSqlList(

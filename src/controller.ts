@@ -314,7 +314,10 @@ export class SQLNotebookKernel {
     await this.doExecution(cell, true);
   }
 
-  private async doExecution(cell: vscode.NotebookCell, isExplainPlan: boolean = false): Promise<void> {
+  private async doExecution(
+    cell: vscode.NotebookCell,
+    isExplainPlan: boolean = false,
+  ): Promise<void> {
     const execution = this._controller.createNotebookCellExecution(cell);
     execution.executionOrder = ++this._executionOrder;
     execution.start(Date.now());
@@ -335,10 +338,7 @@ export class SQLNotebookKernel {
             /[.*+?^${}()|[\]\\]/g,
             '\\$&',
           );
-          const searchPattern = new RegExp(
-            `(?<!@)${escapedParamName}\\b`,
-            'i',
-          );
+          const searchPattern = new RegExp(`(?<!@)${escapedParamName}\\b`, 'i');
           if (searchPattern.test(rawQuery)) {
             const errMsg = `Validation Error: Parameter '${paramName}' is required but was left empty.`;
             await writeErr(execution, errMsg);
@@ -365,10 +365,7 @@ export class SQLNotebookKernel {
             /[.*+?^${}()|[\]\\]/g,
             '\\$&',
           );
-          const searchPattern = new RegExp(
-            `(?<!@)${escapedParamName}\\b`,
-            'g',
-          );
+          const searchPattern = new RegExp(`(?<!@)${escapedParamName}\\b`, 'g');
           if (raw === true) {
             batch = batch.replace(searchPattern, () => value);
           } else {
@@ -428,7 +425,12 @@ export class SQLNotebookKernel {
             conn.release();
           } catch (e) {}
         }
-        await this.appendExecutionResult(execution, result || [], batch, isExplainPlan);
+        await this.appendExecutionResult(
+          execution,
+          result || [],
+          batch,
+          isExplainPlan,
+        );
       } catch (err: unknown) {
         const errorMessage = err instanceof Error ? err.message : String(err);
         vscode.window.showErrorMessage(
@@ -497,9 +499,9 @@ export class SQLNotebookKernel {
         }
         if (isExplainPlan) {
           const jsonPayload = {
-             isExplainPlan: true,
-             driver: this.config.driver,
-             data: rows
+            isExplainPlan: true,
+            driver: this.config.driver,
+            data: rows,
           };
           newOutputs.push(
             new vscode.NotebookCellOutput([
