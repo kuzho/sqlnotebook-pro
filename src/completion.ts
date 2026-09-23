@@ -1326,6 +1326,11 @@ export class SqlCompletionItemProvider
       const connectionName = kernelId.replace('sql-notebook-', '');
 
       schema.forEach((t) => {
+        const isQueryable = ['table', 'view', 'system_table', 'system_view', 'synonym', 'function'].includes(t.type || 'table');
+        if (!isQueryable) {
+          return;
+        }
+
         const normalizedSchema = this.normalizeName(t.schema || '');
         const normalizedSchemaLower = normalizedSchema.toLowerCase();
         const qualifierPrefixLower = qualifierPrefix.toLowerCase();
@@ -1918,16 +1923,23 @@ export class SqlCompletionItemProvider
       }
 
       const joinBase = this.normalizeTableForLookup(joinTable);
-      const label = `${joinKeyword} ${joinTable} ON`;
+      const endsWithJoin = /\b(?:JOIN|LEFT\s+JOIN|RIGHT\s+JOIN|FULL\s+OUTER\s+JOIN|INNER\s+JOIN|CROSS\s+JOIN)\s*$/i.test(textBefore);
+
+      // Split rightExpr to rebuild it with the snippet variable for the alias
+      const rightCol = rightExpr.split('.').slice(1).join('.');
+
+      const label = endsWithJoin ? `${joinTable} ON` : `${joinKeyword} ${joinTable} ON`;
+      const snippetStr = endsWithJoin
+        ? `${joinTable} \${1:${joinBase}} ON ${leftExpr} = \${1:${joinBase}}.${rightCol}`
+        : `${joinKeyword} ${joinTable} \${1:${joinBase}} ON ${leftExpr} = \${1:${joinBase}}.${rightCol}`;
+
       const item = new vscode.CompletionItem(
         label,
         vscode.CompletionItemKind.Snippet,
       );
       item.detail = `Suggested by FK (${anchor.table} ↔ ${joinBase})`;
       item.sortText = `05_${label}`;
-      item.insertText = new vscode.SnippetString(
-        `${joinKeyword} ${joinTable} ${joinBase} ON ${leftExpr} = ${rightExpr}`,
-      );
+      item.insertText = new vscode.SnippetString(snippetStr);
       snippets.push(item);
     }
 

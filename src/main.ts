@@ -788,7 +788,7 @@ export function activate(context: vscode.ExtensionContext) {
   context.subscriptions.push(
     vscode.commands.registerCommand(
       'sqlnotebook.scriptCreate',
-      scriptCreate(kernelManager),
+      scriptCreate(kernelManager, context),
     ),
   );
 
@@ -1141,7 +1141,9 @@ export function activate(context: vscode.ExtensionContext) {
                 );
               }
 
-              if (schema.length === 0) {
+              const tablesOnly = schema.filter(t => t.type === 'table');
+              
+              if (tablesOnly.length === 0) {
                 vscode.window.showInformationMessage(
                   'No tables found to generate diagram.',
                 );
@@ -1150,14 +1152,27 @@ export function activate(context: vscode.ExtensionContext) {
 
               let mermaidCode = 'erDiagram\n';
               const rels = new Set();
-              for (const t of schema) {
+              for (const t of tablesOnly) {
                 const tableName = t.schema ? `${t.schema}_${t.table}` : t.table;
                 mermaidCode += `  "${tableName}" {\n`;
-                for (const col of t.columns) {
-                  const type = t.columnTypes?.[col] || 'unknown';
-                  const safeType = type.replace(/[^a-zA-Z0-9]/g, '');
-                  const safeCol = col.replace(/[^a-zA-Z0-9_]/g, '_');
-                  mermaidCode += `    ${safeType} ${safeCol}\n`;
+                
+                if (!t.columns || t.columns.length === 0) {
+                  mermaidCode += `    unknown no_columns\n`;
+                } else {
+                  for (const col of t.columns) {
+                    const type = t.columnTypes?.[col] || 'unknown';
+                    const safeType = type.replace(/[^a-zA-Z0-9]/g, '');
+                    const safeCol = col.replace(/[^a-zA-Z0-9_]/g, '_');
+                    
+                    const isPK = t.primaryKeys?.includes(col);
+                    const isFK = t.foreignKeys?.some(fk => fk.column === col);
+                    let keyStr = '';
+                    if (isPK && isFK) keyStr = ' PK, FK';
+                    else if (isPK) keyStr = ' PK';
+                    else if (isFK) keyStr = ' FK';
+                    
+                    mermaidCode += `    ${safeType} ${safeCol}${keyStr}\n`;
+                  }
                 }
                 mermaidCode += `  }\n`;
                 if (t.foreignKeys) {
@@ -1298,31 +1313,16 @@ export function activate(context: vscode.ExtensionContext) {
 
         let formatted = source;
         try {
-          const config =
-            vscode.workspace.getConfiguration('sqlnotebook.format');
-          const keywordCase =
-            config.get<'upper' | 'lower' | 'preserve'>('keywordCase') ??
-            'upper';
-          const indentStyle =
-            config.get<'standard' | 'tabularLeft' | 'tabularRight'>(
-              'indentStyle',
-            ) ?? 'standard';
-          const tabWidth = config.get<number>('tabWidth') ?? 2;
-          const useTabs = config.get<boolean>('useTabs') ?? true;
-          const logicalOperatorNewline =
-            config.get<'before' | 'after'>('logicalOperatorNewline') ??
-            'before';
-          const expressionWidth = config.get<number>('expressionWidth') ?? 200;
-
           formatted = formatSql(source, {
             language: language as any,
-            keywordCase,
-            indentStyle,
-            logicalOperatorNewline,
-            expressionWidth,
-            tabWidth,
-            useTabs,
+            keywordCase: 'upper',
+            indentStyle: 'standard',
+            logicalOperatorNewline: 'before',
+            expressionWidth: 200,
+            tabWidth: 2,
+            useTabs: false,
             linesBetweenQueries: 0,
+            denseOperators: false,
           });
           formatted = compactFormattedSql(formatted, language);
         } catch (e: unknown) {

@@ -554,7 +554,7 @@ export class SQLNotebookConnections implements vscode.TreeDataProvider<vscode.Tr
       return element.tableSchema.indexes!.map((i) => new IndexItem(i));
     }
     if (element instanceof TriggersGroupItem) {
-      return element.tableSchema.triggers!.map((t) => new TriggerItem(t));
+      return element.tableSchema.triggers!.map((t) => new TriggerItem(t, element.tableSchema, element.config));
     }
     if (element instanceof KeysGroupItem) {
       return element.tableSchema.keys!.map((k) => new KeyItem(k.name, k.type));
@@ -909,13 +909,13 @@ function createObjectTreeItem(
     case 'schema':
       return new SecuritySchemaItem(obj.table);
     case 'agent_job':
-      return new AgentJobItem(obj.table);
+      return new AgentJobItem(obj, config);
     case 'linked_server':
-      return new LinkedServerItem(obj.table);
+      return new LinkedServerItem(obj, config);
     case 'server_trigger':
-      return new ServerTriggerItem(obj.table);
+      return new ServerTriggerItem(obj, config);
     case 'endpoint':
-      return new EndpointItem(obj.table);
+      return new EndpointItem(obj, config);
     default:
       return new TableItem(obj, config);
   }
@@ -929,29 +929,29 @@ export class SecuritySchemaItem extends vscode.TreeItem {
   }
 }
 export class AgentJobItem extends vscode.TreeItem {
-  constructor(public readonly name: string) {
-    super(name, vscode.TreeItemCollapsibleState.None);
+  constructor(public readonly tableSchema: TableSchema, public readonly config: ConnData) {
+    super(tableSchema.table, vscode.TreeItemCollapsibleState.None);
     this.contextValue = 'agent_job';
     this.iconPath = new vscode.ThemeIcon('play-circle');
   }
 }
 export class LinkedServerItem extends vscode.TreeItem {
-  constructor(public readonly name: string) {
-    super(name, vscode.TreeItemCollapsibleState.None);
+  constructor(public readonly tableSchema: TableSchema, public readonly config: ConnData) {
+    super(tableSchema.table, vscode.TreeItemCollapsibleState.None);
     this.contextValue = 'linked_server';
     this.iconPath = new vscode.ThemeIcon('server');
   }
 }
 export class ServerTriggerItem extends vscode.TreeItem {
-  constructor(public readonly name: string) {
-    super(name, vscode.TreeItemCollapsibleState.None);
+  constructor(public readonly tableSchema: TableSchema, public readonly config: ConnData) {
+    super(tableSchema.table, vscode.TreeItemCollapsibleState.None);
     this.contextValue = 'server_trigger';
     this.iconPath = new vscode.ThemeIcon('zap');
   }
 }
 export class EndpointItem extends vscode.TreeItem {
-  constructor(public readonly name: string) {
-    super(name, vscode.TreeItemCollapsibleState.None);
+  constructor(public readonly tableSchema: TableSchema, public readonly config: ConnData) {
+    super(tableSchema.table, vscode.TreeItemCollapsibleState.None);
     this.contextValue = 'endpoint';
     this.iconPath = new vscode.ThemeIcon('plug');
   }
@@ -1043,10 +1043,16 @@ export class IndexItem extends vscode.TreeItem {
 }
 
 export class TriggerItem extends vscode.TreeItem {
-  constructor(public readonly triggerName: string) {
+  public readonly tableSchema: TableSchema;
+  constructor(
+    public readonly triggerName: string,
+    parentSchema: TableSchema,
+    public readonly config: ConnData,
+  ) {
     super(triggerName, vscode.TreeItemCollapsibleState.None);
     this.contextValue = 'trigger';
     this.iconPath = new vscode.ThemeIcon('zap');
+    this.tableSchema = { ...parentSchema, table: triggerName, type: 'table_trigger' };
   }
 }
 

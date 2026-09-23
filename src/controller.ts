@@ -406,15 +406,58 @@ export class SQLNotebookKernel {
           } else if (this.config.driver === 'sqlite') {
             batch = `EXPLAIN QUERY PLAN ${batch}`;
           } else if (this.config.driver === 'mssql') {
-            await conn.query('SET SHOWPLAN_ALL ON');
+            batch = `BEGIN TRAN;\nSET STATISTICS PROFILE ON;\n${batch}\nSET STATISTICS PROFILE OFF;\nIF @@TRANCOUNT > 0 ROLLBACK TRAN;`;
           }
         }
 
         let result: ExecutionResult;
         try {
-          result = await conn.query(batch);
+          try {
+            result = await conn.query(batch);
+          } catch (queryErr) {
+            if (isExplainPlan && this.config.driver === 'mssql') {
+              try { await conn.query('IF @@TRANCOUNT > 0 ROLLBACK TRAN;'); } catch (e) {}
+            }
+            throw queryErr;
+          }
           if (isExplainPlan && this.config.driver === 'mssql') {
-            await conn.query('SET SHOWPLAN_ALL OFF');
+            let planRs: any = null;
+            for (const rs of result) {
+              const rsData = rs as any;
+              if (rsData.columns && rsData.columns.includes('StmtText')) {
+                planRs = rsData;
+                break;
+              }
+            }
+            if (planRs && planRs.rows && planRs.rows.length > 0) {
+              const rowsAsObjects = planRs.rows.map((row: any) => {
+                if (Array.isArray(row)) {
+                  const obj: any = {};
+                  planRs.columns.forEach((col: string, i: number) => {
+                    obj[col] = row[i];
+                  });
+                  return obj;
+                }
+                return row;
+              });
+
+              const nodeMap = new Map<number, any>();
+              const roots: any[] = [];
+              rowsAsObjects.forEach((row: any) => {
+                nodeMap.set(row.NodeId, { ...row, children: [] });
+              });
+              rowsAsObjects.forEach((row: any) => {
+                const node = nodeMap.get(row.NodeId);
+                if (row.Parent === 0 || row.Parent === null || row.Parent === undefined) {
+                  roots.push(node);
+                } else {
+                  const parent = nodeMap.get(row.Parent);
+                  if (parent) parent.children.push(node);
+                  else roots.push(node);
+                }
+              });
+              result = [{ rows: roots, columns: planRs.columns }];
+            }
           }
           if (/\b(CREATE|ALTER|DROP|TRUNCATE)\b/i.test(strippedBatch)) {
             this.schemaCache = null;

@@ -7,7 +7,7 @@
   "repository": {
     "url": "https://github.com/kuzho/sqlnotebook-pro.git"
   },
-  "version": "3.5.2",
+  "version": "3.5.3",
   "preview": false,
   "engines": {
     "vscode": "^1.95.0",
@@ -151,12 +151,12 @@
         },
         {
           "command": "sqlnotebook.scriptCreate",
-          "when": "view == sqlnotebook-connections && (viewItem == table || viewItem == view)",
+          "when": "view == sqlnotebook-connections && (viewItem == table || viewItem == view || viewItem == procedure || viewItem == function || viewItem == trigger || viewItem == database_trigger || viewItem == server_trigger || viewItem == synonym || viewItem == sequence || viewItem == type || viewItem == system_table || viewItem == system_view)",
           "group": "1_script@3"
         },
         {
           "command": "sqlnotebook.scriptDrop",
-          "when": "view == sqlnotebook-connections && (viewItem == table || viewItem == view)",
+          "when": "view == sqlnotebook-connections && (viewItem == table || viewItem == view || viewItem == procedure || viewItem == function || viewItem == trigger || viewItem == database_trigger || viewItem == server_trigger || viewItem == synonym || viewItem == sequence || viewItem == type || viewItem == system_table || viewItem == system_view)",
           "group": "1_script@4"
         },
         {
@@ -166,12 +166,12 @@
         },
         {
           "command": "sqlnotebook.insertIntoActiveCell",
-          "when": "view == sqlnotebook-connections && (viewItem == table || viewItem == view || viewItem == column)",
+          "when": "view == sqlnotebook-connections && (viewItem == table || viewItem == view || viewItem == column || viewItem == procedure || viewItem == function || viewItem == trigger || viewItem == database_trigger || viewItem == server_trigger || viewItem == synonym || viewItem == sequence || viewItem == type || viewItem == system_table || viewItem == system_view || viewItem == index || viewItem == endpoint || viewItem == linked_server || viewItem == agent_job)",
           "group": "2_action@1"
         },
         {
           "command": "sqlnotebook.copyObjectName",
-          "when": "view == sqlnotebook-connections && (viewItem == table || viewItem == view || viewItem == column || viewItem == procedure || viewItem == function || viewItem == trigger || viewItem == index || viewItem == user || viewItem == role || viewItem == login || viewItem == synonym || viewItem == sequence || viewItem == type || viewItem == database_trigger || viewItem == system_table || viewItem == system_view)",
+          "when": "view == sqlnotebook-connections && (viewItem == table || viewItem == view || viewItem == column || viewItem == procedure || viewItem == function || viewItem == trigger || viewItem == index || viewItem == user || viewItem == role || viewItem == login || viewItem == synonym || viewItem == sequence || viewItem == type || viewItem == database_trigger || viewItem == server_trigger || viewItem == endpoint || viewItem == linked_server || viewItem == agent_job || viewItem == system_table || viewItem == system_view)",
           "group": "2_action@2"
         },
         {
@@ -187,7 +187,12 @@
         {
           "command": "sqlnotebook.showERDiagram",
           "when": "view == sqlnotebook-connections && (viewItem == database || viewItem == schema)",
-          "group": "3_tools"
+          "group": "3_tools@1"
+        },
+        {
+          "command": "sqlnotebook.openActivityMonitor",
+          "when": "view == sqlnotebook-connections && viewItem == database",
+          "group": "3_tools@2"
         },
         {
           "command": "sqlnotebook.editReport",
@@ -390,6 +395,11 @@
         "command": "sqlnotebook.formatCell",
         "title": "Format SQL",
         "icon": "$(symbol-string)"
+      },
+      {
+        "command": "sqlnotebook.openActivityMonitor",
+        "title": "Activity Monitor",
+        "icon": "$(pulse)"
       }
     ],
     "viewsContainers": {

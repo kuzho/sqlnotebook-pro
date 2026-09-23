@@ -6,6 +6,7 @@ import {
   TableItem,
   ViewItem,
   ColumnItem,
+  resolveConfigPassword,
 } from './connections';
 import { globalFormProvider } from './form';
 import { getPool, PoolConfig } from './driver';
@@ -161,7 +162,7 @@ export function scriptCountRows(kernelManager: KernelManager) {
   };
 }
 
-export function scriptCreate(kernelManager: KernelManager) {
+export function scriptCreate(kernelManager: KernelManager, context: vscode.ExtensionContext) {
   return async (item: any) => {
     const schema = item.tableSchema?.schema;
     const table = item.tableSchema?.table || item.label;
@@ -181,51 +182,101 @@ export function scriptCreate(kernelManager: KernelManager) {
         'function',
         'database_trigger',
         'trigger',
-      ].includes(type) &&
-      item.config?.driver === 'mssql'
+        'table_trigger',
+        'server_trigger',
+      ].includes(type)
     ) {
       try {
-        const pool = await getPool(item.config);
+        const resolvedConfig = await resolveConfigPassword(context, item.config);
+        const pool = await getPool(resolvedConfig);
         const objectName =
           type === 'database_trigger'
             ? table
             : schema
               ? `${schema}.${table}`
               : table;
-        const conn = await pool.getConnection();
-        let res: any;
-        try {
-          res = await conn.query(
-            `SELECT OBJECT_DEFINITION(OBJECT_ID('${objectName}')) AS def`,
-          );
-        } finally {
-          conn.release();
-        }
-        const firstResult = res[0];
-        let firstRow: any;
-        if (Array.isArray(firstResult)) {
-          firstRow = firstResult[0];
-        } else if (firstResult && firstResult.rows) {
-          const rowArr = firstResult.rows;
-          if (Array.isArray(rowArr)) {
-             firstRow = rowArr[0];
-             if (Array.isArray(firstRow)) {
-               // Sqlite might return array of values, but here it's an array of objects
-               // wait, in sqlite, row is array. But this is mssql only block.
-             }
+
+        let defQuery = '';
+        if (item.config.driver === 'mssql') {
+          if (type === 'server_trigger') {
+            defQuery = `SELECT m.definition AS def FROM sys.server_sql_modules m JOIN sys.server_triggers t ON m.object_id = t.object_id WHERE t.name = '${objectName}'`;
+          } else {
+            defQuery = `SELECT OBJECT_DEFINITION(OBJECT_ID('${objectName}')) AS def`;
+          }
+        } else if (item.config.driver === 'postgres') {
+          if (type === 'view' || type === 'system_view') {
+            defQuery = `SELECT pg_get_viewdef('${objectName}', true) AS def`;
+          } else if (type === 'procedure' || type === 'function') {
+            defQuery = `SELECT pg_get_functiondef(p.oid) AS def FROM pg_proc p JOIN pg_namespace n ON p.pronamespace = n.oid WHERE p.proname = '${table}' AND n.nspname = '${schema || 'public'}'`;
+          } else if (type === 'trigger' || type === 'table_trigger' || type === 'database_trigger') {
+            defQuery = `SELECT pg_get_triggerdef(oid) AS def FROM pg_trigger WHERE tgname = '${table}'`;
+          }
+        } else if (item.config.driver === 'mysql') {
+          if (type === 'view' || type === 'system_view') {
+            defQuery = `SHOW CREATE VIEW \`${schema || item.config.database}\`.\`${table}\``;
+          } else if (type === 'procedure') {
+            defQuery = `SHOW CREATE PROCEDURE \`${schema || item.config.database}\`.\`${table}\``;
+          } else if (type === 'function') {
+            defQuery = `SHOW CREATE FUNCTION \`${schema || item.config.database}\`.\`${table}\``;
+          } else if (type === 'trigger' || type === 'table_trigger') {
+            defQuery = `SHOW CREATE TRIGGER \`${schema || item.config.database}\`.\`${table}\``;
           }
         }
-        
-        if (firstRow && firstRow.def) {
-          query = firstRow.def;
+
+        if (!defQuery) {
+          query = `-- Scripting for type ${type} is not fully supported yet on ${item.config.driver}.`;
         } else {
-          query = `-- Definition not found for ${objectName}`;
+          const conn = await pool.getConnection();
+          let res: any;
+          try {
+            res = await conn.query(defQuery);
+          } finally {
+            conn.release();
+          }
+
+          const firstResult = res[0];
+          let firstRow: any;
+          let columns: string[] | undefined;
+
+          if (Array.isArray(firstResult)) {
+            firstRow = firstResult[0];
+          } else if (firstResult && firstResult.rows) {
+            firstRow = firstResult.rows[0];
+            columns = firstResult.columns;
+          }
+
+          if (firstRow) {
+            if (Array.isArray(firstRow)) {
+              if (item.config.driver === 'mysql' && columns) {
+                const defIndex = columns.findIndex(c => 
+                  c === 'Create View' || 
+                  c === 'Create Procedure' || 
+                  c === 'Create Function' || 
+                  c === 'SQL Original Statement'
+                );
+                if (defIndex !== -1) {
+                  query = firstRow[defIndex];
+                } else {
+                  query = `-- Definition found but column name unknown: ${JSON.stringify(columns)}`;
+                }
+              } else {
+                query = firstRow[0];
+              }
+            } else {
+              if (firstRow.def) query = firstRow.def;
+              else if (firstRow['Create View']) query = firstRow['Create View'];
+              else if (firstRow['Create Procedure']) query = firstRow['Create Procedure'];
+              else if (firstRow['Create Function']) query = firstRow['Create Function'];
+              else if (firstRow['SQL Original Statement']) query = firstRow['SQL Original Statement'];
+              else query = `-- Definition found but column name unknown: ${JSON.stringify(firstRow)}`;
+            }
+          } else {
+            query = `-- Definition not found for ${objectName}`;
+          }
         }
       } catch (e) {
         query = `-- Error fetching definition: ${e}`;
       }
-    } else if (type === 'view' || type === 'system_view') {
-      query = `-- Definition of view ${fullTableName}\nCREATE VIEW ${fullTableName} AS\nSELECT * FROM ...; -- (Modify this)`;
     } else if (type === 'table' || type === 'system_table') {
       const columns = item.tableSchema?.columns || [];
       const colDefs = columns.map((col: string) => {
@@ -252,6 +303,12 @@ export function scriptCreate(kernelManager: KernelManager) {
       kernelManager.bindNotebookToConnection(doc, item.config.name);
     }
     await vscode.window.showNotebookDocument(doc);
+    if (item.config?.name) {
+      await vscode.commands.executeCommand('notebook.selectKernel', {
+        id: `sql-notebook-${item.config.name}`,
+        extension: 'kuzho.sqlnotebook-pro',
+      });
+    }
   };
 }
 
@@ -269,7 +326,7 @@ export function scriptDrop(kernelManager: KernelManager) {
     if (type === 'view' || type === 'system_view') keyword = 'VIEW';
     else if (type === 'procedure') keyword = 'PROCEDURE';
     else if (type === 'function') keyword = 'FUNCTION';
-    else if (type === 'trigger' || type === 'database_trigger')
+    else if (type === 'trigger' || type === 'database_trigger' || type === 'table_trigger' || type === 'server_trigger')
       keyword = 'TRIGGER';
     else if (type === 'synonym') keyword = 'SYNONYM';
     else if (type === 'sequence') keyword = 'SEQUENCE';

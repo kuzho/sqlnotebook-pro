@@ -765,7 +765,7 @@ function mssqlPool(pool: mssql.ConnectionPool): Pool {
 
         const sysObjRes = await pool.query(`
           SELECT sch.name AS schema_name, o.name AS object_name, o.type
-          FROM sys.objects o
+          FROM sys.all_objects o
           JOIN sys.schemas sch ON o.schema_id = sch.schema_id
           WHERE o.is_ms_shipped = 1 AND o.type IN ('U', 'V')
         `);
@@ -1214,7 +1214,7 @@ function mssqlConn(req: mssql.Request): Conn {
         return undefined;
       };
       (req as unknown as { arrayRowMode: boolean }).arrayRowMode = true;
-      const res = (await req.query(q)) as any;
+      const res = (await req.batch(q)) as any;
       if (res.recordsets && res.recordsets.length > 0) {
         return res.recordsets.map((rs: any) => {
           const columns = getColumnsFromResult(res, rs);

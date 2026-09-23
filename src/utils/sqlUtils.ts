@@ -212,25 +212,37 @@ export function compactFormattedSql(sql: string, language: string): string {
   if (language === 'tsql') {
     sql = sql.replace(/\bWITH\s*\n\s*\(NOLOCK\)/gi, 'WITH (NOLOCK)');
     sql = sql.replace(/\s*\n\s*WITH\s*\(\s*NOLOCK\s*\)/gi, ' WITH (NOLOCK)');
+    sql = sql.replace(/\bCREATE\s*\n\s*OR\s+ALTER\s*\n\s*(PROCEDURE|FUNCTION|VIEW|TRIGGER)\b/gi, 'CREATE OR ALTER $1');
+    sql = sql.replace(/\bCREATE\s*\n\s*OR\s+ALTER\b/gi, 'CREATE OR ALTER');
+    sql = sql.replace(/\bTRIGGER\s+([a-zA-Z0-9_\[\]"`'.]+)\s*\n\s*ON\b/gi, 'TRIGGER $1 ON');
+    sql = sql.replace(/\bON\s+([a-zA-Z0-9_\[\]"`'.]+)\s*\n\s*(AFTER|FOR|INSTEAD\s+OF)\b/gi, 'ON $1\n$2');
+    sql = sql.replace(/\b(AFTER|FOR|INSTEAD\s+OF)\s*\n\s*([a-zA-Z0-9_\[\]"`',\s]+?)\s*\n\s*AS\s*\n\s*BEGIN\b/gi, (match, type, events) => {
+      return `${type.toUpperCase()} ${events.replace(/\s*\n\s*/g, ' ').replace(/\s*,\s*/g, ', ')}\nAS\nBEGIN`;
+    });
+    
+    // Fix AS BEGIN being squashed at the end of parameter lists
+    sql = sql.replace(/(?:\s*\n\s*|\s+)\bAS\s*\n?\s*BEGIN\b/gi, '\nAS\nBEGIN');
+
+    // Fix PROCEDURE parameters being un-indented or glued
+    sql = sql.replace(/\b(CREATE\s+OR\s+ALTER\s+PROCEDURE\s+[a-zA-Z0-9_\[\]"`'.]+)\s+(@[a-zA-Z0-9_]+)/gi, '$1\n  $2');
+    // Find lines starting with @ and indent them if they are in the procedure block (naive approach: just indent all lines starting with @ parameter declarations before AS)
+    // Actually, sql-formatter breaks parameters by comma, so we just make sure any line starting with @ is indented by 2 spaces.
+    sql = sql.replace(/\n(@[a-zA-Z0-9_]+)/g, '\n  $1');
   }
 
-  sql = sql.replace(/\s*\n\s*AS\s*\n\s*/gi, ' AS ');
-  sql = sql.replace(/\bAS\s*\n\s*([@a-zA-Z0-9_\[\]"`']+)/gi, ' AS $1');
-  sql = sql.replace(/([@a-zA-Z0-9_\[\]"`']+)\s*\n\s*AS\b/gi, '$1 AS');
+
 
   sql = sql.replace(
     /\b(COUNT|SUM|MAX|MIN|AVG|ISNULL|COALESCE|CAST|CONVERT|IFNULL|DATETIME|STRFTIME)\s*\(\s*\n\s*([^)\n]+)\s*\n\s*\)/gi,
     '$1($2)',
   );
 
-  sql = sql.replace(/\bOVER\s*\([\s\S]*?\)/gi, (match) =>
-    match.replace(/\s+/g, ' '),
-  );
+
 
   sql = sql.replace(/\bINSERT\s+INTO\s*\n\s*/gi, 'INSERT INTO ');
   sql = sql.replace(
-    /\b(INSERT\s+INTO\s+[a-zA-Z0-9_\[\]"`'.]+)\s*\(([\s\S]*?)\)\s*(?=\bVALUES\b|\bSELECT\b|\bOUTPUT\b|;|$)/gi,
-    (match, prefix, inner) => {
+    /\b(INSERT\s+INTO\s+[a-zA-Z0-9_\[\]"`'.]+)\s*\(([\s\S]*?)\)(\s*)(?=\bVALUES\b|\bSELECT\b|\bOUTPUT\b|;|$)/gi,
+    (match, prefix, inner, trailingSpace) => {
       if (inner.match(/\bSELECT\b/i)) {
         return match;
       }
@@ -241,9 +253,9 @@ export function compactFormattedSql(sql: string, language: string): string {
         prefix.length + 2,
       ).trimEnd();
       if (wrapped.includes('--')) {
-        return `${prefix} (${wrapped}\n)`;
+        return `${prefix} (${wrapped}\n)${trailingSpace || '\n'}`;
       }
-      return `${prefix} (${wrapped})`;
+      return `${prefix} (${wrapped})${trailingSpace || '\n'}`;
     },
   );
 
@@ -262,8 +274,6 @@ export function compactFormattedSql(sql: string, language: string): string {
 
   sql = sql.replace(/\bWITH\s*\n\s*(?!\()/gi, 'WITH ');
   sql = sql.replace(/\bAS\s*\(\s*\n\s*SELECT\b/gi, 'AS (SELECT ');
-  sql = sql.replace(/\bSELECT\s+DISTINCT\s*\n\s*/gi, 'SELECT DISTINCT ');
-  sql = sql.replace(/\bSELECT\s*\n\s*/gi, 'SELECT ');
 
   sql = sql.replace(
     /\b(SELECT|SELECT\s+DISTINCT)\s+([\s\S]*?)(?=\n\s*(?:FROM|INTO)\b|;|\s*$)/gi,

@@ -1,5 +1,15 @@
 # Change Log
 
+## [3.5.3]
+
+### ✨ Pro Features & Improvements
+
+- **Execution Plan Safety (MSSQL):** The graphical Execution Plan (Statistics Profile) is now wrapped in a transaction rollback (`BEGIN TRAN ... ROLLBACK TRAN`). You can now safely analyze execution plans for `DELETE`, `UPDATE`, and `INSERT` statements without permanently mutating your database. It handles edge cases like orphaned transactions automatically.
+  - Functions, mathematical operators, and `CONCAT`/`OVER` clauses are optimally spaced instead of being aggressively squashed together.
+  - T-SQL `CREATE OR ALTER PROCEDURE` parameter lists are properly indented.
+  - `AS BEGIN` declarations correctly break into separate lines for maximum readability.
+- **IntelliSense Upgrade:** The autocomplete engine now excludes internal system objects (like `sys.tables` and internal indexes) unless explicitly requested, providing a much cleaner, more relevant autocomplete experience.
+
 ## [3.5.2]
 
 ### ✨ Major Features: SSMS Parity & Deep Architecture
